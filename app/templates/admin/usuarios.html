@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Usuarios · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">⚙ Panel de Administrador</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Crea una cuenta de usuario y contraseña para cada trabajador, para que entren a la app con sus propios datos en vez de compartir una sola clave.</p>
+
+<div class="nav" style="flex-direction:row;background:#fff;border:1px solid var(--border);border-radius:10px;padding:6px;margin-bottom:1.6rem;display:inline-flex;gap:4px;">
+  <a href="{{ url_for('admin.cuentas') }}" class="nav-item" style="color:var(--navy-2);">Cuentas F29</a>
+  <a href="{{ url_for('admin.usuarios') }}" class="nav-item active" style="color:var(--navy-2);">Usuarios</a>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('user', 16) }} Usuarios</div>
+  <p class="muted" style="margin-top:0">
+    Rol <strong>trabajador</strong>: solo ve "Subir Cartolas" y "Generar CSV F29". Rol <strong>admin</strong>: ve todo, incluida esta pantalla.
+    No puedes cambiar tu propio rol ni desactivarte, para no quedar bloqueado.
+  </p>
+
+  {% if usuarios %}
+  <form method="post" action="{{ url_for('admin.usuarios_actualizar') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Activo</th><th></th></tr></thead>
+        <tbody>
+          {% for u in usuarios %}
+          <tr>
+            <td>{{ u.usuario }}<input type="hidden" name="u_id" value="{{ u.id }}"></td>
+            <td><input type="text" name="u_nombre" value="{{ u.nombre }}" {{ 'disabled' if u.id == mi_id else '' }}></td>
+            <td>
+              <select name="u_rol" {{ 'disabled' if u.id == mi_id else '' }}>
+                {% for r in roles %}<option value="{{ r }}" {{ 'selected' if u.rol == r else '' }}>{{ r }}</option>{% endfor %}
+              </select>
+            </td>
+            <td><input type="checkbox" name="u_activo" value="{{ u.id }}" {{ 'checked' if u.get('activo', True) else '' }} {{ 'disabled' if u.id == mi_id else '' }}></td>
+            <td>
+              {% if u.id != mi_id %}
+              <form method="post" action="{{ url_for('admin.usuarios_eliminar') }}" style="display:inline" onsubmit="return confirm('¿Eliminar a {{ u.usuario }}?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="usuario_id" value="{{ u.id }}">
+                <button type="submit" class="row-remove" title="Eliminar usuario">{{ icon('trash', 16) }}</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="btn" style="margin-top:14px">{{ icon('save', 16) }} Guardar cambios de usuarios</button>
+  </form>
+  {% else %}
+  <p class="muted">Todavía no has creado ningún usuario.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:14px">Crear nuevo usuario</div>
+  <form method="post" action="{{ url_for('admin.usuarios_crear') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field"><label for="nu_usuario">Usuario (para iniciar sesión)</label><input type="text" id="nu_usuario" name="usuario"></div>
+      <div class="field"><label for="nu_nombre">Nombre</label><input type="text" id="nu_nombre" name="nombre"></div>
+      <div class="field">
+        <label for="nu_rol">Rol</label>
+        <select id="nu_rol" name="rol">
+          {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == 'trabajador' else '' }}>{{ r }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="nu_clave">Contraseña</label><input type="password" id="nu_clave" name="clave" autocomplete="new-password"></div>
+      <div class="field"><label for="nu_clave2">Confirmar contraseña</label><input type="password" id="nu_clave2" name="clave_confirmar" autocomplete="new-password"></div>
+    </div>
+    <button type="submit" class="btn">{{ icon('plus', 16) }} Crear usuario</button>
+  </form>
+</div>
+
+{% if usuarios %}
+<div class="card">
+  <div class="section-title" style="margin-bottom:14px">Restablecer contraseña</div>
+  <form method="post" action="{{ url_for('admin.usuarios_resetear') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="reset_usuario">Usuario</label>
+        <select id="reset_usuario" name="usuario_id">
+          {% for u in usuarios %}<option value="{{ u.id }}">{{ u.usuario }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field"><label for="reset_clave">Nueva contraseña</label><input type="password" id="reset_clave" name="nueva_clave" autocomplete="new-password"></div>
+    </div>
+    <button type="submit" class="btn btn-secondary">{{ icon('key', 16) }} Restablecer contraseña</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

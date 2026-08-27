@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Administrador · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">⚙ Panel de Administrador</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Agrega, edita o quita las cuentas contables asociadas a cada código del F29, y administra los usuarios de la app — todo se guarda directo en la base de datos.</p>
+
+<div class="nav" style="flex-direction:row;background:#fff;border:1px solid var(--border);border-radius:10px;padding:6px;margin-bottom:1.6rem;display:inline-flex;gap:4px;">
+  <a href="{{ url_for('admin.cuentas') }}" class="nav-item active" style="color:var(--navy-2);">Cuentas F29</a>
+  <a href="{{ url_for('admin.usuarios') }}" class="nav-item" style="color:var(--navy-2);">Usuarios</a>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:10px">Cuentas configuradas</div>
+  <p class="muted" style="margin-top:0">
+    <strong>Texto de referencia</strong>: copia un fragmento de texto que aparezca SIEMPRE en el PDF justo antes del código.
+    <strong>Operador</strong>: el símbolo que el SII imprime después del monto en esa línea (<code>+</code>, <code>-</code> o <code>=</code>).
+    Si el código está en una fila del formulario donde vienen varios códigos juntos y el que buscas no tiene un símbolo pegado justo después de su monto, elige <strong>{{ sentinel }}</strong>.
+  </p>
+
+  <form method="post" action="{{ url_for('admin.cuentas_guardar') }}" id="form-cuentas">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table" id="tabla-cuentas">
+        <thead>
+          <tr><th>Cuenta</th><th>Código F29</th><th>Descripción</th><th>Tipo</th><th>Texto de referencia</th><th>Operador</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for c in configs %}
+          <tr>
+            <td><input type="text" name="c_cuenta" value="{{ c.cuenta }}"></td>
+            <td><input type="text" name="c_codigo" value="{{ c.codigo_f29 }}"></td>
+            <td><input type="text" name="c_descripcion" value="{{ c.descripcion }}"></td>
+            <td>
+              <select name="c_tipo">
+                <option value="DEBE" {{ 'selected' if c.tipo == 'DEBE' else '' }}>DEBE</option>
+                <option value="HABER" {{ 'selected' if c.tipo == 'HABER' else '' }}>HABER</option>
+              </select>
+            </td>
+            <td><input type="text" name="c_ancla" value="{{ c.texto_ancla }}"></td>
+            <td>
+              <select name="c_operador">
+                {% for op in operadores %}
+                <option value="{{ op }}" {{ 'selected' if (c.operador == op) or (c.operador == '' and op == sentinel) else '' }}>{{ op }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><button type="button" class="row-remove" title="Quitar fila">{{ icon('trash', 16) }}</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="btn btn-secondary" id="btn-add-row" data-table="tabla-cuentas">{{ icon('plus', 16) }} Agregar fila</button>
+      <button type="submit" class="btn">{{ icon('save', 16) }} Guardar cambios</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">Probar contra un PDF de ejemplo (opcional)</div>
+  <p class="muted" style="margin-top:0">Sube un F29 de prueba para ver si las filas de arriba (con los cambios sin guardar) detectan bien los montos.</p>
+  <form method="post" action="{{ url_for('admin.cuentas_probar') }}" enctype="multipart/form-data" id="form-prueba">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for c in configs %}
+      <input type="hidden" name="c_cuenta" value="{{ c.cuenta }}">
+      <input type="hidden" name="c_codigo" value="{{ c.codigo_f29 }}">
+      <input type="hidden" name="c_descripcion" value="{{ c.descripcion }}">
+      <input type="hidden" name="c_tipo" value="{{ c.tipo }}">
+      <input type="hidden" name="c_ancla" value="{{ c.texto_ancla }}">
+      <input type="hidden" name="c_operador" value="{{ c.operador or sentinel }}">
+    {% endfor %}
+    <div class="field">
+      <label for="pdf_prueba">PDF de prueba</label>
+      <input type="file" id="pdf_prueba" name="pdf_prueba" accept=".pdf">
+    </div>
+    <button type="submit" class="btn btn-secondary">Probar</button>
+  </form>
+
+  {% if prueba %}
+  <div class="table-wrap" style="margin-top:16px">
+    <table class="data-table">
+      <thead><tr><th>Cuenta</th><th>Código F29</th><th>Monto detectado</th><th>Detectado</th></tr></thead>
+      <tbody>
+        {% for f in prueba.filas %}
+        <tr>
+          <td>{{ f.cuenta }}</td><td>{{ f.codigo_f29 }}</td><td>{{ f.monto | clp }}</td>
+          <td>{% if f.detectado %}<span class="badge-ok">✓</span>{% else %}<span class="badge-warn">⚠ no encontrado</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% for a in prueba.advertencias %}
+  <div class="alert alert-warn" style="margin-top:12px">{{ a }}</div>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
+{% endblock %}
