@@ -73,6 +73,13 @@ def create_app():
     app.register_blueprint(f29_bp)
     app.register_blueprint(admin_bp)
 
+    @app.route("/")
+    def raiz():
+        from flask import session, redirect, url_for
+        if session.get("usuario"):
+            return redirect(url_for("cartolas.index"))
+        return redirect(url_for("auth.login"))
+
     from app.nav import PAGINAS
 
     @app.context_processor
