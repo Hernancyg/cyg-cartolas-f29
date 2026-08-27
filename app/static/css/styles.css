@@ -1,0 +1,322 @@
+/* C&G Group — Cartolas Bancarias + F29 · estilo visual pixel-perfect al
+   mockup del cliente (sidebar navy, tarjetas blancas, acento azul). */
+
+:root {
+  --navy: #0E1E3A;
+  --navy-2: #16233F;
+  --blue: #2F6FED;
+  --blue-dark: #2558C4;
+  --bg: #F4F6FA;
+  --card: #FFFFFF;
+  --border: #E3E7EE;
+  --text: #16233F;
+  --text-muted: #5B6472;
+  --sidebar-w: 254px;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+}
+
+a { color: var(--blue); text-decoration: none; }
+
+/* ---------------------------------------------------------------------- */
+/* Layout                                                                  */
+/* ---------------------------------------------------------------------- */
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--navy);
+  color: #E7ECF7;
+  padding: 22px 16px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: 2.2rem 2.4rem 3rem;
+  max-width: 1220px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Sidebar: marca                                                         */
+/* ---------------------------------------------------------------------- */
+.brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 16px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+.brand-icon img { width: 30px; height: 32px; display: block; margin-top: 2px; }
+.brand-name {
+  font-weight: 700;
+  font-size: 1.08rem;
+  line-height: 1.15;
+  font-family: Georgia, "Times New Roman", serif;
+  color: #FFFFFF;
+}
+.brand-name .amp { color: #C7D2EE; }
+.brand-sub { font-size: 0.62rem; letter-spacing: .05em; opacity: .7; margin-top: 3px; }
+.brand-tag { font-size: 0.8rem; opacity: .85; margin-top: 4px; font-weight: 500; }
+
+/* ---------------------------------------------------------------------- */
+/* Sidebar: navegación                                                    */
+/* ---------------------------------------------------------------------- */
+.nav { display: flex; flex-direction: column; gap: 4px; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #C7D2EE;
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.nav-item:hover { background: rgba(255,255,255,0.08); color: #FFFFFF; }
+.nav-item.active { background: var(--blue); color: #FFFFFF; }
+.nav-item svg { flex-shrink: 0; opacity: .95; }
+
+.sidebar-divider { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 14px 0; }
+
+.sidebar-footer { margin-top: auto; }
+.connected-as { font-size: 0.78rem; opacity: .75; margin-bottom: 10px; line-height: 1.4; }
+.connected-as strong { color: #FFFFFF; opacity: 1; }
+
+/* ---------------------------------------------------------------------- */
+/* Encabezado de página                                                   */
+/* ---------------------------------------------------------------------- */
+.page-title { font-size: 1.85rem; font-weight: 700; color: var(--navy-2); margin: 0; }
+.page-title-underline { width: 44px; height: 4px; background: var(--blue); border-radius: 2px; margin: 8px 0 12px 0; }
+.page-subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.8rem; }
+
+h1, h2, h3 { color: var(--navy-2); }
+
+/* ---------------------------------------------------------------------- */
+/* Tarjeta genérica + encabezado de sección numerada                      */
+/* ---------------------------------------------------------------------- */
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 1.6rem 1.8rem;
+  box-shadow: 0 1px 3px rgba(16,24,40,0.06);
+  margin-bottom: 1.6rem;
+  border: 1px solid var(--border);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0.2rem 0 1.1rem 0;
+}
+.section-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #EAF1FF;
+  color: var(--blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.section-title { font-weight: 700; color: var(--navy-2); font-size: 1.02rem; }
+
+/* ---------------------------------------------------------------------- */
+/* Grilla de bancos                                                       */
+/* ---------------------------------------------------------------------- */
+.bank-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+@media (max-width: 980px) {
+  .bank-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+.bank-card {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #FFFFFF;
+  color: var(--navy-2);
+  font-weight: 600;
+  font-size: 0.84rem;
+  height: 76px;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 6px 8px;
+  width: 100%;
+}
+.bank-card:hover { border-color: var(--blue); box-shadow: 0 2px 10px rgba(47,111,237,0.18); }
+.bank-card.selected { background: var(--blue); border-color: var(--blue); color: #FFFFFF; }
+
+.bank-logo-wrap { height: 30px; display: flex; align-items: center; justify-content: center; }
+.bank-logo-wrap img { max-height: 30px; max-width: 90px; object-fit: contain; }
+.bank-accent { width: 26px; height: 4px; border-radius: 2px; }
+
+.otros-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.9rem;
+  margin: 4px 0 18px;
+}
+.otros-divider hr { flex: 1; border: none; border-top: 1px solid var(--border); }
+.otros-divider button {
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: none; color: var(--text-muted);
+  font-weight: 500; font-size: 0.9rem; cursor: pointer; padding: 4px 8px;
+}
+.otros-divider button:hover { color: var(--blue); }
+.otros-divider button.selected { color: var(--blue); font-weight: 700; }
+
+/* ---------------------------------------------------------------------- */
+/* Zona de carga (dropzone)                                                */
+/* ---------------------------------------------------------------------- */
+.dropzone {
+  border: 2px dashed #B9C8F0;
+  border-radius: 14px;
+  background: #FBFCFF;
+  padding: 2.2rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  position: relative;
+}
+.dropzone.disabled { opacity: .55; pointer-events: none; }
+.dropzone-left { display: flex; flex-direction: column; align-items: center; gap: 10px; flex: 1; text-align: center; }
+.dropzone-left .cloud-icon { color: var(--blue); }
+.dropzone-left .dz-title { font-weight: 700; color: var(--navy-2); font-size: 1rem; }
+.dropzone-left .dz-or { color: var(--text-muted); font-size: 0.85rem; }
+.dropzone-illustration { width: 210px; max-width: 35%; flex-shrink: 0; opacity: .95; }
+.dropzone-illustration img { width: 100%; display: block; }
+.dropzone input[type=file] { display: none; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 8px;
+  background: var(--blue);
+  border: 1px solid var(--blue);
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+.btn:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn-secondary { background: #FFFFFF; color: var(--navy-2); border-color: var(--border); }
+.btn-secondary:hover { border-color: var(--blue); color: var(--blue); background: #FFFFFF; }
+.btn-danger { background: #D3222A; border-color: #D3222A; }
+.btn-danger:hover { background: #B01B22; border-color: #B01B22; }
+.btn-block { width: 100%; }
+
+.upload-caption { color: var(--text-muted); font-size: 0.82rem; margin-top: 10px; text-align: center; }
+
+/* ---------------------------------------------------------------------- */
+/* Formularios                                                             */
+/* ---------------------------------------------------------------------- */
+label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--navy-2); margin-bottom: 6px; }
+input[type=text], input[type=password], input[type=number], select, textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  color: var(--text);
+  background: #FFFFFF;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid rgba(47,111,237,0.35); border-color: var(--blue); }
+.field { margin-bottom: 16px; }
+.field-row { display: flex; gap: 16px; }
+.field-row > .field { flex: 1; }
+
+/* ---------------------------------------------------------------------- */
+/* Tablas editables                                                        */
+/* ---------------------------------------------------------------------- */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+table.data-table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+table.data-table th {
+  background: #F8FAFD; color: var(--navy-2); font-weight: 700;
+  text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+table.data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.data-table tr:last-child td { border-bottom: none; }
+table.data-table input, table.data-table select { padding: 6px 8px; font-size: 0.85rem; }
+table.data-table select { min-width: 100px; padding-right: 10px; }
+table.data-table .row-remove { background: none; border: none; color: #B0392F; cursor: pointer; padding: 4px; }
+table.data-table .row-remove:hover { color: #D3222A; }
+table.data-table .badge-ok { color: #1E8E5A; font-weight: 600; }
+table.data-table .badge-warn { color: #C77700; font-weight: 600; }
+
+/* ---------------------------------------------------------------------- */
+/* Métricas                                                                */
+/* ---------------------------------------------------------------------- */
+.metrics { display: flex; gap: 14px; margin: 4px 0 20px; flex-wrap: wrap; }
+.metric {
+  flex: 1; min-width: 160px; padding: 14px 18px; border-radius: 14px;
+  background: #F8FAFD; border: 1px solid var(--border);
+}
+.metric .k { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.metric .v { font-size: 20px; font-weight: 700; color: var(--navy-2); }
+.metric.warn .v { color: #C0392B; }
+.metric.ok .v { color: #1E8E5A; }
+
+/* ---------------------------------------------------------------------- */
+/* Alertas / mensajes flash                                                */
+/* ---------------------------------------------------------------------- */
+.alert { border-radius: 10px; padding: 12px 16px; font-size: 0.88rem; margin-bottom: 14px; line-height: 1.5; }
+.alert-info { background: #EAF1FF; color: #1D3E82; border: 1px solid #C9DCFB; }
+.alert-warn { background: #FFF6E5; color: #8A5A00; border: 1px solid #FBE3B0; }
+.alert-error { background: #FDECEC; color: #A6231D; border: 1px solid #F6C6C4; }
+.alert-success { background: #E8F8EF; color: #14713F; border: 1px solid #BEEBD0; }
+
+/* ---------------------------------------------------------------------- */
+/* Login                                                                    */
+/* ---------------------------------------------------------------------- */
+.login-wrap { min-height: 70vh; display: flex; align-items: center; justify-content: center; }
+.login-card { background: #FFFFFF; border-radius: 18px; padding: 2.4rem 2.6rem; width: 100%; max-width: 400px; box-shadow: 0 10px 40px rgba(16,24,40,0.10); border: 1px solid var(--border); }
+.login-card .lock-badge { width: 46px; height: 46px; border-radius: 50%; background: #EAF1FF; color: var(--blue); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+.login-card .page-title { font-size: 1.4rem; }
+
+/* ---------------------------------------------------------------------- */
+/* Utilidades                                                              */
+/* ---------------------------------------------------------------------- */
+.muted { color: var(--text-muted); }
+.mt-0 { margin-top: 0; }
+.mb-0 { margin-bottom: 0; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.actions-row { display: flex; gap: 12px; margin-top: 8px; }
+.actions-row > * { flex: 1; }
+.divider { border: none; border-top: 1px solid var(--border); margin: 1.8rem 0; }
