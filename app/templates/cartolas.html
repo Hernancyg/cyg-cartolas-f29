@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Subir Cartolas · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Carga de Cartolas Bancarias</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Selecciona tu banco y carga tu cartola en PDF o Excel.</p>
+
+<div class="card">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('bank', 18) }}</div>
+    <div class="section-title">1. Selecciona tu banco</div>
+  </div>
+
+  <div class="bank-grid">
+    {% for b in banks %}
+    <a class="bank-card {{ 'selected' if banco_elegido == b.key else '' }}" href="{{ url_for('cartolas.index', banco=b.key) }}">
+      {% if b.logo %}
+        <div class="bank-logo-wrap"><img src="{{ url_for('static', filename='logos/' + b.logo) }}" alt="{{ b.name }}"></div>
+      {% else %}
+        <div class="bank-accent" style="background:{{ b.color }}"></div>
+      {% endif %}
+      {{ b.name }}
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="otros-divider">
+    <hr>
+    <a href="{{ url_for('cartolas.index', banco='otros') }}" style="display:flex;align-items:center;gap:6px;color:{{ 'var(--blue)' if banco_elegido == 'otros' else 'var(--text-muted)' }};font-weight:{{ '700' if banco_elegido == 'otros' else '500' }}">
+      {{ icon('bank', 16) }} Otros bancos
+    </a>
+    <hr>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('upload', 18) }}</div>
+    <div class="section-title">2. Selecciona y carga tu cartola</div>
+  </div>
+
+  {% if not banco_elegido %}
+  <p class="muted" style="margin-top:-6px">Selecciona un banco arriba para habilitar la carga del archivo.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('cartolas.procesar') }}" enctype="multipart/form-data" id="form-upload">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="banco" value="{{ banco_elegido or '' }}">
+    <div class="dropzone {{ 'disabled' if not banco_elegido else '' }}" id="dropzone">
+      <div class="dropzone-left">
+        <div class="cloud-icon">{{ icon('cloud-arrow', 40) }}</div>
+        <div class="dz-title">Arrastra tu archivo aquí</div>
+        <div class="dz-or">o</div>
+        <label for="archivo" class="btn" style="cursor:pointer;">Seleccionar archivo</label>
+        <input type="file" id="archivo" name="archivo" accept=".pdf,.xlsx,.xlsm,.xls" {{ 'disabled' if not banco_elegido else '' }} onchange="document.getElementById('form-upload').submit()">
+      </div>
+      <div class="dropzone-illustration">
+        <img src="{{ url_for('static', filename='img/upload-illustration.png') }}" alt="">
+      </div>
+    </div>
+  </form>
+  <p class="upload-caption">Formatos permitidos: PDF, XLSX, XLS · Tamaño máximo: 20 MB</p>
+</div>
+
+{% if resultado %}
+  {% if resultado.aviso_banco %}
+  <div class="alert alert-warn">{{ resultado.aviso_banco | safe }}</div>
+  {% endif %}
+  {% for w in resultado.advertencias %}
+  <div class="alert alert-warn">{{ w }}</div>
+  {% endfor %}
+
+  <div class="metrics">
+    <div class="metric"><div class="k">Banco seleccionado</div><div class="v">{{ banco_elegido_name }}</div></div>
+    <div class="metric"><div class="k">Movimientos encontrados</div><div class="v">{{ resultado.transacciones | length }}</div></div>
+    <div class="metric"><div class="k">Total cargos / abonos</div><div class="v">${{ resultado.total_cargo | clp }} / ${{ resultado.total_abono | clp }}</div></div>
+  </div>
+
+  {% if resultado.transacciones %}
+  <div class="card">
+    <div class="section-title" style="margin-bottom:6px">Ajustes antes de exportar (opcional)</div>
+    <p class="muted" style="margin-top:0">Si algún movimiento quedó mal separado, puedes editar fecha, detalle, cargo o abono, o agregar/quitar filas antes de descargar.</p>
+
+    <form method="post" action="{{ url_for('cartolas.descargar') }}" id="form-download">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="base_name" value="{{ resultado.base_name }}">
+      <div class="table-wrap">
+        <table class="data-table" id="tabla-movimientos">
+          <thead>
+            <tr><th>Fecha</th><th>Detalle</th><th>Cargo</th><th>Abono</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for tx in resultado.transacciones %}
+            <tr>
+              <td><input type="text" name="fecha" value="{{ tx.fecha }}"></td>
+              <td><input type="text" name="detalle" value="{{ tx.descripcion }}"></td>
+              <td><input type="number" step="0.01" name="cargo" value="{{ tx.cargo | numval }}"></td>
+              <td><input type="number" step="0.01" name="abono" value="{{ tx.abono | numval }}"></td>
+              <td><button type="button" class="row-remove" title="Quitar fila">{{ icon('trash', 16) }}</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="actions-row">
+        <button type="button" class="btn btn-secondary" id="btn-add-row">{{ icon('plus', 16) }} Agregar fila</button>
+        <button type="submit" class="btn">{{ icon('download', 16) }} Descargar Excel convertido</button>
+      </div>
+    </form>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No se encontraron movimientos para convertir. Revisa el archivo o avisa para calibrar el parser con este formato de cartola.</div>
+  {% endif %}
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
+{% endblock %}

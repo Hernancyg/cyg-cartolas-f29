@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="lock-badge">{{ icon('lock', 22) }}</div>
+    <div class="page-title">Iniciar sesión</div>
+    <p class="page-subtitle">Ingresa tu usuario y contraseña para entrar a la app.</p>
+
+    {% if not clave_maestra_configurada %}
+    <div class="alert alert-warn">
+      No se ha configurado una clave de administrador todavía
+      (<code>ADMIN_PASSWORD</code> en las variables de entorno), así que
+      todavía no se puede entrar como administrador sin un usuario creado
+      en Supabase.
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="usuario">Usuario</label>
+        <input type="text" id="usuario" name="usuario" autocomplete="username" autofocus>
+      </div>
+      <div class="field">
+        <label for="clave">Contraseña</label>
+        <input type="password" id="clave" name="clave" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-block">Iniciar sesión</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

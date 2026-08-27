@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Generar CSV F29 · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Centralización F29 → CSV</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Sube el PDF del F29 del mes, revisa los montos detectados y descarga el CSV de comprobantes unificados listo para importar.</p>
+
+{% if not parsed %}
+<div class="card">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('invoice', 18) }}</div>
+    <div class="section-title">Sube el Formulario 29 (PDF)</div>
+  </div>
+  <form method="post" action="{{ url_for('f29.procesar') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone-left">
+        <div class="cloud-icon">{{ icon('cloud-arrow', 40) }}</div>
+        <div class="dz-title">Arrastra el PDF del F29 aquí</div>
+        <div class="dz-or">o</div>
+        <label for="archivo" class="btn" style="cursor:pointer;">Seleccionar archivo</label>
+        <input type="file" id="archivo" name="archivo" accept=".pdf" onchange="this.form.submit()">
+      </div>
+    </div>
+  </form>
+</div>
+
+{% else %}
+
+{% for a in parsed.advertencias %}
+<div class="alert alert-warn">{{ a }}</div>
+{% endfor %}
+{% if parsed.rut or parsed.razon_social %}
+<p class="muted">Contribuyente detectado: <strong>{{ parsed.razon_social or '—' }}</strong> · RUT {{ parsed.rut or '—' }}</p>
+{% endif %}
+
+<form method="post" action="{{ url_for('f29.preview') }}" id="form-f29">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="remanente_504" value="{{ parsed.remanente_504 }}">
+
+  <div class="card">
+    <div class="section-header">
+      <div class="section-badge">1</div>
+      <div class="section-title">Período tributario</div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="mes">Mes</label>
+        <select name="mes" id="mes">
+          {% for m in meses %}
+          <option value="{{ '%02d' % loop.index }}" {{ 'selected' if loop.index0 == parsed.mes_idx else '' }}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="anio">Año</label>
+        <input type="text" id="anio" name="anio" value="{{ parsed.anio }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-header">
+      <div class="section-badge">2</div>
+      <div class="section-title">Montos detectados por cuenta</div>
+    </div>
+    <p class="muted" style="margin-top:0">Verifica los montos extraídos del PDF. Si algún código no se detectó o el monto no es correcto, corrígelo directamente en la tabla.</p>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Incluir</th><th>Cuenta</th><th>Código F29</th><th>Descripción</th><th>Tipo</th><th>Monto</th><th>Detectado</th></tr>
+        </thead>
+        <tbody>
+          {% for f in parsed.filas %}
+          <tr>
+            <td><input type="checkbox" name="f_incluir" value="{{ f.codigo_f29 }}" {{ 'checked' if f.get('incluida', True) else '' }}></td>
+            <td>{{ f.cuenta }}<input type="hidden" name="f_cuenta" value="{{ f.cuenta }}"></td>
+            <td>{{ f.codigo_f29 }}<input type="hidden" name="f_codigo" value="{{ f.codigo_f29 }}"></td>
+            <td>{{ f.descripcion }}</td>
+            <td>{{ f.tipo }}<input type="hidden" name="f_tipo" value="{{ f.tipo }}"></td>
+            <td><input type="number" step="1" min="0" name="f_monto" value="{{ f.monto }}"></td>
+            <td>{% if f.detectado %}<span class="badge-ok">✓ detectado</span>{% else %}<span class="badge-warn">⚠ no encontrado</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if parsed.remanente_504 and parsed.remanente_504 > 0 %}
+  <div class="card">
+    <div class="section-header">
+      <div class="section-badge">2b</div>
+      <div class="section-title">Remanente de Crédito Fiscal (código 504)</div>
+    </div>
+    <p class="muted" style="margin-top:0">El F29 declara un remanente de crédito fiscal del mes anterior de <strong>{{ parsed.remanente_504 | clp }}</strong> (código 504). Ingresa el remanente que quedó registrado en la contabilidad al cierre del mes anterior para calcular el ajuste.</p>
+    <div class="field">
+      <label for="remanente_anterior">Remanente final del mes anterior (según libros)</label>
+      <input type="number" step="1" min="0" id="remanente_anterior" name="remanente_anterior" value="{{ parsed.remanente_anterior or '' }}" placeholder="Ingresa el monto...">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+      <input type="checkbox" name="incluir_ajuste" style="width:auto" {{ 'checked' if parsed.incluir_ajuste is not defined or parsed.incluir_ajuste else '' }}>
+      Incluir este ajuste en el comprobante
+    </label>
+  </div>
+  {% endif %}
+
+  <div class="actions-row">
+    <button type="submit" formaction="{{ url_for('f29.preview') }}" class="btn btn-secondary">Actualizar vista previa</button>
+    <button type="submit" formaction="{{ url_for('f29.descargar') }}" class="btn">{{ icon('download', 16) }} Descargar CSV</button>
+  </div>
+</form>
+
+{% if preview %}
+<div class="card" style="margin-top:1.6rem">
+  <div class="section-header">
+    <div class="section-badge">3</div>
+    <div class="section-title">Vista previa y descarga</div>
+  </div>
+
+  {% if preview.topar_creditos %}
+  <div class="alert alert-info">
+    Total Débitos (código 538 = <strong>{{ preview.monto_538 | clp }}</strong>) es menor que Total Créditos (código 537 = <strong>{{ preview.monto_537 | clp }}</strong>). El excedente corresponde a remanente, así que la línea de la cuenta de Total Créditos se generará con <strong>{{ preview.monto_538 | clp }}</strong> en vez del monto de créditos.
+  </div>
+  {% endif %}
+
+  {% if preview.remanente_info %}
+  <div class="alert alert-info">
+    Diferencia: <strong>{{ '+' if preview.remanente_info.diferencia > 0 else '' }}{{ preview.remanente_info.diferencia | clp }}</strong> → se agregará DEBE a <strong>{{ preview.remanente_info.cuenta_debe }}</strong> y HABER a <strong>{{ preview.remanente_info.cuenta_haber }}</strong>.
+  </div>
+  {% endif %}
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>NUM</th><th>FECHA</th><th>GLOSA COMPROB.</th><th>TIPO</th><th>CUENTA</th><th>C.COSTO</th><th>DEBE</th><th>HABER</th></tr>
+      </thead>
+      <tbody>
+        {% for fila in preview.filas_finales %}
+        <tr>
+          <td>{{ fila[0] }}</td><td>{{ fila[1] }}</td><td>{{ fila[2] }}</td><td>{{ fila[3] }}</td>
+          <td>{{ fila[4] }}</td><td>{{ fila[7] }}</td><td>{{ fila[8] }}</td><td>{{ fila[9] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><div class="k">Total DEBE</div><div class="v">{{ preview.total_debe | clp }}</div></div>
+    <div class="metric"><div class="k">Total HABER</div><div class="v">{{ preview.total_haber | clp }}</div></div>
+    <div class="metric {{ 'warn' if preview.diferencia != 0 else 'ok' }}"><div class="k">Diferencia</div><div class="v">{{ preview.diferencia | clp }}</div></div>
+  </div>
+
+  {% if preview.diferencia != 0 %}
+  <div class="alert alert-warn">El comprobante no está cuadrado (DEBE ≠ HABER). Esto puede ser normal según las cuentas configuradas, pero revisa los montos antes de importar.</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('f29.descargar') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for f in parsed.filas %}
+      <input type="hidden" name="f_cuenta" value="{{ f.cuenta }}">
+      <input type="hidden" name="f_codigo" value="{{ f.codigo_f29 }}">
+      <input type="hidden" name="f_tipo" value="{{ f.tipo }}">
+      <input type="hidden" name="f_monto" value="{{ f.monto }}">
+      {% if f.get('incluida', True) %}<input type="hidden" name="f_incluir" value="{{ f.codigo_f29 }}">{% endif %}
+    {% endfor %}
+    <input type="hidden" name="mes" value="{{ '%02d' % (parsed.mes_idx + 1) }}">
+    <input type="hidden" name="anio" value="{{ parsed.anio }}">
+    <input type="hidden" name="remanente_504" value="{{ parsed.remanente_504 }}">
+    <input type="hidden" name="remanente_anterior" value="{{ parsed.remanente_anterior or '' }}">
+    {% if parsed.incluir_ajuste is not defined or parsed.incluir_ajuste %}<input type="hidden" name="incluir_ajuste" value="on">{% endif %}
+    <button type="submit" class="btn">{{ icon('download', 16) }} Descargar {{ preview.nombre_archivo }}</button>
+  </form>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
