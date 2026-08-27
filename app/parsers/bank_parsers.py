@@ -68,12 +68,75 @@ SECTION_END_MARKERS = ["RESUMEN", "CONSIDERAMOS"]
 HARD_STOP_PHRASES = [["SALDOS", "DIARIOS"]]
 
 # Frases de dos o más palabras del pie de página legal/nota que se repite
-# al final de cada página (p.ej. "Nota: Información..." en BancoEstado).
-# A diferencia de HARD_STOP_PHRASES, esto solo recorta la página actual
-# (la tabla de movimientos puede seguir en la página siguiente); evita que
-# el número de página u otro texto del pie quede pegado al último
+# al final de cada página (p.ej. "Nota: Información..." en BancoEstado,
+# "Retención a 1 día..." en Banco de Chile). A diferencia de
+# HARD_STOP_PHRASES, esto solo recorta la página actual (la tabla de
+# movimientos puede seguir en la página siguiente); evita que el bloque de
+# retenciones/resumen o el número de página quede pegado al último
 # movimiento de la página.
-FOOTER_STOP_PHRASES = [["NOTA", "INFORMACIÓN"], ["NOTA", "INFORMACION"]]
+FOOTER_STOP_PHRASES = [
+    ["NOTA", "INFORMACIÓN"], ["NOTA", "INFORMACION"],
+    ["RETENCION", "A", "1", "DIA"], ["RETENCIÓN", "A", "1", "DIA"],
+]
+
+# Descripciones que marcan una fila de saldo (no un movimiento real) y que
+# por lo tanto no deben incluirse en la salida — p.ej. "SALDO INICIAL" /
+# "SALDO FINAL" en Banco de Chile.
+SALDO_ROW_MARKERS = ("SALDO INICIAL", "SALDO FINAL")
+
+
+def _is_saldo_row(descripcion: str) -> bool:
+    d = " ".join((descripcion or "").upper().split())
+    return any(d.startswith(marker) for marker in SALDO_ROW_MARKERS)
+
+
+# Algunas cartolas (p.ej. Banco de Chile) no incluyen el año en la fecha de
+# cada movimiento ("02/01"), solo día/mes — el año se obtiene del período
+# de la cartola ("DESDE : 30/12/2025 HASTA : 30/01/2026", presente en el
+# encabezado de cada página).
+PERIOD_RE = re.compile(
+    r"DESDE\s*:?\s*\d{1,2}/(\d{1,2})/(\d{4})\s+HASTA\s*:?\s*\d{1,2}/(\d{1,2})/(\d{4})"
+)
+
+
+def _extract_month_year_map(full_text: str) -> dict:
+    """Busca 'DESDE dd/mm/aaaa HASTA dd/mm/aaaa' en el texto completo del
+    PDF y devuelve {mes: año} para cada mes del período (soporta que el
+    período cruce de un año al siguiente, p.ej. diciembre -> enero)."""
+    m = PERIOD_RE.search(full_text.upper())
+    if not m:
+        return {}
+    mes_desde, anio_desde, mes_hasta, anio_hasta = (int(g) for g in m.groups())
+    mapping = {}
+    mes, anio = mes_desde, anio_desde
+    for _ in range(24):  # tope de seguridad; ninguna cartola real dura 2 años
+        mapping[mes] = anio
+        if (mes, anio) == (mes_hasta, anio_hasta):
+            break
+        mes += 1
+        if mes > 12:
+            mes = 1
+            anio += 1
+    return mapping
+
+
+def _normalize_fecha(fecha_str: str, month_year_map: dict):
+    """Si `fecha_str` ya tiene año (dd/mm/aaaa), la deja igual. Si solo
+    tiene día/mes (Banco de Chile), le agrega el año según
+    `month_year_map`. Si no hay año disponible para ese mes, devuelve el
+    string original sin modificar (no se adivina un año)."""
+    partes = re.split(r"[/-]", fecha_str)
+    if len(partes) != 2:
+        return fecha_str, True
+    dia, mes = partes
+    try:
+        mes_int = int(mes)
+    except ValueError:
+        return fecha_str, True
+    anio = month_year_map.get(mes_int)
+    if anio is None:
+        return fecha_str, False
+    return f"{dia}/{mes}/{anio}", True
 
 
 def _find_phrase_top(rows, phrases):
@@ -99,7 +162,7 @@ BANK_MARKERS = {
     ],
 }
 
-DATE_RE = re.compile(r"^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$")
+DATE_RE = re.compile(r"^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$")
 AMOUNT_RE = re.compile(r"^-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?$")
 ROW_Y_TOLERANCE = 3.0  # puntos de tolerancia para agrupar palabras en una misma fila
 
@@ -401,6 +464,7 @@ def parse_pdf(file_path_or_buffer) -> ParseResult:
         # detectar banco usando el texto completo
         full_text = "\n".join((p.extract_text() or "") for p in pdf.pages)
         result.banco_detectado = detect_bank(full_text.upper())
+        month_year_map = _extract_month_year_map(full_text)
 
         columns = None
 
@@ -440,6 +504,18 @@ def parse_pdf(file_path_or_buffer) -> ParseResult:
                 # (p.ej. "Saldos diarios"), no más movimientos: se detiene
                 # el procesamiento por completo.
                 break
+
+    # Filtrar filas de saldo (no son movimientos reales) y completar el año
+    # de las fechas que vinieron sin él (p.ej. Banco de Chile).
+    transactions = [tx for tx in transactions if not _is_saldo_row(tx.descripcion)]
+    for tx in transactions:
+        tx.fecha, ok = _normalize_fecha(tx.fecha, month_year_map)
+        if not ok:
+            result.advertencias.append(
+                f"No se pudo determinar el año de la fecha '{tx.fecha}' "
+                "(no se encontró el período DESDE/HASTA en el PDF). Revisa "
+                "esa fila antes de descargar."
+            )
 
     if not transactions:
         result.advertencias.append(

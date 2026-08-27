@@ -10,7 +10,7 @@ Genera el Excel de salida replicando el formato de la plantilla ExportBanco.xlsx
         E: MONTO DEPOSITOS O ABONOS
   - Fuente Arial 8 en todo, encabezado en negrita y centrado
   - Bordes finos en todas las celdas de la tabla (B:E)
-  - Formato de fecha mm-dd-yy en columna B, centrado
+  - Formato de fecha dd-mm-yyyy en columna B, centrado
   - Formato numérico #,##0 en columna D
   - Formato contable en columna E
 """
@@ -31,7 +31,7 @@ HEADERS = [
 COL_WIDTHS = {"A": 13.0, "B": 13.0, "C": 32.63, "D": 13.36, "E": 12.36}
 NUMFMT_CARGO = "#,##0"
 NUMFMT_ABONO = '_ * #,##0_ ;_ * \\-#,##0_ ;_ * \\-_ ;_ @_ '
-NUMFMT_FECHA = "mm-dd-yy"
+NUMFMT_FECHA = "dd-mm-yyyy"
 
 THIN = Side(style="thin")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
