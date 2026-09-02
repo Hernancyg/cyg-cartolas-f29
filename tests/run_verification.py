@@ -118,6 +118,57 @@ def main():
         check(f"procesar cartola {os.path.basename(pdf_path)} -> 200", r.status_code == 200)
         check("tabla de movimientos aparece", b"Ajustes antes de exportar" in r.data or b"No se encontraron movimientos" in r.data)
 
+    # ---- BancoEstado: calibración contra cartola real (01-2026, 7 páginas) ----
+    banco_estado_pdf = "/root/.claude/uploads/6765170a-fd6f-5183-b8a3-c1c40a5d8b1c/ef109d5d-Cartola_Bco_Estado_01_2026.pdf"
+    if os.path.exists(banco_estado_pdf):
+        from app.parsers.bank_parsers import parse_pdf as _parse_pdf_directo, _parse_amount
+
+        resultado_be = _parse_pdf_directo(banco_estado_pdf)
+        check("BancoEstado: banco detectado correctamente", resultado_be.banco_detectado == "BancoEstado")
+        check("BancoEstado: sin advertencias", resultado_be.advertencias == [])
+        check("BancoEstado: se extrajeron los 289 movimientos reales", len(resultado_be.transacciones) == 289)
+
+        # Cadena de saldos: saldo[i] debe calzar exactamente con
+        # saldo[i+1] - cargo[i] + abono[i] en TODAS las filas consecutivas
+        # (la cartola trae el saldo después de cada movimiento, en orden
+        # de más reciente a más antiguo). Es la verificación más fuerte de
+        # que ningún movimiento quedó mal separado, duplicado o perdido a
+        # lo largo de las 7 páginas.
+        saldo_ok = True
+        for i in range(len(resultado_be.transacciones) - 1):
+            cur = resultado_be.transacciones[i]
+            nxt = resultado_be.transacciones[i + 1]
+            esperado = _parse_amount(nxt.saldo) - cur.cargo + cur.abono
+            if abs(esperado - _parse_amount(cur.saldo)) > 0.5:
+                saldo_ok = False
+                break
+        check("BancoEstado: la cadena de saldos calza en las 288 transiciones", saldo_ok)
+
+        descs = [tx.descripcion for tx in resultado_be.transacciones]
+        check(
+            "BancoEstado: glosa multilínea concatenada correctamente",
+            "Transferencia otro banco a rut 76907072-9 repuestos acira spa" in descs,
+        )
+        check(
+            "BancoEstado: glosa partida entre páginas concatenada correctamente",
+            "Abonos varios sociedad de servicios transaccionales ca" in descs,
+        )
+        check(
+            "BancoEstado: sin texto de pie de página pegado a la glosa",
+            not any("correo" in d.lower() or "bancoestado.cl" in d.lower() for d in descs),
+        )
+
+        with open(banco_estado_pdf, "rb") as fh:
+            r = client.post(
+                "/cartolas/procesar",
+                data={"banco": "banco_estado", "archivo": (io.BytesIO(fh.read()), os.path.basename(banco_estado_pdf))},
+                content_type="multipart/form-data",
+            )
+        check("BancoEstado: POST /cartolas/procesar -> 200", r.status_code == 200)
+        check("BancoEstado: tabla de movimientos aparece en la vista previa", b"Ajustes antes de exportar" in r.data)
+    else:
+        check("BancoEstado: cartola de prueba existe", False)
+
     # ---- Descargar Excel convertido (con filas de ejemplo) ----
     r = client.post("/cartolas/descargar", data={
         "base_name": "prueba",
