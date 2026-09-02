@@ -182,6 +182,36 @@ def main():
     check("CSV contiene glosa de centralización", "CENTRALIZACION F29 JUNIO" in csv_text)
     check("CSV separado por ';' con CRLF", "\r\n" in csv_text and ";" in csv_text)
 
+    # ---- Calcular Global (IGC) ----
+    from app.global_igc.calculator import calcular_igc_tabla, calcular_global, EntradaGlobal, UTA_2026
+
+    check("UTA 2026 = 834.504", UTA_2026 == 834504)
+    check("tramo exento hasta 11.265.804", calcular_igc_tabla(11_265_804) == 0)
+    check("primer peso afecto tributa 4%", calcular_igc_tabla(11_265_804.01) == round(11_265_804.01 * 0.04 - 450_632))
+    check("tramo tope superior (renta muy alta) usa 40% - rebaja", calcular_igc_tabla(300_000_000) == round(300_000_000 * 0.40 - 32_397_949))
+    check("base imponible 0 o negativa no tributa", calcular_igc_tabla(0) == 0)
+
+    entrada_prueba = EntradaGlobal(
+        total_imponible=0, retiros_14a=10_000_000, credito_retiros_14a=2_000_000,
+    )
+    res_prueba = calcular_global(entrada_prueba)
+    check("gross-up: renta bruta retiro 14A = neto + crédito", res_prueba.renta_bruta_retiros_dividendos == 12_000_000)
+    check("débito por restitución = 35% del crédito 14A", res_prueba.debito_restitucion == round(2_000_000 * 0.35))
+    check("total créditos incluye el crédito IDPC del retiro", res_prueba.total_creditos == 2_000_000)
+
+    entrada_d3 = EntradaGlobal(retiros_14d3=10_000_000, credito_retiros_14d3=1_000_000)
+    res_d3 = calcular_global(entrada_d3)
+    check("régimen 14 D N°3 no paga débito por restitución", res_d3.debito_restitucion == 0)
+
+    r = client.get("/global/")
+    check("GET /global/ 200", r.status_code == 200 and b"Calcular Global" in r.data)
+
+    r = client.post("/global/calcular", data={
+        "total_imponible": "0", "retiros_14a": "10000000", "credito_retiros_14a": "2000000",
+    })
+    check("POST /global/calcular 200", r.status_code == 200)
+    check("resultado del cálculo se muestra en la página", b"Base Imponible Anual" in r.data)
+
     # ---- Administrador: cuentas ----
     r = client.get("/admin/cuentas")
     check("GET /admin/cuentas 200 (admin)", r.status_code == 200)
@@ -221,6 +251,9 @@ def main():
 
     r = client.get("/f29/")
     check("trabajador SÍ puede ver Generar CSV F29", r.status_code == 200)
+
+    r = client.get("/global/")
+    check("trabajador SÍ puede ver Calcular Global", r.status_code == 200)
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")
     if FAILED:
