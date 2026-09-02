@@ -195,13 +195,28 @@ def main():
         total_imponible=0, retiros_14a=10_000_000, credito_retiros_14a=2_000_000,
     )
     res_prueba = calcular_global(entrada_prueba)
-    check("gross-up: renta bruta retiro 14A = neto + crédito", res_prueba.renta_bruta_retiros_dividendos == 12_000_000)
+    check("gross-up: renta bruta retiro 14A = neto + crédito", res_prueba.renta_bruta_retiros == 12_000_000)
     check("débito por restitución = 35% del crédito 14A", res_prueba.debito_restitucion == round(2_000_000 * 0.35))
     check("total créditos incluye el crédito IDPC del retiro", res_prueba.total_creditos == 2_000_000)
 
     entrada_d3 = EntradaGlobal(retiros_14d3=10_000_000, credito_retiros_14d3=1_000_000)
     res_d3 = calcular_global(entrada_d3)
     check("régimen 14 D N°3 no paga débito por restitución", res_d3.debito_restitucion == 0)
+
+    entrada_sueldo = EntradaGlobal(total_imponible=10_000_000, leyes_sociales=1_000_000, credito_iusc=300_000)
+    res_sueldo = calcular_global(entrada_sueldo)
+    check("Leyes Sociales se resta del Total Imponible (renta líquida sueldos)", res_sueldo.renta_neta_sueldos == 9_000_000)
+    check("crédito IUSC entra al total de créditos", res_sueldo.total_creditos == 300_000)
+    check("renta líquida de sueldos no puede ser negativa", calcular_global(EntradaGlobal(total_imponible=1_000_000, leyes_sociales=5_000_000)).renta_neta_sueldos == 0)
+
+    entrada_honorarios = EntradaGlobal(honorarios=1_000_000, credito_honorarios=145_000)
+    res_honorarios = calcular_global(entrada_honorarios)
+    check("gasto presunto honorarios = 30% del bruto", res_honorarios.gasto_presunto_honorarios == 300_000)
+    check("honorarios a tributar = 70% del bruto", res_honorarios.honorarios_tributables == 700_000)
+    check("base imponible usa el honorario neto de gasto presunto, no el bruto", res_honorarios.base_imponible == 700_000)
+    check("crédito por honorarios se calcula sobre el bruto (no se toca)", res_honorarios.total_creditos == 145_000)
+
+    check("ya no existen campos de dividendos en EntradaGlobal", not any("dividendo" in f for f in EntradaGlobal.__dataclass_fields__))
 
     r = client.get("/global/")
     check("GET /global/ 200", r.status_code == 200 and b"Calcular Global" in r.data)
