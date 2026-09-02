@@ -4,32 +4,48 @@ Cálculo del Impuesto Global Complementario (IGC), año tributario 2026.
 Lógica basada en el Formulario 22 AT2026 oficial del SII (hoja "F22
 AT2026" y tabla "IGC 2026" del archivo de referencia entregado por el
 usuario), simplificada a los conceptos más comunes para un contribuyente
-persona natural con rentas de trabajo, retiros/dividendos de empresas
-(régimen 14 A o 14 D N°3) y otras rentas afectas — el usuario pidió
-explícitamente definir los recuadros según el Excel, separando retiros y
-dividendos entre régimen 14 A y 14 D N°3, cada uno con su propio crédito.
+persona natural con rentas de trabajo (sueldos + honorarios), retiros de
+empresas (régimen 14 A o 14 D N°3) y otras rentas afectas.
+
+Ajustado el 02-09-2026 según correcciones del usuario:
+
+  - "Total Imponible" (sueldos) se rebaja específicamente por "Leyes
+    Sociales" (cotizaciones previsionales) para obtener la renta líquida
+    afecta por sueldos que entra a la base del IGC — ya no es una rebaja
+    genérica sobre el total, sino una resta puntual sobre el ingreso por
+    sueldos.
+  - Se agrega el Impuesto Único de Segunda Categoría (IUSC) ya retenido
+    sobre los sueldos como un crédito contra el IGC (art. 47 LIR:
+    reliquidación anual de impuesto único cuando el contribuyente además
+    tiene otras rentas que lo obligan a declarar IGC).
+  - Honorarios: se calcula automáticamente la rebaja de 30% de gasto
+    presunto (art. 50 LIR) sobre el monto bruto de las boletas, y solo el
+    70% restante ("honorarios a tributar") entra a la base imponible. El
+    crédito por honorarios (retención de boleta) se mantiene aparte, tal
+    como lo entrega el usuario, calculado sobre el monto bruto.
+  - Se eliminó la sección de "Dividendos": el usuario pidió dejar en esta
+    calculadora solo Retiros, separados en régimen 14 A / 14 D N°3.
 
 Mecánica clave (verificada contra las fórmulas reales del Excel):
 
-  - "Incremento por IDPC" (art. 54 N°1 / 62 LIR): los retiros y
-    dividendos afectos a IGC que llevan asociado un crédito por Impuesto
-    de Primera Categoría (IDPC) se declaran por su monto BRUTO, es decir
-    el monto neto percibido MÁS el crédito. En el Excel esto corresponde
-    a la línea 14 (AE39 = M39+Y39, donde esos totales suman las columnas
-    de crédito "con derecho a devolución" de las líneas de retiros/
-    dividendos). Aquí se aplica ese mismo gross-up a los 4 sub-montos de
-    retiros/dividendos (14 A y 14 D N°3).
+  - "Incremento por IDPC" (art. 54 N°1 / 62 LIR): los retiros afectos a
+    IGC que llevan asociado un crédito por Impuesto de Primera Categoría
+    (IDPC) se declaran por su monto BRUTO, es decir el monto neto
+    percibido MÁS el crédito. En el Excel esto corresponde a la línea 14
+    (AE39 = M39+Y39). Aquí se aplica ese mismo gross-up a los 2 sub-montos
+    de retiros (14 A y 14 D N°3).
 
   - "Débito por restitución" (art. 56 N°3 inciso final LIR, 35%): solo
-    para el crédito IDPC de retiros/dividendos del régimen 14 A ("con
-    obligación de restitución"). En el Excel: AE59 = 35% × (suma de
-    columnas de crédito 14A). El régimen 14 D N°3 ("sin obligación de
-    restitución") NO paga este débito.
+    para el crédito IDPC de retiros del régimen 14 A ("con obligación de
+    restitución"). En el Excel: AE59 = 35% × (suma de columnas de crédito
+    14A). El régimen 14 D N°3 ("sin obligación de restitución") NO paga
+    este débito.
 
-  - Los créditos por honorarios (retención de boleta) y por arriendos se
-    tratan como créditos directos contra el impuesto, sin el gross-up de
-    incremento ni la restitución del 35% (esos mecanismos son propios de
-    retiros/dividendos con crédito IDPC, no de esas otras rentas).
+  - Los créditos por honorarios (retención de boleta), por IUSC (sueldos)
+    y por arriendos se tratan como créditos directos contra el impuesto,
+    sin el gross-up de incremento ni la restitución del 35% (esos
+    mecanismos son propios de retiros con crédito IDPC, no de esas otras
+    rentas).
 
   - Tabla de tramos IGC AT2026 (hoja "IGC 2026" del Excel), en base a
     1 UTA (31-12-2025) = $834.504.
@@ -53,6 +69,7 @@ TRAMOS_IGC_2026 = [
 ]
 
 RESTITUCION_TASA = 0.35
+GASTO_PRESUNTO_HONORARIOS_TASA = 0.30
 
 
 def calcular_igc_tabla(base_imponible: float) -> float:
@@ -78,22 +95,20 @@ def _num(v) -> float:
 
 @dataclass
 class EntradaGlobal:
-    # Rentas del trabajo
-    total_imponible: float = 0.0       # sueldos afectos (ya líquidos de IUSC, sin crédito)
-    honorarios: float = 0.0            # honorarios brutos (boleta)
-    credito_honorarios: float = 0.0    # retención boleta de honorarios (crédito directo)
+    # Rentas del trabajo — sueldos
+    total_imponible: float = 0.0       # sueldos brutos imponibles (antes de descontar leyes sociales)
+    leyes_sociales: float = 0.0        # cotizaciones previsionales; se resta del total imponible
+    credito_iusc: float = 0.0          # Impuesto Único de 2ª Categoría ya retenido sobre el sueldo (crédito)
+
+    # Rentas del trabajo — honorarios
+    honorarios: float = 0.0            # honorarios brutos (boleta); se le resta 30% de gasto presunto
+    credito_honorarios: float = 0.0    # retención boleta de honorarios, sobre el monto bruto (crédito directo)
 
     # Retiros — régimen 14 A (con obligación de restitución) y 14 D N°3 (sin restitución)
     retiros_14a: float = 0.0
     credito_retiros_14a: float = 0.0
     retiros_14d3: float = 0.0
     credito_retiros_14d3: float = 0.0
-
-    # Dividendos — mismos dos regímenes
-    dividendos_14a: float = 0.0
-    credito_dividendos_14a: float = 0.0
-    dividendos_14d3: float = 0.0
-    credito_dividendos_14d3: float = 0.0
 
     # Otras rentas afectas
     arriendos_netos: float = 0.0
@@ -103,7 +118,6 @@ class EntradaGlobal:
     otros_ingresos_afectos: float = 0.0
 
     # Rebajas a la base imponible
-    leyes_sociales: float = 0.0        # cotizaciones previsionales (independientes)
     pensiones_alimenticias: float = 0.0
 
     # Otros créditos directos contra el impuesto (donaciones, etc.)
@@ -119,7 +133,10 @@ class EntradaGlobal:
 
 @dataclass
 class ResultadoGlobal:
-    renta_bruta_retiros_dividendos: float = 0.0
+    renta_neta_sueldos: float = 0.0
+    gasto_presunto_honorarios: float = 0.0
+    honorarios_tributables: float = 0.0
+    renta_bruta_retiros: float = 0.0
     total_creditos_idpc: float = 0.0
     otras_rentas_afectas: float = 0.0
     total_rebajas: float = 0.0
@@ -136,57 +153,64 @@ class ResultadoGlobal:
 def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     r = ResultadoGlobal()
 
-    # --- 1) Retiros y dividendos: gross-up por incremento de IDPC ---
-    creditos_14a = entrada.credito_retiros_14a + entrada.credito_dividendos_14a
-    creditos_14d3 = entrada.credito_retiros_14d3 + entrada.credito_dividendos_14d3
+    # --- 1) Sueldos: renta líquida afecta = Total Imponible - Leyes Sociales ---
+    r.renta_neta_sueldos = max(entrada.total_imponible - entrada.leyes_sociales, 0)
+
+    # --- 2) Honorarios: rebaja automática de 30% de gasto presunto ---
+    r.gasto_presunto_honorarios = round(entrada.honorarios * GASTO_PRESUNTO_HONORARIOS_TASA)
+    r.honorarios_tributables = entrada.honorarios - r.gasto_presunto_honorarios
+
+    # --- 3) Retiros: gross-up por incremento de IDPC ---
+    creditos_14a = entrada.credito_retiros_14a
+    creditos_14d3 = entrada.credito_retiros_14d3
     r.total_creditos_idpc = creditos_14a + creditos_14d3
 
-    r.renta_bruta_retiros_dividendos = (
+    r.renta_bruta_retiros = (
         entrada.retiros_14a + entrada.credito_retiros_14a
         + entrada.retiros_14d3 + entrada.credito_retiros_14d3
-        + entrada.dividendos_14a + entrada.credito_dividendos_14a
-        + entrada.dividendos_14d3 + entrada.credito_dividendos_14d3
     )
 
-    # --- 2) Otras rentas afectas (sin gross-up) ---
+    # --- 4) Otras rentas afectas (sin gross-up) ---
     r.otras_rentas_afectas = (
-        entrada.total_imponible + entrada.honorarios
+        r.renta_neta_sueldos + r.honorarios_tributables
         + entrada.arriendos_netos + entrada.intereses_reajustes
         + entrada.ganancias_capital + entrada.otros_ingresos_afectos
     )
 
-    # --- 3) Rebajas ---
-    r.total_rebajas = entrada.leyes_sociales + entrada.pensiones_alimenticias
+    # --- 5) Rebajas ---
+    r.total_rebajas = entrada.pensiones_alimenticias
 
-    # --- 4) Base imponible anual ---
+    # --- 6) Base imponible anual ---
     r.base_imponible = max(
-        r.renta_bruta_retiros_dividendos + r.otras_rentas_afectas - r.total_rebajas,
+        r.renta_bruta_retiros + r.otras_rentas_afectas - r.total_rebajas,
         0,
     )
 
-    # --- 5) IGC según tabla ---
+    # --- 7) IGC según tabla ---
     r.igc_segun_tabla = calcular_igc_tabla(r.base_imponible)
 
-    # --- 6) Débito por restitución (35% del crédito IDPC de 14 A) ---
+    # --- 8) Débito por restitución (35% del crédito IDPC de 14 A) ---
     r.debito_restitucion = round(creditos_14a * RESTITUCION_TASA) if creditos_14a > 0 else 0
 
     r.impuesto_determinado = r.igc_segun_tabla + r.debito_restitucion
 
-    # --- 7) Total créditos contra el impuesto ---
+    # --- 9) Total créditos contra el impuesto ---
     r.total_creditos = (
         r.total_creditos_idpc
+        + entrada.credito_iusc
         + entrada.credito_honorarios
         + entrada.credito_arriendos
         + entrada.otros_creditos
     )
     r.detalle_creditos = {
-        "credito_idpc_retiros_dividendos": r.total_creditos_idpc,
+        "credito_idpc_retiros": r.total_creditos_idpc,
+        "credito_iusc": entrada.credito_iusc,
         "credito_honorarios": entrada.credito_honorarios,
         "credito_arriendos": entrada.credito_arriendos,
         "otros_creditos": entrada.otros_creditos,
     }
 
-    # --- 8) Resultado final ---
+    # --- 10) Resultado final ---
     r.resultado = r.impuesto_determinado - r.total_creditos
     r.a_pagar = r.resultado >= 0
     return r
