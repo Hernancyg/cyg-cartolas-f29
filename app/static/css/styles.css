@@ -320,3 +320,28 @@ table.data-table .badge-warn { color: #C77700; font-weight: 600; }
 .actions-row { display: flex; gap: 12px; margin-top: 8px; }
 .actions-row > * { flex: 1; }
 .divider { border: none; border-top: 1px solid var(--border); margin: 1.8rem 0; }
+
+/* ---------------------------------------------------------------------- */
+/* Calcular Global (IGC)                                                   */
+/* ---------------------------------------------------------------------- */
+.field-label-info { display: inline-flex; align-items: center; gap: 6px; }
+.field-label-info .tooltip { position: relative; display: inline-flex; color: var(--text-muted); cursor: help; }
+.field-label-info .tooltip .tip-text {
+  visibility: hidden; opacity: 0; transition: opacity .12s ease;
+  position: absolute; bottom: 130%; left: 50%; transform: translateX(-50%);
+  background: var(--navy-2); color: #fff; font-weight: 400; font-size: 12px;
+  line-height: 1.4; padding: 8px 10px; border-radius: 8px; width: 230px;
+  z-index: 5; box-shadow: 0 6px 20px rgba(16,24,40,0.18);
+}
+.field-label-info .tooltip:hover .tip-text, .field-label-info .tooltip:focus .tip-text { visibility: visible; opacity: 1; }
+
+.credit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.credit-pair { background: #F8FAFD; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.credit-pair .regimen-tag {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em;
+  color: var(--blue); background: #EAF1FF; border-radius: 999px; padding: 3px 10px; margin-bottom: 10px;
+}
+.credit-pair .regimen-tag.d3 { color: #14713F; background: #E8F8EF; }
+@media (max-width: 720px) {
+  .credit-grid { grid-template-columns: 1fr; }
+}
