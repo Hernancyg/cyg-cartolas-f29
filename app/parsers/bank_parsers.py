@@ -53,7 +53,10 @@ HEADER_SYNONYMS = {
         "DEPÓSITO", "CREDITO", "CRÉDITO", "CREDITOS", "CRÉDITOS",
     ],
     "saldo": ["SALDO"],
-    "documento": ["DOCUMENTO", "DOCUMENTOS", "DOC", "N°", "Nº", "N°DOC"],
+    "documento": [
+        "DOCUMENTO", "DOCUMENTOS", "DOC", "N°", "Nº", "Nª", "N°DOC",
+        "OPERACION", "OPERACIÓN",
+    ],
     "sucursal": ["SUCURSAL"],
 }
 
@@ -77,6 +80,12 @@ HARD_STOP_PHRASES = [["SALDOS", "DIARIOS"]]
 FOOTER_STOP_PHRASES = [
     ["NOTA", "INFORMACIÓN"], ["NOTA", "INFORMACION"],
     ["RETENCION", "A", "1", "DIA"], ["RETENCIÓN", "A", "1", "DIA"],
+    # Pie de página legal repetido en cada hoja de BancoEstado ("Para
+    # solicitud de requerimientos... enviar correo a: ..." / "Para
+    # canalizar sus solicitudes relacionadas con Internet, enviar correo
+    # a: ..."). Sin este corte, ese texto queda pegado a la glosa del
+    # último movimiento de la página.
+    ["PARA", "SOLICITUD"], ["PARA", "CANALIZAR"],
 ]
 
 # Descripciones que marcan una fila de saldo (no un movimiento real) y que
@@ -163,7 +172,10 @@ BANK_MARKERS = {
 }
 
 DATE_RE = re.compile(r"^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$")
-AMOUNT_RE = re.compile(r"^-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?$")
+# Algunas cartolas (p.ej. BancoEstado) anteponen el signo peso ("$5.000.000")
+# a cada monto de la tabla; el "$" es opcional para no afectar bancos que no
+# lo usan.
+AMOUNT_RE = re.compile(r"^-?\$?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?$")
 ROW_Y_TOLERANCE = 3.0  # puntos de tolerancia para agrupar palabras en una misma fila
 
 
@@ -192,8 +204,9 @@ def detect_bank(text_upper: str) -> str:
 
 
 def _parse_amount(token: str) -> float:
-    """Convierte '1.234.567' o '1,234,567.89' o '1234,50' a float."""
-    t = token.strip()
+    """Convierte '1.234.567' o '1,234,567.89' o '1234,50' a float. Admite un
+    signo peso opcional al inicio ('$1.234.567', usado por BancoEstado)."""
+    t = token.strip().replace("$", "")
     negative = t.startswith("-")
     t = t.lstrip("-")
     # Formato chileno: punto = miles, coma = decimal (si aparece coma al final)
@@ -229,13 +242,26 @@ def _group_words_into_rows(words):
 
 def _match_roles_in_row(row):
     """Devuelve {rol: [palabras]} para las palabras de una fila que calzan
-    con algún sinónimo de columna."""
+    con algún sinónimo de columna.
+
+    Algunas cartolas (p.ej. BancoEstado) imprimen el encabezado de dos
+    columnas pegado en una sola palabra, unido por "/" y sin espacios
+    ("Cheques/Cargos", "Depósitos/Abonos"). Para reconocerlas igual, además
+    de comparar la palabra completa se compara cada parte separada por "/".
+    """
     role_words = {}
     for w in row:
-        token = w["text"].upper().strip(":").strip("°").strip()
-        for role, synonyms in HEADER_SYNONYMS.items():
-            if token in synonyms or w["text"].upper().strip(":") in synonyms:
-                role_words.setdefault(role, []).append(w)
+        raw = w["text"].upper().strip(":")
+        candidates = {raw.strip("°").strip()}
+        if "/" in raw:
+            candidates.update(part.strip("°").strip() for part in raw.split("/") if part.strip())
+        matched_roles = set()
+        for token in candidates:
+            for role, synonyms in HEADER_SYNONYMS.items():
+                if token in synonyms:
+                    matched_roles.add(role)
+        for role in matched_roles:
+            role_words.setdefault(role, []).append(w)
     return role_words
 
 
@@ -256,11 +282,23 @@ def _find_header_columns(rows):
     se cae de vuelta al comportamiento anterior (agregar todas las filas
     que matchean algo), por seguridad.
     """
-    # Buscamos hasta la primera fila que empiece con una fecha (ahí ya
-    # comienzan los movimientos), con un tope de seguridad de 40 filas.
+    # Buscamos hasta la primera fila que empiece con una fecha Y además
+    # tenga algún monto en esa misma fila (ahí ya comienzan los
+    # movimientos), con un tope de seguridad de 40 filas. Se exige el monto
+    # además de la fecha porque algunas cartolas (p.ej. BancoEstado) tienen,
+    # antes de la tabla, un timbre "Fecha - Hora: 20/07/2026 - 00:35" cuya
+    # primera palabra también matchea el formato de fecha, pero que no es
+    # todavía una fila de movimiento — sin este chequeo adicional, cortaría
+    # la búsqueda del encabezado antes de llegar a la fila real.
+    def _row_tiene_monto(row):
+        return any(
+            AMOUNT_RE.match(w["text"]) and any(ch.isdigit() for ch in w["text"])
+            for w in row[1:]
+        )
+
     search_limit = len(rows)
     for idx, row in enumerate(rows[:40]):
-        if row and DATE_RE.match(row[0]["text"]):
+        if row and DATE_RE.match(row[0]["text"]) and _row_tiene_monto(row):
             search_limit = idx
             break
     else:
@@ -365,31 +403,24 @@ def _find_hard_stop_top(rows):
     return _find_phrase_top(rows, HARD_STOP_PHRASES)
 
 
-def _process_page_transactions(words, columns):
-    """
-    Dado el listado de palabras de UNA página (ya recortado a la zona de
-    datos de la tabla) y el dict de columnas, devuelve una lista de
-    Transaction. Usa la heurística de "fecha más cercana" para asignar cada
-    palabra a su movimiento, porque en varios bancos el bloque de la
-    descripción queda verticalmente centrado respecto a la fila que
-    contiene fecha/monto/saldo (una línea de la glosa puede quedar *arriba*
-    de esa fila y otra *abajo*).
+def _desc_bounds(columns):
+    """Calcula el rango horizontal [x0, x1) de la columna de descripción a
+    partir de sus columnas vecinas.
+
+    El orden de las columnas (fecha/cargo/abono/descripción/saldo/
+    documento/sucursal) varía según el banco: en algunos la descripción va
+    justo después de la fecha, en otros va después de cargo/abono, o
+    incluso después del saldo. Para no asumir un orden fijo, se ubican las
+    columnas vecinas de "descripción" por posición horizontal (la que
+    quede inmediatamente a su izquierda y la que quede inmediatamente a su
+    derecha, según el centro de cada columna), y se usa el borde entre
+    ellas como límite real de la descripción. El contenido de la columna
+    descripción suele partir alineado más a la izquierda que su propia
+    etiqueta de encabezado (que puede estar centrada en una columna
+    ancha), por eso se usa el borde de la columna vecina y no el x0 del
+    encabezado "DESCRIPCION" mismo.
     """
     fecha_x0, fecha_x1 = columns["fecha"]
-    documento_range = columns.get("documento")
-
-    # El orden de las columnas (fecha/cargo/abono/descripción/saldo/
-    # documento/sucursal) varía según el banco: en algunos la descripción
-    # va justo después de la fecha, en otros va después de cargo/abono, o
-    # incluso después del saldo. Para no asumir un orden fijo, se ubican
-    # las columnas vecinas de "descripción" por posición horizontal (la
-    # que quede inmediatamente a su izquierda y la que quede inmediatamente
-    # a su derecha, según el centro de cada columna), y se usa el borde
-    # entre ellas como límite real de la descripción. El contenido de la
-    # columna descripción suele partir alineado más a la izquierda que su
-    # propia etiqueta de encabezado (que puede estar centrada en una
-    # columna ancha), por eso se usa el borde de la columna vecina y no el
-    # x0 del encabezado "DESCRIPCION" mismo.
     other_columns = [(role, c) for role, c in columns.items() if role != "descripcion"]
     if "descripcion" in columns:
         desc_center = sum(columns["descripcion"]) / 2
@@ -400,11 +431,38 @@ def _process_page_transactions(words, columns):
     right_neighbors = [c[0] for _, c in other_columns if (c[0] + c[1]) / 2 > desc_center]
     desc_x0 = max(left_neighbors) if left_neighbors else fecha_x1
     desc_x1_bound = min(right_neighbors) if right_neighbors else float("inf")
+    return desc_x0, desc_x1_bound
 
-    date_words = [
+
+def _date_words_in_column(words, columns):
+    """Devuelve las palabras de `words` que caen en la columna de fecha,
+    con tolerancia amplia y simétrica: en algunas cartolas (p.ej.
+    BancoEstado) el texto de la columna "Fecha" queda más a la izquierda
+    que la propia etiqueta del encabezado "Fecha" (que puede estar
+    centrada en una columna más ancha), por lo que un margen chico solo
+    hacia la derecha (como el usado para otras columnas) descarta las
+    fechas reales."""
+    fecha_x0, fecha_x1 = columns["fecha"]
+    return [
         w for w in words
-        if DATE_RE.match(w["text"]) and fecha_x0 - 8 <= w["x0"] <= fecha_x1 + 20
+        if DATE_RE.match(w["text"]) and fecha_x0 - 20 <= w["x0"] <= fecha_x1 + 20
     ]
+
+
+def _process_page_transactions(words, columns):
+    """
+    Dado el listado de palabras de UNA página (ya recortado a la zona de
+    datos de la tabla) y el dict de columnas, devuelve una lista de
+    Transaction. Usa la heurística de "fecha más cercana" para asignar cada
+    palabra a su movimiento, porque en varios bancos el bloque de la
+    descripción queda verticalmente centrado respecto a la fila que
+    contiene fecha/monto/saldo (una línea de la glosa puede quedar *arriba*
+    de esa fila y otra *abajo*).
+    """
+    documento_range = columns.get("documento")
+    desc_x0, desc_x1_bound = _desc_bounds(columns)
+
+    date_words = _date_words_in_column(words, columns)
     if not date_words:
         return []
 
@@ -496,6 +554,34 @@ def parse_pdf(file_path_or_buffer) -> ParseResult:
                 if w["top"] > header_bottom
                 and (upper_bound is None or w["top"] < upper_bound)
             ]
+
+            # Continuación de glosa entre páginas: si la última línea de la
+            # descripción de un movimiento queda justo en el borde inferior
+            # de una página, esa línea puede aparecer recién al comienzo de
+            # la página siguiente, ANTES de la fecha del primer movimiento
+            # de esa página (p.ej. "transaccionales ca" en una cartola real
+            # de BancoEstado). Sin este ajuste, la heurística de "fecha más
+            # cercana" la asignaría erróneamente al primer movimiento de la
+            # página nueva en lugar de al último de la página anterior.
+            date_words_page = _date_words_in_column(data_words, columns)
+            if date_words_page and transactions:
+                first_date_top = min(w["top"] for w in date_words_page)
+                desc_x0, desc_x1_bound = _desc_bounds(columns)
+                orphan_words = [
+                    w for w in data_words
+                    if w["top"] < first_date_top
+                    and any(ch.isalnum() for ch in w["text"])
+                    and desc_x0 <= w["x0"] < desc_x1_bound
+                    and not (AMOUNT_RE.match(w["text"]) and any(ch.isdigit() for ch in w["text"]))
+                ]
+                if orphan_words:
+                    extra = " ".join(w["text"] for w in orphan_words).strip()
+                    if extra:
+                        transactions[-1].descripcion = (
+                            transactions[-1].descripcion + " " + extra
+                        ).strip()
+                    orphan_ids = {id(w) for w in orphan_words}
+                    data_words = [w for w in data_words if id(w) not in orphan_ids]
 
             transactions.extend(_process_page_transactions(data_words, columns))
 
