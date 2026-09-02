@@ -273,6 +273,7 @@ def main():
     check("ya no existen campos de dividendos en EntradaGlobal", not any("dividendo" in f for f in EntradaGlobal.__dataclass_fields__))
 
     check("umbral cotización honorarios = 5 ingresos mínimos", UMBRAL_COTIZACION_HONORARIOS == 553_553 * 5)
+    check("tasa cotización honorarios = 0.85 (85%), no 0.85%", TASA_COTIZACION_PREVISIONAL_HONORARIOS == 0.85)
 
     entrada_bajo_umbral = EntradaGlobal(honorarios=2_000_000, credito_honorarios=290_000)
     res_bajo_umbral = calcular_global(entrada_bajo_umbral)
@@ -282,7 +283,7 @@ def main():
     entrada_sobre_umbral = EntradaGlobal(honorarios=3_000_000, credito_honorarios=435_000)
     res_sobre_umbral = calcular_global(entrada_sobre_umbral)
     check("igual o sobre el umbral SÍ aplica cotización previsional de honorarios", res_sobre_umbral.afecto_cotizacion_honorarios is True)
-    check("pago cotización = 0,85% de la retención (crédito honorarios)", res_sobre_umbral.pago_cotizacion_honorarios == round(435_000 * TASA_COTIZACION_PREVISIONAL_HONORARIOS))
+    check("pago cotización = 85% de la retención (crédito honorarios)", res_sobre_umbral.pago_cotizacion_honorarios == round(435_000 * TASA_COTIZACION_PREVISIONAL_HONORARIOS))
     check("el pago de cotización de honorarios se resta de la base imponible", res_sobre_umbral.total_rebajas == res_sobre_umbral.pago_cotizacion_honorarios)
 
     entrada_umbral_exacto = EntradaGlobal(honorarios=UMBRAL_COTIZACION_HONORARIOS, credito_honorarios=400_000)
