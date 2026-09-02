@@ -36,7 +36,7 @@
       {{ campo('credito_iusc', 'Impuesto Único de 2ª Categoría (retenido)', 'IUSC ya retenido/pagado mensualmente sobre el sueldo. Al reliquidarse dentro del IGC (art. 47 LIR), se usa como crédito contra el impuesto determinado.') }}
     </div>
     <div class="field-row">
-      {{ campo('honorarios', 'Honorarios (brutos)', 'Total de boletas de honorarios emitidas en el año, sin descontar la retención. Se le calcula automáticamente un 30% de gasto presunto (art. 50 LIR): solo el 70% restante tributa. Si el total anual es igual o mayor a 5 ingresos mínimos ($2.767.765 en 2026), además queda afecto al pago obligatorio de cotizaciones previsionales (Ley 21.133), aproximado aquí como 0,85% de la retención.') }}
+      {{ campo('honorarios', 'Honorarios (brutos)', 'Total de boletas de honorarios emitidas en el año, sin descontar la retención. Se le calcula automáticamente un 30% de gasto presunto (art. 50 LIR): solo el 70% restante tributa. Si el total anual es igual o mayor a 5 ingresos mínimos ($2.767.765 en 2026), además queda afecto al pago obligatorio de cotizaciones previsionales (Ley 21.133), aproximado aquí como el 85% de la retención.') }}
       {{ campo('credito_honorarios', 'Crédito por Honorarios', 'Retención de impuesto de las boletas de honorarios, calculada sobre el monto bruto. Se usa como crédito contra el IGC.') }}
     </div>
   </div>
@@ -106,7 +106,7 @@
 
   {% if resultado.afecto_cotizacion_honorarios %}
   <div class="alert alert-info">
-    Los honorarios ingresados son iguales o mayores a 5 ingresos mínimos ($2.767.765 en 2026), por lo que quedan afectos al pago obligatorio de cotizaciones previsionales (Ley 21.133) — se estimó en <strong>{{ resultado.pago_cotizacion_honorarios | clp }}</strong> (0,85% de la retención) y se restó de la base imponible.
+    Los honorarios ingresados son iguales o mayores a 5 ingresos mínimos ($2.767.765 en 2026), por lo que quedan afectos al pago obligatorio de cotizaciones previsionales (Ley 21.133) — se estimó en <strong>{{ resultado.pago_cotizacion_honorarios | clp }}</strong> (85% de la retención) y se restó de la base imponible.
   </div>
   {% endif %}
 
@@ -137,7 +137,6 @@
 
   <p class="muted" style="margin-bottom:0">
     Cálculo referencial según la tabla del Impuesto Global Complementario año tributario 2026 (1 UTA = {{ 834504 | clp }}).
-    No reemplaza la declaración oficial ante el SII ni asesoría tributaria profesional.
   </p>
 </div>
 {% endif %}
