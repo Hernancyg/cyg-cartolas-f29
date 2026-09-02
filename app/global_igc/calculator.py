@@ -26,6 +26,17 @@ Ajustado el 02-09-2026 según correcciones del usuario:
   - Se eliminó la sección de "Dividendos": el usuario pidió dejar en esta
     calculadora solo Retiros, separados en régimen 14 A / 14 D N°3.
 
+Ajustado el 02-09-2026 (segunda corrección) según regla adicional del
+usuario para honorarios:
+
+  - Quienes emiten boletas de honorarios por un monto anual igual o
+    superior a 5 ingresos mínimos mensuales (Ley 21.133, cotización
+    previsional obligatoria de independientes) quedan afectos al pago de
+    cotizaciones previsionales. El usuario pidió aproximarlo como 0.85% de
+    la retención de honorarios, y aclaró que este ítem es un "pago" (una
+    rebaja/gasto), no un crédito contra el impuesto — se resta de la base
+    imponible junto con las demás rebajas.
+
 Mecánica clave (verificada contra las fórmulas reales del Excel):
 
   - "Incremento por IDPC" (art. 54 N°1 / 62 LIR): los retiros afectos a
@@ -70,6 +81,16 @@ TRAMOS_IGC_2026 = [
 
 RESTITUCION_TASA = 0.35
 GASTO_PRESUNTO_HONORARIOS_TASA = 0.30
+
+# Cotización previsional obligatoria de honorarios (Ley 21.133): aplica a
+# quienes facturan boletas de honorarios por un monto anual igual o mayor a
+# 5 ingresos mínimos mensuales. Aproximación pedida por el usuario: 0.85%
+# de la retención de honorarios (no del monto bruto). Es un "pago" (rebaja
+# a la base imponible), no un crédito contra el impuesto.
+INGRESO_MINIMO_2026 = 553_553
+MESES_UMBRAL_COTIZACION_HONORARIOS = 5
+UMBRAL_COTIZACION_HONORARIOS = INGRESO_MINIMO_2026 * MESES_UMBRAL_COTIZACION_HONORARIOS
+TASA_COTIZACION_PREVISIONAL_HONORARIOS = 0.0085
 
 
 def calcular_igc_tabla(base_imponible: float) -> float:
@@ -136,6 +157,8 @@ class ResultadoGlobal:
     renta_neta_sueldos: float = 0.0
     gasto_presunto_honorarios: float = 0.0
     honorarios_tributables: float = 0.0
+    afecto_cotizacion_honorarios: bool = False
+    pago_cotizacion_honorarios: float = 0.0
     renta_bruta_retiros: float = 0.0
     total_creditos_idpc: float = 0.0
     otras_rentas_afectas: float = 0.0
@@ -160,6 +183,13 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     r.gasto_presunto_honorarios = round(entrada.honorarios * GASTO_PRESUNTO_HONORARIOS_TASA)
     r.honorarios_tributables = entrada.honorarios - r.gasto_presunto_honorarios
 
+    # --- 2b) Honorarios: cotización previsional obligatoria (Ley 21.133) ---
+    r.afecto_cotizacion_honorarios = entrada.honorarios >= UMBRAL_COTIZACION_HONORARIOS
+    r.pago_cotizacion_honorarios = (
+        round(entrada.credito_honorarios * TASA_COTIZACION_PREVISIONAL_HONORARIOS)
+        if r.afecto_cotizacion_honorarios else 0
+    )
+
     # --- 3) Retiros: gross-up por incremento de IDPC ---
     creditos_14a = entrada.credito_retiros_14a
     creditos_14d3 = entrada.credito_retiros_14d3
@@ -178,7 +208,7 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     )
 
     # --- 5) Rebajas ---
-    r.total_rebajas = entrada.pensiones_alimenticias
+    r.total_rebajas = entrada.pensiones_alimenticias + r.pago_cotizacion_honorarios
 
     # --- 6) Base imponible anual ---
     r.base_imponible = max(
