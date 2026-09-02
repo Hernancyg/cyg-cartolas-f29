@@ -32,10 +32,11 @@ usuario para honorarios:
   - Quienes emiten boletas de honorarios por un monto anual igual o
     superior a 5 ingresos mínimos mensuales (Ley 21.133, cotización
     previsional obligatoria de independientes) quedan afectos al pago de
-    cotizaciones previsionales. El usuario pidió aproximarlo como 0.85% de
-    la retención de honorarios, y aclaró que este ítem es un "pago" (una
-    rebaja/gasto), no un crédito contra el impuesto — se resta de la base
-    imponible junto con las demás rebajas.
+    cotizaciones previsionales. El usuario pidió aproximarlo como el 85%
+    de la retención de honorarios (corregido el mismo día: no 0,85%, sino
+    0.85 tal cual), y aclaró que este ítem es un "pago" (una rebaja/gasto),
+    no un crédito contra el impuesto — se resta de la base imponible junto
+    con las demás rebajas.
 
 Mecánica clave (verificada contra las fórmulas reales del Excel):
 
@@ -84,13 +85,14 @@ GASTO_PRESUNTO_HONORARIOS_TASA = 0.30
 
 # Cotización previsional obligatoria de honorarios (Ley 21.133): aplica a
 # quienes facturan boletas de honorarios por un monto anual igual o mayor a
-# 5 ingresos mínimos mensuales. Aproximación pedida por el usuario: 0.85%
-# de la retención de honorarios (no del monto bruto). Es un "pago" (rebaja
-# a la base imponible), no un crédito contra el impuesto.
+# 5 ingresos mínimos mensuales. Aproximación pedida por el usuario: 0.85
+# (85%) de la retención de honorarios (no del monto bruto) — corregido el
+# 02-09-2026, no es 0,85%. Es un "pago" (rebaja a la base imponible), no
+# un crédito contra el impuesto.
 INGRESO_MINIMO_2026 = 553_553
 MESES_UMBRAL_COTIZACION_HONORARIOS = 5
 UMBRAL_COTIZACION_HONORARIOS = INGRESO_MINIMO_2026 * MESES_UMBRAL_COTIZACION_HONORARIOS
-TASA_COTIZACION_PREVISIONAL_HONORARIOS = 0.0085
+TASA_COTIZACION_PREVISIONAL_HONORARIOS = 0.85
 
 
 def calcular_igc_tabla(base_imponible: float) -> float:
