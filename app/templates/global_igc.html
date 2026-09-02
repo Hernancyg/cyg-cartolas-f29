@@ -29,19 +29,22 @@
       <div class="section-title">Rentas del trabajo</div>
     </div>
     <div class="field-row">
-      {{ campo('total_imponible', 'Total Imponible (sueldos)', 'Rentas afectas a Impuesto Único de Segunda Categoría, ya reajustadas, según el resumen anual del empleador.') }}
-      {{ campo('leyes_sociales', 'Leyes Sociales (Previsionales)', 'Cotizaciones previsionales obligatorias de trabajadores independientes (AFP y salud). Se rebaja de la base imponible, no es un crédito contra el impuesto.') }}
+      {{ campo('total_imponible', 'Total Imponible (sueldos)', 'Rentas brutas afectas a Impuesto Único de Segunda Categoría, según el resumen anual del empleador.') }}
+      {{ campo('leyes_sociales', 'Leyes Sociales (Previsionales)', 'Se resta directamente del Total Imponible para obtener la renta líquida afecta por sueldos que entra al cálculo del IGC.') }}
     </div>
     <div class="field-row">
-      {{ campo('honorarios', 'Honorarios (brutos)', 'Total de boletas de honorarios emitidas en el año, sin descontar la retención.') }}
-      {{ campo('credito_honorarios', 'Crédito por Honorarios', 'Retención de impuesto de las boletas de honorarios (12,25% AT2026), que se usa como crédito contra el IGC.') }}
+      {{ campo('credito_iusc', 'Impuesto Único de 2ª Categoría (retenido)', 'IUSC ya retenido/pagado mensualmente sobre el sueldo. Al reliquidarse dentro del IGC (art. 47 LIR), se usa como crédito contra el impuesto determinado.') }}
+    </div>
+    <div class="field-row">
+      {{ campo('honorarios', 'Honorarios (brutos)', 'Total de boletas de honorarios emitidas en el año, sin descontar la retención. Se le calcula automáticamente un 30% de gasto presunto (art. 50 LIR): solo el 70% restante tributa.') }}
+      {{ campo('credito_honorarios', 'Crédito por Honorarios', 'Retención de impuesto de las boletas de honorarios, calculada sobre el monto bruto. Se usa como crédito contra el IGC.') }}
     </div>
   </div>
 
   <div class="card">
     <div class="section-header">
       <div class="section-badge">{{ icon('bank', 18) }}</div>
-      <div class="section-title">Retiros y dividendos</div>
+      <div class="section-title">Retiros</div>
     </div>
     <p class="muted mt-0">Separados por régimen tributario de la empresa de origen: <strong>14 A</strong> (semi-integrado, con obligación de restitución del 35% del crédito) y <strong>14 D N°3</strong> (Pro Pyme, sin restitución). Ingresa el monto neto percibido y su crédito por Impuesto de Primera Categoría (IDPC) por separado.</p>
 
@@ -55,16 +58,6 @@
         <span class="regimen-tag d3">Régimen 14 D N°3</span>
         {{ campo('retiros_14d3', 'Retiros 14 D N°3 (netos)') }}
         {{ campo('credito_retiros_14d3', 'Crédito IDPC por Retiros 14 D N°3', 'Este crédito NO está sujeto a restitución.') }}
-      </div>
-      <div class="credit-pair">
-        <span class="regimen-tag">Régimen 14 A</span>
-        {{ campo('dividendos_14a', 'Dividendos 14 A (netos)') }}
-        {{ campo('credito_dividendos_14a', 'Crédito IDPC por Dividendos 14 A', 'Este crédito queda sujeto a la restitución del 35% (art. 56 N°3 LIR).') }}
-      </div>
-      <div class="credit-pair">
-        <span class="regimen-tag d3">Régimen 14 D N°3</span>
-        {{ campo('dividendos_14d3', 'Dividendos 14 D N°3 (netos)') }}
-        {{ campo('credito_dividendos_14d3', 'Crédito IDPC por Dividendos 14 D N°3', 'Este crédito NO está sujeto a restitución.') }}
       </div>
     </div>
   </div>
@@ -112,20 +105,23 @@
   </div>
 
   <div class="metrics">
-    <div class="metric"><div class="k">Renta bruta retiros/dividendos</div><div class="v">{{ resultado.renta_bruta_retiros_dividendos | clp }}</div></div>
+    <div class="metric"><div class="k">Renta líquida por sueldos</div><div class="v">{{ resultado.renta_neta_sueldos | clp }}</div></div>
+    <div class="metric"><div class="k">Gasto presunto honorarios (30%)</div><div class="v">-{{ resultado.gasto_presunto_honorarios | clp }}</div></div>
+    <div class="metric"><div class="k">Honorarios a tributar (70%)</div><div class="v">{{ resultado.honorarios_tributables | clp }}</div></div>
+    <div class="metric"><div class="k">Renta bruta retiros</div><div class="v">{{ resultado.renta_bruta_retiros | clp }}</div></div>
+  </div>
+
+  <div class="metrics">
     <div class="metric"><div class="k">Otras rentas afectas</div><div class="v">{{ resultado.otras_rentas_afectas | clp }}</div></div>
     <div class="metric"><div class="k">Rebajas</div><div class="v">-{{ resultado.total_rebajas | clp }}</div></div>
     <div class="metric ok"><div class="k">Base Imponible Anual</div><div class="v">{{ resultado.base_imponible | clp }}</div></div>
+    <div class="metric"><div class="k">IGC según tabla</div><div class="v">{{ resultado.igc_segun_tabla | clp }}</div></div>
   </div>
 
   <div class="metrics">
-    <div class="metric"><div class="k">IGC según tabla</div><div class="v">{{ resultado.igc_segun_tabla | clp }}</div></div>
     <div class="metric"><div class="k">Débito por restitución (35%)</div><div class="v">{{ resultado.debito_restitucion | clp }}</div></div>
     <div class="metric"><div class="k">Impuesto determinado</div><div class="v">{{ resultado.impuesto_determinado | clp }}</div></div>
     <div class="metric"><div class="k">Total créditos</div><div class="v">-{{ resultado.total_creditos | clp }}</div></div>
-  </div>
-
-  <div class="metrics">
     <div class="metric {{ 'warn' if resultado.a_pagar else 'ok' }}">
       <div class="k">{{ 'Impuesto a Pagar' if resultado.a_pagar else 'Saldo a Favor' }}</div>
       <div class="v">{{ (resultado.resultado if resultado.a_pagar else -resultado.resultado) | clp }}</div>
