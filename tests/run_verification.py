@@ -183,7 +183,10 @@ def main():
     check("CSV separado por ';' con CRLF", "\r\n" in csv_text and ";" in csv_text)
 
     # ---- Calcular Global (IGC) ----
-    from app.global_igc.calculator import calcular_igc_tabla, calcular_global, EntradaGlobal, UTA_2026
+    from app.global_igc.calculator import (
+        calcular_igc_tabla, calcular_global, EntradaGlobal, UTA_2026,
+        UMBRAL_COTIZACION_HONORARIOS, TASA_COTIZACION_PREVISIONAL_HONORARIOS,
+    )
 
     check("UTA 2026 = 834.504", UTA_2026 == 834504)
     check("tramo exento hasta 11.265.804", calcular_igc_tabla(11_265_804) == 0)
@@ -217,6 +220,22 @@ def main():
     check("crédito por honorarios se calcula sobre el bruto (no se toca)", res_honorarios.total_creditos == 145_000)
 
     check("ya no existen campos de dividendos en EntradaGlobal", not any("dividendo" in f for f in EntradaGlobal.__dataclass_fields__))
+
+    check("umbral cotización honorarios = 5 ingresos mínimos", UMBRAL_COTIZACION_HONORARIOS == 553_553 * 5)
+
+    entrada_bajo_umbral = EntradaGlobal(honorarios=2_000_000, credito_honorarios=290_000)
+    res_bajo_umbral = calcular_global(entrada_bajo_umbral)
+    check("bajo el umbral no aplica cotización previsional de honorarios", res_bajo_umbral.afecto_cotizacion_honorarios is False)
+    check("bajo el umbral el pago de cotización es 0", res_bajo_umbral.pago_cotizacion_honorarios == 0)
+
+    entrada_sobre_umbral = EntradaGlobal(honorarios=3_000_000, credito_honorarios=435_000)
+    res_sobre_umbral = calcular_global(entrada_sobre_umbral)
+    check("igual o sobre el umbral SÍ aplica cotización previsional de honorarios", res_sobre_umbral.afecto_cotizacion_honorarios is True)
+    check("pago cotización = 0,85% de la retención (crédito honorarios)", res_sobre_umbral.pago_cotizacion_honorarios == round(435_000 * TASA_COTIZACION_PREVISIONAL_HONORARIOS))
+    check("el pago de cotización de honorarios se resta de la base imponible", res_sobre_umbral.total_rebajas == res_sobre_umbral.pago_cotizacion_honorarios)
+
+    entrada_umbral_exacto = EntradaGlobal(honorarios=UMBRAL_COTIZACION_HONORARIOS, credito_honorarios=400_000)
+    check("en el umbral exacto (igual) SÍ aplica", calcular_global(entrada_umbral_exacto).afecto_cotizacion_honorarios is True)
 
     r = client.get("/global/")
     check("GET /global/ 200", r.status_code == 200 and b"Calcular Global" in r.data)
