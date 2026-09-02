@@ -66,11 +66,13 @@ def create_app():
     from app.auth.routes import auth_bp
     from app.cartolas.routes import cartolas_bp
     from app.f29.routes import f29_bp
+    from app.global_igc.routes import global_igc_bp
     from app.admin.routes import admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(cartolas_bp)
     app.register_blueprint(f29_bp)
+    app.register_blueprint(global_igc_bp)
     app.register_blueprint(admin_bp)
 
     @app.route("/")
