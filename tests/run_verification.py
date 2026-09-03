@@ -284,7 +284,29 @@ def main():
     res_sobre_umbral = calcular_global(entrada_sobre_umbral)
     check("igual o sobre el umbral SÍ aplica cotización previsional de honorarios", res_sobre_umbral.afecto_cotizacion_honorarios is True)
     check("pago cotización = 85% de la retención (crédito honorarios)", res_sobre_umbral.pago_cotizacion_honorarios == round(435_000 * TASA_COTIZACION_PREVISIONAL_HONORARIOS))
-    check("el pago de cotización de honorarios se resta de la base imponible", res_sobre_umbral.total_rebajas == res_sobre_umbral.pago_cotizacion_honorarios)
+    # Corregido 03-09-2026: el pago de cotización de honorarios YA NO se
+    # resta de la base imponible (eso reducía el IGC y aumentaba el saldo
+    # a favor, al revés de lo esperado) — ahora se suma en positivo
+    # directamente al resultado final, rebajando la devolución.
+    check("el pago de cotización de honorarios NO se resta de la base imponible", res_sobre_umbral.total_rebajas == 0)
+    check(
+        "el pago de cotización de honorarios se suma en positivo al resultado final (rebaja la devolución)",
+        res_sobre_umbral.resultado == round(
+            res_sobre_umbral.impuesto_determinado - res_sobre_umbral.total_creditos + res_sobre_umbral.pago_cotizacion_honorarios
+        ),
+    )
+    # Con los mismos honorarios (sobre el umbral) pero un crédito por
+    # honorarios distinto, el pago de cotización cambia pero la base
+    # imponible y el IGC según tabla deben quedar exactamente iguales —
+    # confirma que el pago ya no afecta la base imponible en absoluto.
+    entrada_otro_credito = EntradaGlobal(honorarios=3_000_000, credito_honorarios=100_000)
+    res_otro_credito = calcular_global(entrada_otro_credito)
+    check(
+        "la cotización de honorarios no altera la base imponible ni el IGC según tabla",
+        res_sobre_umbral.pago_cotizacion_honorarios != res_otro_credito.pago_cotizacion_honorarios
+        and res_sobre_umbral.base_imponible == res_otro_credito.base_imponible
+        and res_sobre_umbral.igc_segun_tabla == res_otro_credito.igc_segun_tabla,
+    )
 
     entrada_umbral_exacto = EntradaGlobal(honorarios=UMBRAL_COTIZACION_HONORARIOS, credito_honorarios=400_000)
     check("en el umbral exacto (igual) SÍ aplica", calcular_global(entrada_umbral_exacto).afecto_cotizacion_honorarios is True)
