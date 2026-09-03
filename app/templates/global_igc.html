@@ -138,8 +138,8 @@
     <div class="metric"><div class="k">Rentas arts. 42 N°2 y 48 LIR, según Recuadro N°1 (honorarios)</div><div class="v">{{ resultado.honorarios_tributables | clp }}</div></div>
     <div class="metric"><div class="k">Sueldos, pensiones y otras rentas similares de fuente nacional</div><div class="v">{{ resultado.renta_neta_sueldos | clp }}</div></div>
     <div class="metric"><div class="k">Renta bruta retiros</div><div class="v">{{ resultado.renta_bruta_retiros | clp }}</div></div>
+    <div class="metric"><div class="k">Incremento por IDPC, según arts. 54 N° 1 y 62 LIR</div><div class="v">{{ resultado.total_creditos_idpc | clp }}</div></div>
     <div class="metric"><div class="k">SUB TOTAL (si declara IA, trasladar a código 133 o 32)</div><div class="v">{{ resultado.sub_total | clp }}</div></div>
-    <div class="metric"><div class="k">Rebajas (pensiones alimenticias)</div><div class="v">-{{ resultado.total_rebajas | clp }}</div></div>
     <div class="metric ok"><div class="k">Base Imponible Anual de IUSC o IGC</div><div class="v">{{ resultado.base_imponible | clp }}</div></div>
     <div class="metric"><div class="k">IGC según tabla</div><div class="v">{{ resultado.igc_segun_tabla | clp }}</div></div>
     <div class="metric"><div class="k">Débito por restitución (35%)</div><div class="v">{{ resultado.debito_restitucion | clp }}</div></div>
