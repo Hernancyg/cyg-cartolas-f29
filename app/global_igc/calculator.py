@@ -56,6 +56,27 @@ campos son puramente identificatorios — no participan en ningún cálculo,
 solo se usan para el encabezado del PDF (ver `app/global_igc/
 pdf_generator.py`).
 
+Ajustado el 03-09-2026 (quinta corrección): el usuario pidió reordenar y
+renombrar el panel de resultado siguiendo la estructura y nombres oficiales
+del Formulario 22 (Recuadro N°1 y liquidación anual de IGC/IUSC), y agregó
+dos reglas nuevas:
+
+  - Los campos "Total Imponible (sueldos)" y "Leyes Sociales
+    (Previsionales)" se reemplazan por un único campo "Base Tributable":
+    el usuario ingresa directamente la renta líquida por sueldos ya neta
+    de leyes sociales (ya no se calcula la resta internamente).
+  - La rebaja de 30% de gasto presunto de honorarios tiene un TOPE de 15
+    UTA (pedido explícito del usuario: "la rebaja del 30% de los
+    honorarios tiene un tope de 15 UTA").
+  - Se agregan dos líneas puramente informativas, calculadas a partir de
+    valores que ya existían y que NO alteran el resultado final: "IGC/IUSC
+    débito fiscal determinado" (impuesto determinado menos el crédito por
+    IUSC) y "Remanente de crédito por reliquidación del IUSC" (la parte
+    del crédito IUSC que no alcanzó a compensar el impuesto determinado,
+    cuando ese primer cálculo da negativo). Confirmado explícitamente por
+    el usuario: son líneas informativas derivadas de lo ya calculado, "sin
+    sumar nada nuevo al resultado".
+
 Mecánica clave (verificada contra las fórmulas reales del Excel):
 
   - "Incremento por IDPC" (art. 54 N°1 / 62 LIR): los retiros afectos a
@@ -100,6 +121,11 @@ TRAMOS_IGC_2026 = [
 
 RESTITUCION_TASA = 0.35
 GASTO_PRESUNTO_HONORARIOS_TASA = 0.30
+# Tope a la rebaja de 30% de gasto presunto de honorarios: 15 UTA anuales
+# (pedido explícito del usuario, 03-09-2026). Si el 30% del honorario bruto
+# supera este tope, la rebaja se limita a 15 UTA (y el honorario a tributar
+# es correspondientemente mayor).
+TOPE_GASTO_PRESUNTO_HONORARIOS_UTA = 15
 
 # Cotización previsional obligatoria de honorarios (Ley 21.133): aplica a
 # quienes facturan boletas de honorarios por un monto anual igual o mayor a
@@ -150,9 +176,11 @@ class EntradaGlobal:
     nombre_contribuyente: str = ""
     rut_contribuyente: str = ""
 
-    # Rentas del trabajo — sueldos
-    total_imponible: float = 0.0       # sueldos brutos imponibles (antes de descontar leyes sociales)
-    leyes_sociales: float = 0.0        # cotizaciones previsionales; se resta del total imponible
+    # Rentas del trabajo — sueldos. "Base Tributable" (03-09-2026): el
+    # usuario ingresa directamente la renta líquida por sueldos, ya neta de
+    # leyes sociales — reemplaza a los antiguos campos "Total Imponible" y
+    # "Leyes Sociales" (que se restaban internamente).
+    base_tributable_sueldos: float = 0.0
     credito_iusc: float = 0.0          # Impuesto Único de 2ª Categoría ya retenido sobre el sueldo (crédito)
 
     # Rentas del trabajo — honorarios
@@ -194,17 +222,24 @@ class EntradaGlobal:
 class ResultadoGlobal:
     renta_neta_sueldos: float = 0.0
     gasto_presunto_honorarios: float = 0.0
+    tope_gasto_presunto_honorarios: float = 0.0
     honorarios_tributables: float = 0.0
     afecto_cotizacion_honorarios: bool = False
     pago_cotizacion_honorarios: float = 0.0
     renta_bruta_retiros: float = 0.0
     total_creditos_idpc: float = 0.0
     otras_rentas_afectas: float = 0.0
+    sub_total: float = 0.0
     total_rebajas: float = 0.0
     base_imponible: float = 0.0
     igc_segun_tabla: float = 0.0
     debito_restitucion: float = 0.0
     impuesto_determinado: float = 0.0
+    # Líneas informativas al estilo F22 (03-09-2026) — derivadas de valores
+    # ya calculados, no alteran el resultado final.
+    igc_iusc_debito_determinado: float = 0.0
+    remanente_credito_iusc: float = 0.0
+    otros_creditos_varios: float = 0.0
     total_creditos: float = 0.0
     resultado: float = 0.0
     a_pagar: bool = True
@@ -214,11 +249,16 @@ class ResultadoGlobal:
 def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     r = ResultadoGlobal()
 
-    # --- 1) Sueldos: renta líquida afecta = Total Imponible - Leyes Sociales ---
-    r.renta_neta_sueldos = max(entrada.total_imponible - entrada.leyes_sociales, 0)
+    # --- 1) Sueldos: "Base Tributable" ingresada directamente por el usuario ---
+    r.renta_neta_sueldos = max(entrada.base_tributable_sueldos, 0)
 
-    # --- 2) Honorarios: rebaja automática de 30% de gasto presunto ---
-    r.gasto_presunto_honorarios = round(entrada.honorarios * GASTO_PRESUNTO_HONORARIOS_TASA)
+    # --- 2) Honorarios: rebaja automática de 30% de gasto presunto, con
+    # tope de 15 UTA (pedido del usuario, 03-09-2026) ---
+    r.tope_gasto_presunto_honorarios = round(TOPE_GASTO_PRESUNTO_HONORARIOS_UTA * UTA_2026)
+    r.gasto_presunto_honorarios = min(
+        round(entrada.honorarios * GASTO_PRESUNTO_HONORARIOS_TASA),
+        r.tope_gasto_presunto_honorarios,
+    )
     r.honorarios_tributables = entrada.honorarios - r.gasto_presunto_honorarios
 
     # --- 2b) Honorarios: cotización previsional obligatoria (Ley 21.133) ---
@@ -245,6 +285,9 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
         + entrada.ganancias_capital + entrada.otros_ingresos_afectos
     )
 
+    # --- 4b) SUB TOTAL (estilo F22: total de rentas antes de rebajas) ---
+    r.sub_total = r.renta_bruta_retiros + r.otras_rentas_afectas
+
     # --- 5) Rebajas de la base imponible ---
     # La cotización previsional de honorarios NO es una rebaja de la base
     # imponible (no reduce el IGC según tabla): es un pago que se salda
@@ -256,10 +299,7 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     r.total_rebajas = entrada.pensiones_alimenticias
 
     # --- 6) Base imponible anual ---
-    r.base_imponible = max(
-        r.renta_bruta_retiros + r.otras_rentas_afectas - r.total_rebajas,
-        0,
-    )
+    r.base_imponible = max(r.sub_total - r.total_rebajas, 0)
 
     # --- 7) IGC según tabla ---
     r.igc_segun_tabla = calcular_igc_tabla(r.base_imponible)
@@ -269,7 +309,16 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
 
     r.impuesto_determinado = r.igc_segun_tabla + r.debito_restitucion
 
+    # --- 8b) Líneas informativas al estilo F22 (03-09-2026), derivadas del
+    # crédito IUSC y el impuesto determinado — NO alteran el resultado
+    # final, que sigue sumando el crédito IUSC completo en el total de
+    # créditos del paso 9. Confirmado explícitamente por el usuario: son
+    # informativas, "sin sumar nada nuevo al resultado".
+    r.igc_iusc_debito_determinado = r.impuesto_determinado - entrada.credito_iusc
+    r.remanente_credito_iusc = max(entrada.credito_iusc - r.impuesto_determinado, 0)
+
     # --- 9) Total créditos contra el impuesto ---
+    r.otros_creditos_varios = r.total_creditos_idpc + entrada.credito_arriendos + entrada.otros_creditos
     r.total_creditos = (
         r.total_creditos_idpc
         + entrada.credito_iusc
