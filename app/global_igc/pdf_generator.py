@@ -18,16 +18,18 @@ explícitas pedidas por el usuario:
     Ingresos) — la calculadora ya no tiene un campo "Dividendos" (se quitó
     en una corrección anterior) y separa los retiros por régimen.
 
-Ajustado el 03-09-2026 (quinta corrección): las etiquetas de este PDF se
-actualizaron para usar la misma nomenclatura oficial del Formulario 22 que
-el panel de resultado en pantalla (ver `app/global_igc/calculator.py` y
-`app/templates/global_igc.html`) — "SUB TOTAL", "BASE IMPONIBLE ANUAL DE
-IUSC o IGC", "Crédito al IGC o IUSC por IUSC art. 56 N°2 LIR", etc. Las dos
-líneas informativas nuevas (IGC/IUSC débito determinado neto de crédito
-IUSC, y Remanente de crédito por reliquidación del IUSC) se muestran en el
-detalle de créditos marcadas como "(informativo)" — no se suman al total
-de créditos, que sigue siendo la única cifra que entra al cálculo del
-resultado final.
+Ajustado el 03-09-2026 (quinta corrección): el panel de resultado EN
+PANTALLA (ver `app/templates/global_igc.html`) se renombró a la
+nomenclatura oficial del Formulario 22 ("SUB TOTAL", "BASE IMPONIBLE ANUAL
+DE IUSC O IGC", líneas informativas de IUSC, etc.) — este PDF, en cambio,
+por pedido explícito del usuario, se mantiene con los nombres simples de
+la versión anterior ("Sueldos", "Honorarios", "Total Rentas", "BASE
+IMPONIBLE ANUAL", "IMPUESTO DETERMINADO", "IMPUESTO A PAGAR"/"SALDO A
+FAVOR"): el usuario pidió explícitamente NO llevar la terminología F22 al
+PDF ("el pdf no lo cambiemos, mantén la versión anterior"). Sí se aplicó
+un ajuste pedido en esa misma ronda: se eliminó del cálculo de base
+imponible la línea "Menos: Rebajas (Pensiones Alimenticias)" por
+considerarse un concepto sobrante.
 
 Usa reportlab (pura Python, sin dependencias de sistema como Cairo/Pango)
 para poder desplegar sin problemas en Render.
@@ -198,9 +200,9 @@ class _PdfBuilder:
                 entrada.credito_retiros_14d3,
             ))
         if r.renta_neta_sueldos or entrada.credito_iusc:
-            filas.append(("Sueldos y otras rentas de fuente nacional", r.renta_neta_sueldos, entrada.credito_iusc))
+            filas.append(("Sueldos", r.renta_neta_sueldos, entrada.credito_iusc))
         if r.honorarios_tributables or entrada.credito_honorarios:
-            filas.append(("Rentas arts. 42 N°2 / 48 LIR (Recuadro N°1)", r.honorarios_tributables, entrada.credito_honorarios))
+            filas.append(("Honorarios", r.honorarios_tributables, entrada.credito_honorarios))
         if entrada.arriendos_netos or entrada.credito_arriendos:
             filas.append(("Arriendos", entrada.arriendos_netos, entrada.credito_arriendos))
         if entrada.intereses_reajustes:
@@ -254,13 +256,13 @@ class _PdfBuilder:
             c.drawRightString(col_monto_x, y + row_h / 2 - 1.4 * mm, _clp(monto) if monto else "—")
             c.drawRightString(col_credito_x, y + row_h / 2 - 1.4 * mm, _clp(credito) if credito else "—")
 
-        # fila de totales (F22: "SUB TOTAL")
+        # fila de totales
         y -= row_h
         c.setFillColor(BG)
         c.rect(self.x0, y, self.width, row_h, fill=1, stroke=0)
         c.setFillColor(NAVY_2)
         c.setFont("Helvetica-Bold", 9.5)
-        c.drawString(col_tipo_x, y + row_h / 2 - 1.4 * mm, "SUB TOTAL")
+        c.drawString(col_tipo_x, y + row_h / 2 - 1.4 * mm, "TOTAL RENTAS")
         c.drawRightString(col_monto_x, y + row_h / 2 - 1.4 * mm, _clp(r.sub_total))
         c.drawRightString(col_credito_x, y + row_h / 2 - 1.4 * mm, _clp(r.total_creditos))
 
@@ -268,19 +270,14 @@ class _PdfBuilder:
         self.gap(6 * mm)
 
     def dos_columnas(self, r):
-        """'Cálculo de Base Imponible' (izq.) + 'Detalle de Créditos' (der.),
-        con nomenclatura F22 (03-09-2026). Las dos líneas marcadas
-        "(informativo)" se derivan de valores ya calculados y NO se suman
-        al total de créditos — solo TOTAL CRÉDITOS entra al resultado."""
-        credito_iusc = r.detalle_creditos.get("credito_iusc", 0)
-        creditos = []
-        if credito_iusc:
-            creditos.append(("Crédito IGC/IUSC por IUSC, art. 56 N°2 LIR", credito_iusc))
-            creditos.append(("IGC/IUSC débito determinado (informativo)", r.igc_iusc_debito_determinado))
-            if r.remanente_credito_iusc:
-                creditos.append(("Remanente crédito IUSC (informativo)", r.remanente_credito_iusc))
-        creditos += [
-            ("Retenciones código 110 (honorarios)", r.detalle_creditos.get("credito_honorarios", 0)),
+        """'Cálculo de Base Imponible' (izq.) + 'Detalle de Créditos' (der.).
+        Versión simple (previa a la nomenclatura F22 del panel en pantalla) —
+        el usuario pidió explícitamente no llevar los nombres del F22 a este
+        PDF. La línea "Menos: Rebajas (Pensiones Alimenticias)" se eliminó
+        por pedido explícito (03-09-2026, concepto sobrante)."""
+        creditos = [
+            ("Crédito IUSC", r.detalle_creditos.get("credito_iusc", 0)),
+            ("Crédito por Honorarios", r.detalle_creditos.get("credito_honorarios", 0)),
             ("Crédito IDPC Retiros 14 A/14 D N°3", r.total_creditos_idpc),
             ("Crédito por Arriendos", r.detalle_creditos.get("credito_arriendos", 0)),
             ("Otros Créditos", r.detalle_creditos.get("otros_creditos", 0)),
@@ -290,7 +287,7 @@ class _PdfBuilder:
         col_w = (self.width - 6 * mm) / 2
         left_x0, right_x0 = self.x0, self.x0 + col_w + 6 * mm
 
-        n_lineas_izq = 3
+        n_lineas_izq = 2  # Total Rentas + Base Imponible (sin línea de Rebajas)
         n_lineas_der = max(len(creditos), 1) + 1
         bar_h = 8 * mm
         line_h = 7.5 * mm
@@ -318,17 +315,13 @@ class _PdfBuilder:
 
         # columna izquierda
         yy = y0 - 6 * mm
-        self._kv(left_x0, col_w, yy, "SUB TOTAL", _clp(r.sub_total))
-        yy -= line_h
-        self._kv(left_x0, col_w, yy, "Menos: Rebajas (Pensiones Alimenticias)", f"({_clp(r.total_rebajas)})")
+        self._kv(left_x0, col_w, yy, "Total Rentas", _clp(r.sub_total))
         yy -= line_h + 1.5 * mm
         c.setStrokeColor(BORDER)
         c.line(left_x0 + 3 * mm, yy + 4 * mm, left_x0 + col_w - 3 * mm, yy + 4 * mm)
         c.setFillColor(BLUE)
-        base_label_size = self._fit_font("BASE IMPONIBLE ANUAL DE IUSC O IGC", "Helvetica-Bold", 9.5, col_w * 0.6)
-        c.setFont("Helvetica-Bold", base_label_size)
-        c.drawString(left_x0 + 3 * mm, yy - 1 * mm, "BASE IMPONIBLE ANUAL DE IUSC O IGC")
         c.setFont("Helvetica-Bold", 9.5)
+        c.drawString(left_x0 + 3 * mm, yy - 1 * mm, "BASE IMPONIBLE ANUAL")
         c.drawRightString(left_x0 + col_w - 3 * mm, yy - 1 * mm, _clp(r.base_imponible))
 
         # columna derecha
@@ -364,16 +357,14 @@ class _PdfBuilder:
         c.drawRightString(x0 + w - 3 * mm, y, value)
 
     def resultado_impuestos(self, r):
-        self.section_bar("RESULTADO LIQUIDACIÓN ANUAL")
+        self.section_bar("RESULTADO DE IMPUESTOS")
 
-        cajas = [("IGC/IUSC DÉBITO FISCAL DETERMINADO", r.impuesto_determinado, None)]
+        cajas = [("IMPUESTO DETERMINADO", r.impuesto_determinado, None)]
         cajas.append(("TOTAL CRÉDITOS", r.total_creditos, "−"))
         if r.pago_cotizacion_honorarios:
             cajas.append(("COTIZACIÓN PREV. HONORARIOS", r.pago_cotizacion_honorarios, "+"))
-        # Nombre y signo oficiales del F22: la caja final ya no separa "a
-        # pagar"/"a favor" en la etiqueta — muestra el valor con su signo
-        # (negativo = saldo a favor), igual que en el Formulario 22.
-        cajas.append(("RESULTADO LIQUIDACIÓN ANUAL IMPUESTO A LA RENTA", r.resultado, "="))
+        etiqueta_final = "IMPUESTO A PAGAR" if r.a_pagar else "SALDO A FAVOR"
+        cajas.append((etiqueta_final, abs(r.resultado), "="))
 
         n = len(cajas)
         h = 22 * mm
@@ -392,24 +383,14 @@ class _PdfBuilder:
 
             text_color = colors.white if es_final else TEXT_MUTED
             c.setFillColor(text_color)
-            if es_final:
-                # Etiqueta oficial larga: se parte en hasta 2 líneas en vez
-                # de encogerse a un tamaño ilegible.
-                lineas = self._wrap(label, "Helvetica-Bold", 6.5, box_w - 4 * mm)[:2]
-                ly = top - 5 * mm
-                for linea in lineas:
-                    c.setFont("Helvetica-Bold", 6.5)
-                    c.drawCentredString(bx + box_w / 2, ly, linea)
-                    ly -= 3 * mm
-            else:
-                label_size = self._fit_font(label, "Helvetica-Bold", 7, box_w - 4 * mm)
-                c.setFont("Helvetica-Bold", label_size)
-                c.drawCentredString(bx + box_w / 2, top - 6 * mm, label)
+            label_size = self._fit_font(label, "Helvetica-Bold", 7, box_w - 4 * mm)
+            c.setFont("Helvetica-Bold", label_size)
+            c.drawCentredString(bx + box_w / 2, top - 6 * mm, label)
             c.setFillColor(colors.white if es_final else NAVY_2)
             valor_txt = _clp(valor)
             valor_size = self._fit_font(valor_txt, "Helvetica-Bold", 12, box_w - 4 * mm, min_size=8)
             c.setFont("Helvetica-Bold", valor_size)
-            c.drawCentredString(bx + box_w / 2, (top - 16 * mm) if es_final else (top - 14 * mm), valor_txt)
+            c.drawCentredString(bx + box_w / 2, top - 14 * mm, valor_txt)
 
             if op:
                 c.setFillColor(TEXT_MUTED)
