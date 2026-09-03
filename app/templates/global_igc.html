@@ -106,7 +106,7 @@
 
   {% if resultado.afecto_cotizacion_honorarios %}
   <div class="alert alert-info">
-    Los honorarios ingresados son iguales o mayores a 5 ingresos mínimos ($2.767.765 en 2026), por lo que quedan afectos al pago obligatorio de cotizaciones previsionales (Ley 21.133) — se estimó en <strong>{{ resultado.pago_cotizacion_honorarios | clp }}</strong> (85% de la retención) y se restó de la base imponible.
+    Los honorarios ingresados son iguales o mayores a 5 ingresos mínimos ($2.767.765 en 2026), por lo que quedan afectos al pago obligatorio de cotizaciones previsionales (Ley 21.133) — se estimó en <strong>{{ resultado.pago_cotizacion_honorarios | clp }}</strong> (85% de la retención) y se suma directamente al resultado final, rebajando el saldo a favor o aumentando el impuesto a pagar.
   </div>
   {% endif %}
 
@@ -114,7 +114,6 @@
     <div class="metric"><div class="k">Renta líquida por sueldos</div><div class="v">{{ resultado.renta_neta_sueldos | clp }}</div></div>
     <div class="metric"><div class="k">Gasto presunto honorarios (30%)</div><div class="v">-{{ resultado.gasto_presunto_honorarios | clp }}</div></div>
     <div class="metric"><div class="k">Honorarios a tributar (70%)</div><div class="v">{{ resultado.honorarios_tributables | clp }}</div></div>
-    <div class="metric"><div class="k">Cotización previsional honorarios (pago)</div><div class="v">-{{ resultado.pago_cotizacion_honorarios | clp }}</div></div>
   </div>
 
   <div class="metrics">
@@ -129,6 +128,7 @@
     <div class="metric"><div class="k">Débito por restitución (35%)</div><div class="v">{{ resultado.debito_restitucion | clp }}</div></div>
     <div class="metric"><div class="k">Impuesto determinado</div><div class="v">{{ resultado.impuesto_determinado | clp }}</div></div>
     <div class="metric"><div class="k">Total créditos</div><div class="v">-{{ resultado.total_creditos | clp }}</div></div>
+    <div class="metric"><div class="k">Cotización previsional honorarios (pago)</div><div class="v">+{{ resultado.pago_cotizacion_honorarios | clp }}</div></div>
     <div class="metric {{ 'warn' if resultado.a_pagar else 'ok' }}">
       <div class="k">{{ 'Impuesto a Pagar' if resultado.a_pagar else 'Saldo a Favor' }}</div>
       <div class="v">{{ (resultado.resultado if resultado.a_pagar else -resultado.resultado) | clp }}</div>
