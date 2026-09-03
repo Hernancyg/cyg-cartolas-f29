@@ -54,14 +54,11 @@
       <div class="section-title">Rentas del trabajo</div>
     </div>
     <div class="field-row">
-      {{ campo('total_imponible', 'Total Imponible (sueldos)', 'Rentas brutas afectas a Impuesto Único de Segunda Categoría, según el resumen anual del empleador.') }}
-      {{ campo('leyes_sociales', 'Leyes Sociales (Previsionales)', 'Se resta directamente del Total Imponible para obtener la renta líquida afecta por sueldos que entra al cálculo del IGC.') }}
-    </div>
-    <div class="field-row">
+      {{ campo('base_tributable_sueldos', 'Base Tributable', 'Renta líquida por sueldos, pensiones y otras rentas similares de fuente nacional, ya neta de leyes sociales — ingresa el monto directo.') }}
       {{ campo('credito_iusc', 'Impuesto Único de 2ª Categoría (retenido)', 'IUSC ya retenido/pagado mensualmente sobre el sueldo. Al reliquidarse dentro del IGC (art. 47 LIR), se usa como crédito contra el impuesto determinado.') }}
     </div>
     <div class="field-row">
-      {{ campo('honorarios', 'Honorarios (brutos)', 'Total de boletas de honorarios emitidas en el año, sin descontar la retención. Se le calcula automáticamente un 30% de gasto presunto (art. 50 LIR): solo el 70% restante tributa. Si el total anual es igual o mayor a 5 ingresos mínimos ($2.767.765 en 2026), además queda afecto al pago obligatorio de cotizaciones previsionales (Ley 21.133), aproximado aquí como el 85% de la retención.') }}
+      {{ campo('honorarios', 'Honorarios (brutos)', 'Total de boletas de honorarios emitidas en el año, sin descontar la retención. Se le calcula automáticamente un 30% de gasto presunto (art. 50 LIR, con tope de 15 UTA): solo el resto tributa. Si el total anual es igual o mayor a 5 ingresos mínimos ($2.767.765 en 2026), además queda afecto al pago obligatorio de cotizaciones previsionales (Ley 21.133), aproximado aquí como el 85% de la retención.') }}
       {{ campo('credito_honorarios', 'Crédito por Honorarios', 'Retención de impuesto de las boletas de honorarios, calculada sobre el monto bruto. Se usa como crédito contra el IGC.') }}
     </div>
   </div>
@@ -134,27 +131,37 @@
   </div>
   {% endif %}
 
+  <p class="muted mt-0">Estructura y nombres según el Formulario 22 del SII (Recuadro N°1 y liquidación anual de IGC/IUSC).</p>
+
   <div class="metrics">
-    <div class="metric"><div class="k">Renta líquida por sueldos</div><div class="v">{{ resultado.renta_neta_sueldos | clp }}</div></div>
-    <div class="metric"><div class="k">Gasto presunto honorarios (30%)</div><div class="v">-{{ resultado.gasto_presunto_honorarios | clp }}</div></div>
-    <div class="metric"><div class="k">Honorarios a tributar (70%)</div><div class="v">{{ resultado.honorarios_tributables | clp }}</div></div>
+    <div class="metric"><div class="k">Gasto presunto honorarios (30%, tope 15 UTA)</div><div class="v">-{{ resultado.gasto_presunto_honorarios | clp }}</div></div>
+    <div class="metric"><div class="k">Rentas arts. 42 N°2 y 48 LIR, según Recuadro N°1 (honorarios)</div><div class="v">{{ resultado.honorarios_tributables | clp }}</div></div>
+    <div class="metric"><div class="k">Sueldos, pensiones y otras rentas similares de fuente nacional</div><div class="v">{{ resultado.renta_neta_sueldos | clp }}</div></div>
   </div>
 
   <div class="metrics">
     <div class="metric"><div class="k">Renta bruta retiros</div><div class="v">{{ resultado.renta_bruta_retiros | clp }}</div></div>
-    <div class="metric"><div class="k">Otras rentas afectas</div><div class="v">{{ resultado.otras_rentas_afectas | clp }}</div></div>
-    <div class="metric"><div class="k">Rebajas</div><div class="v">-{{ resultado.total_rebajas | clp }}</div></div>
-    <div class="metric ok"><div class="k">Base Imponible Anual</div><div class="v">{{ resultado.base_imponible | clp }}</div></div>
+    <div class="metric"><div class="k">SUB TOTAL (si declara IA, trasladar a código 133 o 32)</div><div class="v">{{ resultado.sub_total | clp }}</div></div>
+    <div class="metric"><div class="k">Rebajas (pensiones alimenticias)</div><div class="v">-{{ resultado.total_rebajas | clp }}</div></div>
+    <div class="metric ok"><div class="k">Base Imponible Anual de IUSC o IGC</div><div class="v">{{ resultado.base_imponible | clp }}</div></div>
     <div class="metric"><div class="k">IGC según tabla</div><div class="v">{{ resultado.igc_segun_tabla | clp }}</div></div>
   </div>
 
   <div class="metrics">
     <div class="metric"><div class="k">Débito por restitución (35%)</div><div class="v">{{ resultado.debito_restitucion | clp }}</div></div>
-    <div class="metric"><div class="k">Impuesto determinado</div><div class="v">{{ resultado.impuesto_determinado | clp }}</div></div>
+    <div class="metric"><div class="k">IGC o IUSC, débito fiscal y/o tasa adicional determinado</div><div class="v">{{ resultado.impuesto_determinado | clp }}</div></div>
+    <div class="metric"><div class="k">Crédito al IGC o IUSC por IUSC, según art. 56 N° 2 LIR</div><div class="v">{{ resultado.detalle_creditos.credito_iusc | clp }}</div></div>
+    <div class="metric"><div class="k">IGC/IUSC débito fiscal determinado (neto de crédito IUSC)</div><div class="v">{{ resultado.igc_iusc_debito_determinado | clp }}</div></div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><div class="k">Retenciones por rentas declaradas en código 110 (Recuadro N°1)</div><div class="v">{{ resultado.detalle_creditos.credito_honorarios | clp }}</div></div>
+    <div class="metric"><div class="k">Remanente de crédito por reliquidación del IUSC (códs. 162/174)</div><div class="v">{{ resultado.remanente_credito_iusc | clp }}</div></div>
+    <div class="metric"><div class="k">Otros créditos (retiros, arriendos, donaciones)</div><div class="v">{{ resultado.otros_creditos_varios | clp }}</div></div>
     <div class="metric"><div class="k">Total créditos</div><div class="v">-{{ resultado.total_creditos | clp }}</div></div>
-    <div class="metric"><div class="k">Cotización previsional honorarios (pago)</div><div class="v">+{{ resultado.pago_cotizacion_honorarios | clp }}</div></div>
+    <div class="metric"><div class="k">Cargo por cotizaciones previsionales (art. 89 y sgtes. D.L. N° 3.500)</div><div class="v">+{{ resultado.pago_cotizacion_honorarios | clp }}</div></div>
     <div class="metric {{ 'warn' if resultado.a_pagar else 'ok' }}">
-      <div class="k">{{ 'Impuesto a Pagar' if resultado.a_pagar else 'Saldo a Favor' }}</div>
+      <div class="k">Resultado Liquidación Anual Impuesto a la Renta — {{ 'Impuesto a Pagar' if resultado.a_pagar else 'Saldo a Favor' }}</div>
       <div class="v">{{ (resultado.resultado if resultado.a_pagar else -resultado.resultado) | clp }}</div>
     </div>
   </div>
