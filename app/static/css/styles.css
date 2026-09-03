@@ -293,6 +293,18 @@ table.data-table .badge-warn { color: #C77700; font-weight: 600; }
 .metric.warn .v { color: #C0392B; }
 .metric.ok .v { color: #1E8E5A; }
 
+/* Variante "lista": una fila por métrica, del ancho completo del
+   contenedor (en vez de cajas en grilla) — usada en el resultado de
+   "Calcular Global" (03-09-2026). No afecta a .metrics/.metric normales
+   (Subir Cartolas, Generar CSV F29), que siguen como cajas cortas. */
+.metrics.metrics-list { flex-direction: column; gap: 10px; }
+.metrics.metrics-list .metric {
+  flex: 1 1 100%; width: 100%; min-width: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+}
+.metrics.metrics-list .metric .k { margin-bottom: 0; font-size: 14px; }
+.metrics.metrics-list .metric .v { white-space: nowrap; }
+
 /* ---------------------------------------------------------------------- */
 /* Alertas / mensajes flash                                                */
 /* ---------------------------------------------------------------------- */
