@@ -34,9 +34,20 @@ usuario para honorarios:
     previsional obligatoria de independientes) quedan afectos al pago de
     cotizaciones previsionales. El usuario pidió aproximarlo como el 85%
     de la retención de honorarios (corregido el mismo día: no 0,85%, sino
-    0.85 tal cual), y aclaró que este ítem es un "pago" (una rebaja/gasto),
-    no un crédito contra el impuesto — se resta de la base imponible junto
-    con las demás rebajas.
+    0.85 tal cual), y aclaró que este ítem es un "pago", no un crédito
+    contra el impuesto.
+
+Ajustado el 03-09-2026 (tercera corrección) sobre dónde se aplica ese pago:
+
+  - El usuario corrigió que la cotización previsional de honorarios "debe
+    ser en positivo, por ende rebaja la devolución" — es decir, NO es una
+    rebaja de la base imponible (eso reduciría el IGC según tabla y, al
+    mantener los créditos iguales, terminaba AUMENTANDO el saldo a favor,
+    justo al revés de lo esperado). Ahora se suma en positivo directamente
+    al resultado final (junto al impuesto determinado, después de restar
+    los créditos): reduce el saldo a favor o aumenta el impuesto a pagar,
+    según corresponda. La base imponible y el IGC según tabla ya no se ven
+    afectados por este pago.
 
 Mecánica clave (verificada contra las fórmulas reales del Excel):
 
@@ -209,8 +220,15 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
         + entrada.ganancias_capital + entrada.otros_ingresos_afectos
     )
 
-    # --- 5) Rebajas ---
-    r.total_rebajas = entrada.pensiones_alimenticias + r.pago_cotizacion_honorarios
+    # --- 5) Rebajas de la base imponible ---
+    # La cotización previsional de honorarios NO es una rebaja de la base
+    # imponible (no reduce el IGC según tabla): es un pago que se salda
+    # directamente al final, junto al impuesto determinado (ver paso 10) —
+    # corregido el 03-09-2026 por pedido del usuario ("debe ser en
+    # positivo, por ende rebaja la devolución"). Antes se restaba de la
+    # base imponible, lo que erróneamente aumentaba el saldo a favor en
+    # vez de disminuirlo.
+    r.total_rebajas = entrada.pensiones_alimenticias
 
     # --- 6) Base imponible anual ---
     r.base_imponible = max(
@@ -243,6 +261,9 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     }
 
     # --- 10) Resultado final ---
-    r.resultado = r.impuesto_determinado - r.total_creditos
+    # La cotización previsional de honorarios se suma en positivo al
+    # resultado (no es un crédito, es un pago exigido) — reduce el saldo a
+    # favor o aumenta el impuesto a pagar, según corresponda.
+    r.resultado = r.impuesto_determinado - r.total_creditos + r.pago_cotizacion_honorarios
     r.a_pagar = r.resultado >= 0
     return r
