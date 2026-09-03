@@ -77,6 +77,32 @@ dos reglas nuevas:
     el usuario: son líneas informativas derivadas de lo ya calculado, "sin
     sumar nada nuevo al resultado".
 
+Ajustado el 03-09-2026 (retiros: separar renta neta de retiros del
+incremento por IDPC): el usuario pidió que "Renta bruta retiros" en el
+resumen muestre SOLO el monto percibido (neto) de los retiros, y que el
+incremento por crédito IDPC se muestre en una línea aparte, "Incremento
+por IDPC, según arts. 54 N° 1 y 62 LIR" — igual a como el propio
+Formulario 22 separa estas dos líneas (que luego se suman para entrar a
+la base). No cambia ningún monto final: el SUB TOTAL sigue sumando
+retiro neto + incremento IDPC + otras rentas, exactamente igual que
+antes — solo cambia cómo se desglosa en el resumen. De paso, el usuario
+señaló (a modo informativo, sin pedir cambios) que la línea "Remanente de
+crédito por reliquidación del IUSC" ya está bien calculada hoy (0 cuando
+el IGC/IUSC neto de crédito IUSC es positivo; el remanente del crédito
+IUSC cuando es negativo) pero que, en el Formulario 22 real, ese remanente
+también podría incorporar el "Crédito al IGC o IUSC por ahorro neto
+positivo (Recuadro N°3), según art. 3° transitorio numeral VI Ley N°
+20.780 (ex. art. 57 bis LIR)" — un crédito por ahorro previsional
+voluntario que esta calculadora todavía no tiene como campo de entrada.
+Queda anotado para una futura ronda si el usuario pide agregar ese campo;
+por ahora el cálculo (solo con crédito IUSC art. 56 N°2 LIR) es correcto.
+
+Eliminado el 03-09-2026: la línea "Rebajas (Pensiones Alimenticias)" se
+quitó del resumen en pantalla por pedido explícito del usuario (ya se
+había quitado del PDF en una corrección anterior). El campo
+`pensiones_alimenticias` y la rebaja a la base imponible (`total_rebajas`)
+NO cambiaron — solo se dejó de mostrar esa línea en el resumen.
+
 Mecánica clave (verificada contra las fórmulas reales del Excel):
 
   - "Incremento por IDPC" (art. 54 N°1 / 62 LIR): los retiros afectos a
@@ -273,10 +299,11 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     creditos_14d3 = entrada.credito_retiros_14d3
     r.total_creditos_idpc = creditos_14a + creditos_14d3
 
-    r.renta_bruta_retiros = (
-        entrada.retiros_14a + entrada.credito_retiros_14a
-        + entrada.retiros_14d3 + entrada.credito_retiros_14d3
-    )
+    # "Renta bruta retiros" muestra solo el monto percibido (neto); el
+    # incremento por IDPC se desglosa aparte (ver r.total_creditos_idpc,
+    # mostrado en el resumen como "Incremento por IDPC") — ambos se suman
+    # en el SUB TOTAL (paso 4b), igual que antes.
+    r.renta_bruta_retiros = entrada.retiros_14a + entrada.retiros_14d3
 
     # --- 4) Otras rentas afectas (sin gross-up) ---
     r.otras_rentas_afectas = (
@@ -286,7 +313,8 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     )
 
     # --- 4b) SUB TOTAL (estilo F22: total de rentas antes de rebajas) ---
-    r.sub_total = r.renta_bruta_retiros + r.otras_rentas_afectas
+    # Retiro neto + incremento por IDPC + otras rentas afectas.
+    r.sub_total = r.renta_bruta_retiros + r.total_creditos_idpc + r.otras_rentas_afectas
 
     # --- 5) Rebajas de la base imponible ---
     # La cotización previsional de honorarios NO es una rebaja de la base
