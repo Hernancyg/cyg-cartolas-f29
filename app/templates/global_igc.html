@@ -133,28 +133,19 @@
 
   <p class="muted mt-0">Estructura y nombres según el Formulario 22 del SII (Recuadro N°1 y liquidación anual de IGC/IUSC).</p>
 
-  <div class="metrics">
+  <div class="metrics metrics-list">
     <div class="metric"><div class="k">Gasto presunto honorarios (30%, tope 15 UTA)</div><div class="v">-{{ resultado.gasto_presunto_honorarios | clp }}</div></div>
     <div class="metric"><div class="k">Rentas arts. 42 N°2 y 48 LIR, según Recuadro N°1 (honorarios)</div><div class="v">{{ resultado.honorarios_tributables | clp }}</div></div>
     <div class="metric"><div class="k">Sueldos, pensiones y otras rentas similares de fuente nacional</div><div class="v">{{ resultado.renta_neta_sueldos | clp }}</div></div>
-  </div>
-
-  <div class="metrics">
     <div class="metric"><div class="k">Renta bruta retiros</div><div class="v">{{ resultado.renta_bruta_retiros | clp }}</div></div>
     <div class="metric"><div class="k">SUB TOTAL (si declara IA, trasladar a código 133 o 32)</div><div class="v">{{ resultado.sub_total | clp }}</div></div>
     <div class="metric"><div class="k">Rebajas (pensiones alimenticias)</div><div class="v">-{{ resultado.total_rebajas | clp }}</div></div>
     <div class="metric ok"><div class="k">Base Imponible Anual de IUSC o IGC</div><div class="v">{{ resultado.base_imponible | clp }}</div></div>
     <div class="metric"><div class="k">IGC según tabla</div><div class="v">{{ resultado.igc_segun_tabla | clp }}</div></div>
-  </div>
-
-  <div class="metrics">
     <div class="metric"><div class="k">Débito por restitución (35%)</div><div class="v">{{ resultado.debito_restitucion | clp }}</div></div>
     <div class="metric"><div class="k">IGC o IUSC, débito fiscal y/o tasa adicional determinado</div><div class="v">{{ resultado.impuesto_determinado | clp }}</div></div>
     <div class="metric"><div class="k">Crédito al IGC o IUSC por IUSC, según art. 56 N° 2 LIR</div><div class="v">{{ resultado.detalle_creditos.credito_iusc | clp }}</div></div>
     <div class="metric"><div class="k">IGC/IUSC débito fiscal determinado (neto de crédito IUSC)</div><div class="v">{{ resultado.igc_iusc_debito_determinado | clp }}</div></div>
-  </div>
-
-  <div class="metrics">
     <div class="metric"><div class="k">Retenciones por rentas declaradas en código 110 (Recuadro N°1)</div><div class="v">{{ resultado.detalle_creditos.credito_honorarios | clp }}</div></div>
     <div class="metric"><div class="k">Remanente de crédito por reliquidación del IUSC (códs. 162/174)</div><div class="v">{{ resultado.remanente_credito_iusc | clp }}</div></div>
     <div class="metric"><div class="k">Otros créditos (retiros, arriendos, donaciones)</div><div class="v">{{ resultado.otros_creditos_varios | clp }}</div></div>
