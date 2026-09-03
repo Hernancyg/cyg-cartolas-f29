@@ -246,7 +246,7 @@ def main():
     check("base imponible 0 o negativa no tributa", calcular_igc_tabla(0) == 0)
 
     entrada_prueba = EntradaGlobal(
-        total_imponible=0, retiros_14a=10_000_000, credito_retiros_14a=2_000_000,
+        base_tributable_sueldos=0, retiros_14a=10_000_000, credito_retiros_14a=2_000_000,
     )
     res_prueba = calcular_global(entrada_prueba)
     check("gross-up: renta bruta retiro 14A = neto + crédito", res_prueba.renta_bruta_retiros == 12_000_000)
@@ -257,11 +257,15 @@ def main():
     res_d3 = calcular_global(entrada_d3)
     check("régimen 14 D N°3 no paga débito por restitución", res_d3.debito_restitucion == 0)
 
-    entrada_sueldo = EntradaGlobal(total_imponible=10_000_000, leyes_sociales=1_000_000, credito_iusc=300_000)
+    # "Base Tributable" (03-09-2026): reemplaza a "Total Imponible" +
+    # "Leyes Sociales" — el usuario ingresa directamente la renta líquida
+    # por sueldos, sin resta interna.
+    entrada_sueldo = EntradaGlobal(base_tributable_sueldos=9_000_000, credito_iusc=300_000)
     res_sueldo = calcular_global(entrada_sueldo)
-    check("Leyes Sociales se resta del Total Imponible (renta líquida sueldos)", res_sueldo.renta_neta_sueldos == 9_000_000)
+    check("Base Tributable pasa directo a renta líquida de sueldos (sin restar nada)", res_sueldo.renta_neta_sueldos == 9_000_000)
     check("crédito IUSC entra al total de créditos", res_sueldo.total_creditos == 300_000)
-    check("renta líquida de sueldos no puede ser negativa", calcular_global(EntradaGlobal(total_imponible=1_000_000, leyes_sociales=5_000_000)).renta_neta_sueldos == 0)
+    check("renta líquida de sueldos no puede ser negativa", calcular_global(EntradaGlobal(base_tributable_sueldos=-1)).renta_neta_sueldos == 0)
+    check("ya no existen los campos total_imponible/leyes_sociales en EntradaGlobal", "total_imponible" not in EntradaGlobal.__dataclass_fields__ and "leyes_sociales" not in EntradaGlobal.__dataclass_fields__)
 
     entrada_honorarios = EntradaGlobal(honorarios=1_000_000, credito_honorarios=145_000)
     res_honorarios = calcular_global(entrada_honorarios)
@@ -269,6 +273,19 @@ def main():
     check("honorarios a tributar = 70% del bruto", res_honorarios.honorarios_tributables == 700_000)
     check("base imponible usa el honorario neto de gasto presunto, no el bruto", res_honorarios.base_imponible == 700_000)
     check("crédito por honorarios se calcula sobre el bruto (no se toca)", res_honorarios.total_creditos == 145_000)
+
+    # Tope de 15 UTA a la rebaja de 30% de gasto presunto de honorarios
+    # (pedido del usuario, 03-09-2026).
+    from app.global_igc.calculator import TOPE_GASTO_PRESUNTO_HONORARIOS_UTA
+    tope_15_uta = round(15 * UTA_2026)
+    check("tope de gasto presunto de honorarios = 15 UTA", TOPE_GASTO_PRESUNTO_HONORARIOS_UTA == 15)
+    honorarios_bajo_tope = round(tope_15_uta / 0.30) - 1_000_000  # 30% queda bajo el tope
+    res_bajo_tope = calcular_global(EntradaGlobal(honorarios=honorarios_bajo_tope))
+    check("bajo el tope, la rebaja es 30% normal", res_bajo_tope.gasto_presunto_honorarios == round(honorarios_bajo_tope * 0.30))
+    honorarios_sobre_tope = round(tope_15_uta / 0.30) + 10_000_000  # 30% supera el tope
+    res_sobre_tope = calcular_global(EntradaGlobal(honorarios=honorarios_sobre_tope))
+    check("sobre el tope, la rebaja se limita a 15 UTA", res_sobre_tope.gasto_presunto_honorarios == tope_15_uta)
+    check("con la rebaja topada, el honorario a tributar es mayor a lo que daría el 70%", res_sobre_tope.honorarios_tributables == honorarios_sobre_tope - tope_15_uta)
 
     check("ya no existen campos de dividendos en EntradaGlobal", not any("dividendo" in f for f in EntradaGlobal.__dataclass_fields__))
 
@@ -311,14 +328,45 @@ def main():
     entrada_umbral_exacto = EntradaGlobal(honorarios=UMBRAL_COTIZACION_HONORARIOS, credito_honorarios=400_000)
     check("en el umbral exacto (igual) SÍ aplica", calcular_global(entrada_umbral_exacto).afecto_cotizacion_honorarios is True)
 
+    # Líneas informativas al estilo F22 (03-09-2026): "IGC/IUSC débito
+    # determinado" y "Remanente de crédito por reliquidación del IUSC" se
+    # derivan de valores ya calculados y NO alteran el resultado final.
+    entrada_iusc_alto = EntradaGlobal(retiros_14a=50_000_000, credito_retiros_14a=10_000_000, credito_iusc=500_000)
+    res_iusc_alto = calcular_global(entrada_iusc_alto)
+    check(
+        "IGC/IUSC débito determinado = impuesto determinado menos crédito IUSC",
+        res_iusc_alto.igc_iusc_debito_determinado == res_iusc_alto.impuesto_determinado - 500_000,
+    )
+    check("sin remanente cuando el impuesto determinado supera al crédito IUSC", res_iusc_alto.remanente_credito_iusc == 0)
+
+    entrada_iusc_bajo = EntradaGlobal(base_tributable_sueldos=1_000_000, credito_iusc=500_000)
+    res_iusc_bajo = calcular_global(entrada_iusc_bajo)
+    check(
+        "remanente de crédito IUSC = la parte que no alcanzó a compensar el impuesto determinado",
+        res_iusc_bajo.remanente_credito_iusc == max(500_000 - res_iusc_bajo.impuesto_determinado, 0) and res_iusc_bajo.remanente_credito_iusc > 0,
+    )
+    check(
+        "las líneas informativas de IUSC no alteran el resultado final",
+        res_iusc_bajo.resultado == round(res_iusc_bajo.impuesto_determinado - res_iusc_bajo.total_creditos + res_iusc_bajo.pago_cotizacion_honorarios),
+    )
+
+    entrada_sub_total = EntradaGlobal(
+        base_tributable_sueldos=1_000_000, retiros_14a=2_000_000, credito_retiros_14a=500_000, arriendos_netos=300_000,
+    )
+    res_sub_total = calcular_global(entrada_sub_total)
+    check(
+        "SUB TOTAL = renta bruta retiros + otras rentas afectas (antes de rebajas)",
+        res_sub_total.sub_total == res_sub_total.renta_bruta_retiros + res_sub_total.otras_rentas_afectas,
+    )
+
     r = client.get("/global/")
     check("GET /global/ 200", r.status_code == 200 and b"Calcular Global" in r.data)
 
     r = client.post("/global/calcular", data={
-        "total_imponible": "0", "retiros_14a": "10000000", "credito_retiros_14a": "2000000",
+        "base_tributable_sueldos": "0", "retiros_14a": "10000000", "credito_retiros_14a": "2000000",
     })
     check("POST /global/calcular 200", r.status_code == 200)
-    check("resultado del cálculo se muestra en la página", b"Base Imponible Anual" in r.data)
+    check("resultado del cálculo se muestra en la página", b"Base Imponible Anual de IUSC o IGC" in r.data)
 
     # ---- Calcular Global: datos del contribuyente + descarga de PDF (03-09-2026) ----
     entrada_contrib_default = EntradaGlobal()
@@ -327,17 +375,17 @@ def main():
 
     entrada_desde_form = EntradaGlobal.desde_formulario({
         "anio_tributario": "2025", "nombre_contribuyente": "Juan Pérez González", "rut_contribuyente": "12.345.678-9",
-        "total_imponible": "10000000",
+        "base_tributable_sueldos": "10000000",
     })
     check("desde_formulario respeta año tributario ingresado", entrada_desde_form.anio_tributario == 2025)
     check("desde_formulario no numeriza nombre/RUT del contribuyente", entrada_desde_form.nombre_contribuyente == "Juan Pérez González" and entrada_desde_form.rut_contribuyente == "12.345.678-9")
 
-    entrada_form_sin_anio = EntradaGlobal.desde_formulario({"total_imponible": "0"})
+    entrada_form_sin_anio = EntradaGlobal.desde_formulario({"base_tributable_sueldos": "0"})
     check("desde_formulario usa 2026 si no se ingresa año tributario", entrada_form_sin_anio.anio_tributario == 2026)
 
     r = client.post("/global/pdf", data={
         "anio_tributario": "2026", "nombre_contribuyente": "Juan Pérez González", "rut_contribuyente": "12.345.678-9",
-        "total_imponible": "20000000", "leyes_sociales": "0", "credito_iusc": "1500000",
+        "base_tributable_sueldos": "20000000", "credito_iusc": "1500000",
         "honorarios": "8000000", "credito_honorarios": "980000",
         "retiros_14a": "15000000", "credito_retiros_14a": "5000000",
         "retiros_14d3": "6000000", "credito_retiros_14d3": "1500000",
