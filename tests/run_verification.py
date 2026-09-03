@@ -249,7 +249,9 @@ def main():
         base_tributable_sueldos=0, retiros_14a=10_000_000, credito_retiros_14a=2_000_000,
     )
     res_prueba = calcular_global(entrada_prueba)
-    check("gross-up: renta bruta retiro 14A = neto + crédito", res_prueba.renta_bruta_retiros == 12_000_000)
+    check("Renta bruta retiros = solo el monto neto percibido (sin el incremento IDPC)", res_prueba.renta_bruta_retiros == 10_000_000)
+    check("Incremento por IDPC = el crédito IDPC del retiro 14A", res_prueba.total_creditos_idpc == 2_000_000)
+    check("gross-up sigue sumando al SUB TOTAL: retiro neto + incremento IDPC", res_prueba.renta_bruta_retiros + res_prueba.total_creditos_idpc == 12_000_000)
     check("débito por restitución = 35% del crédito 14A", res_prueba.debito_restitucion == round(2_000_000 * 0.35))
     check("total créditos incluye el crédito IDPC del retiro", res_prueba.total_creditos == 2_000_000)
 
@@ -355,8 +357,8 @@ def main():
     )
     res_sub_total = calcular_global(entrada_sub_total)
     check(
-        "SUB TOTAL = renta bruta retiros + otras rentas afectas (antes de rebajas)",
-        res_sub_total.sub_total == res_sub_total.renta_bruta_retiros + res_sub_total.otras_rentas_afectas,
+        "SUB TOTAL = renta neta de retiros + incremento IDPC + otras rentas afectas (antes de rebajas)",
+        res_sub_total.sub_total == res_sub_total.renta_bruta_retiros + res_sub_total.total_creditos_idpc + res_sub_total.otras_rentas_afectas,
     )
 
     r = client.get("/global/")
