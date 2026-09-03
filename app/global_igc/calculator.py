@@ -49,6 +49,13 @@ Ajustado el 03-09-2026 (tercera corrección) sobre dónde se aplica ese pago:
     según corresponda. La base imponible y el IGC según tabla ya no se ven
     afectados por este pago.
 
+Agregado el 03-09-2026: campos de "Datos del Contribuyente" (Año
+Tributario, Nombre, RUT) y descarga de un PDF con el resumen del cálculo,
+a partir de un mockup de referencia entregado por el usuario. Estos tres
+campos son puramente identificatorios — no participan en ningún cálculo,
+solo se usan para el encabezado del PDF (ver `app/global_igc/
+pdf_generator.py`).
+
 Mecánica clave (verificada contra las fórmulas reales del Excel):
 
   - "Incremento por IDPC" (art. 54 N°1 / 62 LIR): los retiros afectos a
@@ -127,8 +134,22 @@ def _num(v) -> float:
         return 0.0
 
 
+# Campos de texto libre (no pasan por _num en desde_formulario) — solo se
+# usan para identificar al contribuyente en el PDF descargable, no afectan
+# ningún cálculo.
+CAMPOS_TEXTO_CONTRIBUYENTE = ("nombre_contribuyente", "rut_contribuyente")
+
+ANIO_TRIBUTARIO_DEFAULT = 2026
+
+
 @dataclass
 class EntradaGlobal:
+    # Datos del contribuyente (03-09-2026, pedido por el usuario para el
+    # encabezado del PDF descargable) — no participan en ningún cálculo.
+    anio_tributario: float = ANIO_TRIBUTARIO_DEFAULT
+    nombre_contribuyente: str = ""
+    rut_contribuyente: str = ""
+
     # Rentas del trabajo — sueldos
     total_imponible: float = 0.0       # sueldos brutos imponibles (antes de descontar leyes sociales)
     leyes_sociales: float = 0.0        # cotizaciones previsionales; se resta del total imponible
@@ -161,7 +182,11 @@ class EntradaGlobal:
     def desde_formulario(cls, form) -> "EntradaGlobal":
         campos = {}
         for nombre in cls.__dataclass_fields__:
-            campos[nombre] = _num(form.get(nombre))
+            if nombre in CAMPOS_TEXTO_CONTRIBUYENTE:
+                campos[nombre] = (form.get(nombre) or "").strip()
+            else:
+                campos[nombre] = _num(form.get(nombre))
+        campos["anio_tributario"] = int(campos["anio_tributario"]) or ANIO_TRIBUTARIO_DEFAULT
         return cls(**campos)
 
 
