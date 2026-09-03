@@ -320,6 +320,35 @@ def main():
     check("POST /global/calcular 200", r.status_code == 200)
     check("resultado del cálculo se muestra en la página", b"Base Imponible Anual" in r.data)
 
+    # ---- Calcular Global: datos del contribuyente + descarga de PDF (03-09-2026) ----
+    entrada_contrib_default = EntradaGlobal()
+    check("año tributario por defecto = 2026", entrada_contrib_default.anio_tributario == 2026)
+    check("nombre/RUT del contribuyente vacíos por defecto", entrada_contrib_default.nombre_contribuyente == "" and entrada_contrib_default.rut_contribuyente == "")
+
+    entrada_desde_form = EntradaGlobal.desde_formulario({
+        "anio_tributario": "2025", "nombre_contribuyente": "Juan Pérez González", "rut_contribuyente": "12.345.678-9",
+        "total_imponible": "10000000",
+    })
+    check("desde_formulario respeta año tributario ingresado", entrada_desde_form.anio_tributario == 2025)
+    check("desde_formulario no numeriza nombre/RUT del contribuyente", entrada_desde_form.nombre_contribuyente == "Juan Pérez González" and entrada_desde_form.rut_contribuyente == "12.345.678-9")
+
+    entrada_form_sin_anio = EntradaGlobal.desde_formulario({"total_imponible": "0"})
+    check("desde_formulario usa 2026 si no se ingresa año tributario", entrada_form_sin_anio.anio_tributario == 2026)
+
+    r = client.post("/global/pdf", data={
+        "anio_tributario": "2026", "nombre_contribuyente": "Juan Pérez González", "rut_contribuyente": "12.345.678-9",
+        "total_imponible": "20000000", "leyes_sociales": "0", "credito_iusc": "1500000",
+        "honorarios": "8000000", "credito_honorarios": "980000",
+        "retiros_14a": "15000000", "credito_retiros_14a": "5000000",
+        "retiros_14d3": "6000000", "credito_retiros_14d3": "1500000",
+        "arriendos_netos": "3000000", "intereses_reajustes": "500000",
+        "pensiones_alimenticias": "1200000",
+    })
+    check("POST /global/pdf -> 200", r.status_code == 200)
+    check("POST /global/pdf devuelve un PDF válido", r.headers.get("Content-Type", "").startswith("application/pdf") and r.data[:4] == b"%PDF")
+    check("POST /global/pdf trae nombre de archivo con año tributario y RUT", "AT2026" in r.headers.get("Content-Disposition", "") and "12" in r.headers.get("Content-Disposition", ""))
+    check("el PDF generado no está vacío/truncado", len(r.data) > 2000)
+
     # ---- Administrador: cuentas ----
     r = client.get("/admin/cuentas")
     check("GET /admin/cuentas 200 (admin)", r.status_code == 200)
