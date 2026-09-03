@@ -16,12 +16,37 @@
 </div>
 {%- endmacro %}
 
+{% macro campo_texto(nombre, etiqueta, placeholder='') -%}
+<div class="field">
+  <label for="{{ nombre }}" class="field-label-info">{{ etiqueta }}</label>
+  <input type="text" id="{{ nombre }}" name="{{ nombre }}"
+         value="{{ entrada[nombre] if entrada else '' }}" placeholder="{{ placeholder }}">
+</div>
+{%- endmacro %}
+
 <div class="page-title">Cálculo de Global Complementario</div>
 <div class="page-title-underline"></div>
 <p class="page-subtitle">Calculadora del Impuesto Global Complementario (IGC), año tributario 2026. Ingresa las rentas y créditos del contribuyente para obtener la base imponible y el impuesto determinado.</p>
 
 <form method="post" action="{{ url_for('global_igc.calcular') }}" id="form-global">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('invoice', 18) }}</div>
+      <div class="section-title">Datos del contribuyente</div>
+    </div>
+    <p class="muted mt-0">Solo se usan para identificar al contribuyente en el PDF descargable — no afectan el cálculo.</p>
+    <div class="field-row">
+      <div class="field">
+        <label for="anio_tributario" class="field-label-info">Año Tributario</label>
+        <input type="number" step="1" id="anio_tributario" name="anio_tributario"
+               value="{{ entrada.anio_tributario if entrada else '' }}" placeholder="2026">
+      </div>
+      {{ campo_texto('nombre_contribuyente', 'Nombre del Contribuyente', 'Juan Pérez González') }}
+      {{ campo_texto('rut_contribuyente', 'RUT', '12.345.678-9') }}
+    </div>
+  </div>
 
   <div class="card">
     <div class="section-header">
@@ -95,7 +120,6 @@
     <a href="{{ url_for('global_igc.index') }}" class="btn btn-secondary">Limpiar</a>
     <button type="submit" class="btn">{{ icon('shield', 16) }} Calcular Global</button>
   </div>
-</form>
 
 {% if resultado %}
 <div class="card" style="margin-top:1.6rem">
@@ -138,7 +162,13 @@
   <p class="muted" style="margin-bottom:0">
     Cálculo referencial según la tabla del Impuesto Global Complementario año tributario 2026 (1 UTA = {{ 834504 | clp }}).
   </p>
+
+  <div class="actions-row" style="margin-top:1.2rem">
+    <button type="submit" formaction="{{ url_for('global_igc.pdf') }}" class="btn btn-secondary">{{ icon('download', 16) }} Descargar PDF</button>
+  </div>
 </div>
 {% endif %}
+
+</form>
 
 {% endblock %}
