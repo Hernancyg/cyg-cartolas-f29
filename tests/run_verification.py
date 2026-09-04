@@ -10,9 +10,10 @@ datos de prueba). Corre las 3 páginas + login + admin con el
   - "Subir Cartolas": parsea una cartola PDF real (de sesiones anteriores,
     ya validada) y compara los totales de cargo/abono.
   - Descarga del Excel convertido (estructura correcta con openpyxl).
-  - "Generar CSV F29": con `parsear_f29` monkeypatcheado (no hay PDF de
+  - "Generar F29": con `parsear_f29` monkeypatcheado (no hay PDF de
     F29 de ejemplo a mano), valida el flujo completo (período, montos,
-    remanente, CSV final) contra la lógica real de `f29_parser.py`.
+    remanente, archivo .xls final) contra la lógica real de
+    `f29_parser.py` y `f29_export_writer.py`.
   - Administrador: guardar cuentas_config y crear/editar/resetear
     usuarios contra la base de datos de prueba.
 
@@ -189,9 +190,11 @@ def main():
     except Exception as exc:  # noqa: BLE001
         check("Excel se puede leer con openpyxl", False, str(exc))
 
-    # ---- Generar CSV F29 (con parsear_f29 monkeypatcheado: sin PDF real) ----
+    # ---- Generar F29 (con parsear_f29 monkeypatcheado: sin PDF real) ----
+    import xlrd
     import app.f29.routes as f29_routes
     from app.parsers.f29_parser import F29Data
+    from app.parsers.f29_export_writer import HEADERS as F29_XLS_HEADERS
 
     def fake_parsear_f29(_buf, configs=None):
         return F29Data(
@@ -228,10 +231,27 @@ def main():
         "f_monto": ["1500000", "1000000", "50000"],
         "f_incluir": ["538", "537", "48"],
     })
-    check("descarga CSV F29 -> 200", r.status_code == 200)
-    csv_text = r.data.decode("latin-1")
-    check("CSV contiene glosa de centralización", "CENTRALIZACION F29 JUNIO" in csv_text)
-    check("CSV separado por ';' con CRLF", "\r\n" in csv_text and ";" in csv_text)
+    check("descarga F29 (.xls) -> 200", r.status_code == 200)
+    check(
+        "descarga F29 con mimetype de Excel binario",
+        r.mimetype == "application/vnd.ms-excel",
+    )
+    try:
+        wb_f29 = xlrd.open_workbook(file_contents=r.data)
+        ws_f29 = wb_f29.sheet_by_name("Comprobantes")
+        header_f29 = [ws_f29.cell_value(0, c) for c in range(len(F29_XLS_HEADERS))]
+        check("xls F29: hoja 'Comprobantes' con encabezados de la plantilla nueva", header_f29 == F29_XLS_HEADERS)
+        # Fila 1 (primera línea del comprobante): Número=1, Tipo="T",
+        # Glosa con el mes, Cuenta="2108-02" (538/DEBE), Debe=1.500.000.
+        check("xls F29: Número en columna 0", ws_f29.cell_value(1, 0) == 1)
+        check("xls F29: Tipo comprobante 'T' en columna 1", ws_f29.cell_value(1, 1) == "T")
+        check("xls F29: Glosa de centralización en columna 3", "CENTRALIZACION F29 JUNIO" in ws_f29.cell_value(1, 3))
+        check("xls F29: Cuenta Detalle en columna 4", ws_f29.cell_value(1, 4) == "2108-02")
+        check("xls F29: Debe en columna 8", ws_f29.cell_value(1, 8) == 1500000)
+        # Fila 2: código 537/HABER -> cuenta 1108-02, Haber en columna 9.
+        check("xls F29: Haber en columna 9", ws_f29.cell_value(2, 9) == 1000000)
+    except Exception as exc:  # noqa: BLE001
+        check("archivo F29 se puede leer como .xls con xlrd", False, str(exc))
 
     # ---- Calcular Global (IGC) ----
     from app.global_igc.calculator import (
@@ -495,7 +515,7 @@ def main():
     check("trabajador SÍ puede ver Subir Cartolas", r.status_code == 200)
 
     r = client.get("/f29/")
-    check("trabajador SÍ puede ver Generar CSV F29", r.status_code == 200)
+    check("trabajador SÍ puede ver Generar F29", r.status_code == 200)
 
     r = client.get("/global/")
     check("trabajador SÍ puede ver Calcular Global", r.status_code == 200)
