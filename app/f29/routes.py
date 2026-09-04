@@ -20,10 +20,11 @@ from flask import Blueprint, render_template, request, send_file, flash, redirec
 
 from app.auth.decorators import login_required
 from app.parsers.f29_parser import (
-    parsear_f29, construir_filas, filas_a_csv_bytes, calcular_lineas_remanente,
+    parsear_f29, construir_filas, calcular_lineas_remanente,
     ultimo_dia_mes, nombre_mes, _clean_monto, MESES,
     CUENTA_CREDITO_FISCAL, CUENTA_REMANENTE_AUMENTA, CUENTA_REMANENTE_DISMINUYE,
 )
+from app.parsers.f29_export_writer import filas_a_xls_bytes
 from app.parsers.config_manager import cargar_config
 
 f29_bp = Blueprint("f29", __name__, url_prefix="/f29")
@@ -211,7 +212,7 @@ def preview():
             "topar_creditos": ctx["topar_creditos"],
             "monto_538": ctx["monto_538"], "monto_537": ctx["monto_537"],
             "remanente_info": ctx["remanente_info"],
-            "nombre_archivo": f"centralizacion_f29_{nombre_mes(ctx['mes']).lower()}_{ctx['anio']}.csv",
+            "nombre_archivo": f"centralizacion_f29_{nombre_mes(ctx['mes']).lower()}_{ctx['anio']}.xls",
         },
     )
 
@@ -221,16 +222,16 @@ def preview():
 def descargar():
     ctx = _leer_formulario(request.form)
     if not ctx["mes"] or not ctx["anio"].isdigit() or len(ctx["anio"]) != 4 or not ctx["lineas_finales"]:
-        flash("Faltan datos para generar el CSV (período o cuentas a incluir).", "error")
+        flash("Faltan datos para generar el archivo (período o cuentas a incluir).", "error")
         return redirect(url_for("f29.index"))
 
     filas_finales = construir_filas(ctx["mes"], ctx["anio"], ctx["lineas_finales"])
-    csv_bytes = filas_a_csv_bytes(filas_finales)
-    nombre_archivo = f"centralizacion_f29_{nombre_mes(ctx['mes']).lower()}_{ctx['anio']}.csv"
+    xls_bytes = filas_a_xls_bytes(filas_finales)
+    nombre_archivo = f"centralizacion_f29_{nombre_mes(ctx['mes']).lower()}_{ctx['anio']}.xls"
 
     return send_file(
-        io.BytesIO(csv_bytes),
+        io.BytesIO(xls_bytes),
         as_attachment=True,
         download_name=nombre_archivo,
-        mimetype="text/csv",
+        mimetype="application/vnd.ms-excel",
     )
