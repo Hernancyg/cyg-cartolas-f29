@@ -3,7 +3,7 @@
 {% block content %}
 {% from "_icons.html" import icon %}
 
-{% macro campo(nombre, etiqueta, tip=None) -%}
+{% macro campo(nombre, etiqueta, tip=None, mensual=False) -%}
 <div class="field">
   <label for="{{ nombre }}" class="field-label-info">
     {{ etiqueta }}
@@ -11,8 +11,15 @@
     <span class="tooltip" tabindex="0">{{ icon('info', 15) }}<span class="tip-text">{{ tip }}</span></span>
     {% endif %}
   </label>
-  <input type="number" step="1" min="0" id="{{ nombre }}" name="{{ nombre }}"
-         value="{{ entrada[nombre] | numval if entrada else '' }}" placeholder="0">
+  <div class="field-input-row">
+    <input type="number" step="1" min="0" id="{{ nombre }}" name="{{ nombre }}"
+           value="{{ entrada[nombre] | numval if entrada else '' }}" placeholder="0">
+    {% if mensual %}
+    <button type="button" class="btn-mensual" data-mensual-btn="{{ nombre }}" title="Ingresar mes a mes">
+      {{ icon('calendar', 15) }}<span>Meses</span>
+    </button>
+    {% endif %}
+  </div>
 </div>
 {%- endmacro %}
 
@@ -54,12 +61,16 @@
       <div class="section-title">Rentas del trabajo</div>
     </div>
     <div class="field-row">
-      {{ campo('base_tributable_sueldos', 'Base Tributable', 'Renta líquida por sueldos, pensiones y otras rentas similares de fuente nacional, ya neta de leyes sociales — ingresa el monto directo.') }}
-      {{ campo('credito_iusc', 'Impuesto Único de 2ª Categoría (retenido)', 'IUSC ya retenido/pagado mensualmente sobre el sueldo. Al reliquidarse dentro del IGC (art. 47 LIR), se usa como crédito contra el impuesto determinado.') }}
+      {{ campo('base_tributable_sueldos', 'Base Tributable', 'Renta líquida por sueldos, pensiones y otras rentas similares de fuente nacional, ya neta de leyes sociales — ingresa el monto directo. Puedes usar el botón "Meses" para ingresarla mes a mes y que se sume automáticamente.', mensual=True) }}
+      {{ campo('credito_iusc', 'Impuesto Único de 2ª Categoría (retenido)', 'IUSC ya retenido/pagado mensualmente sobre el sueldo. Al reliquidarse dentro del IGC (art. 47 LIR), se usa como crédito contra el impuesto determinado.', mensual=True) }}
     </div>
     <div class="field-row">
-      {{ campo('honorarios', 'Honorarios (brutos)', 'Total de boletas de honorarios emitidas en el año, sin descontar la retención. Se le calcula automáticamente un 30% de gasto presunto (art. 50 LIR, con tope de 15 UTA): solo el resto tributa. Si el total anual es igual o mayor a 5 ingresos mínimos ($2.767.765 en 2026), además queda afecto al pago obligatorio de cotizaciones previsionales (Ley 21.133), aproximado aquí como el 85% de la retención.') }}
-      {{ campo('credito_honorarios', 'Crédito por Honorarios', 'Retención de impuesto de las boletas de honorarios, calculada sobre el monto bruto. Se usa como crédito contra el IGC.') }}
+      {{ campo('honorarios', 'Honorarios (brutos)', 'Total de boletas de honorarios emitidas en el año, sin descontar la retención. Se le calcula automáticamente un 30% de gasto presunto (art. 50 LIR, con tope de 15 UTA): solo el resto tributa. Si el total anual es igual o mayor a 5 ingresos mínimos ($2.767.765 en 2026), además queda afecto al pago obligatorio de cotizaciones previsionales (Ley 21.133), aproximado aquí como el 85% de la retención.', mensual=True) }}
+      {{ campo('credito_honorarios', 'Crédito por Honorarios', 'Retención de impuesto de las boletas de honorarios, calculada sobre el monto bruto. Se usa como crédito contra el IGC.', mensual=True) }}
+    </div>
+    <div class="field-row">
+      {{ campo('renta_pensiones', 'Renta Total Neta Pagada (Pensiones)', 'Monto neto de pensiones pagadas en el año (independiente de la Base Tributable de sueldos). Se suma a la base imponible del IGC igual que un sueldo. Dato anual, no requiere despliegue mensual.') }}
+      {{ campo('credito_iusc_pensiones', 'Impuesto Único Retenido (Pensiones)', 'IUSC retenido sobre las pensiones. Se usa como crédito contra el impuesto determinado, igual que el IUSC de sueldos, pero se muestra por separado. Dato anual, no requiere despliegue mensual.') }}
     </div>
   </div>
 
@@ -68,18 +79,23 @@
       <div class="section-badge">{{ icon('bank', 18) }}</div>
       <div class="section-title">Retiros</div>
     </div>
-    <p class="muted mt-0">Separados por régimen tributario de la empresa de origen: <strong>14 A</strong> (semi-integrado, con obligación de restitución del 35% del crédito) y <strong>14 D N°3</strong> (Pro Pyme, sin restitución). Ingresa el monto neto percibido y su crédito por Impuesto de Primera Categoría (IDPC) por separado.</p>
+    <p class="muted mt-0">Separados por régimen tributario de la empresa de origen: <strong>14 A</strong> (semi-integrado, con obligación de restitución del 35% del crédito), <strong>14 D N°3</strong> (Pro Pyme, sin restitución) y <strong>14 D N°8</strong> (Pro Pyme que tributa con impuestos finales sobre su propia base imponible). Ingresa el monto neto percibido y su crédito por Impuesto de Primera Categoría (IDPC) por separado (14 A / 14 D N°3), o la base y el PPM puesto a disposición (14 D N°8).</p>
 
     <div class="credit-grid">
       <div class="credit-pair">
         <span class="regimen-tag">Régimen 14 A</span>
-        {{ campo('retiros_14a', 'Retiros 14 A (netos)') }}
-        {{ campo('credito_retiros_14a', 'Crédito IDPC por Retiros 14 A', 'Este crédito queda sujeto a la restitución del 35% (art. 56 N°3 LIR).') }}
+        {{ campo('retiros_14a', 'Retiros 14 A (netos)', mensual=True) }}
+        {{ campo('credito_retiros_14a', 'Crédito IDPC por Retiros 14 A', 'Este crédito queda sujeto a la restitución del 35% (art. 56 N°3 LIR).', mensual=True) }}
       </div>
       <div class="credit-pair">
         <span class="regimen-tag d3">Régimen 14 D N°3</span>
-        {{ campo('retiros_14d3', 'Retiros 14 D N°3 (netos)') }}
-        {{ campo('credito_retiros_14d3', 'Crédito IDPC por Retiros 14 D N°3', 'Este crédito NO está sujeto a restitución.') }}
+        {{ campo('retiros_14d3', 'Retiros 14 D N°3 (netos)', mensual=True) }}
+        {{ campo('credito_retiros_14d3', 'Crédito IDPC por Retiros 14 D N°3', 'Este crédito NO está sujeto a restitución.', mensual=True) }}
+      </div>
+      <div class="credit-pair">
+        <span class="regimen-tag d8">Régimen 14 D N°8</span>
+        {{ campo('retiros_14d8_base', 'Base Imponible a tributar con impuestos finales', 'Base imponible propia del régimen 14 D N°8, que ya tributa con impuestos finales. Se suma directo a la base del IGC, sin incremento por IDPC. Dato anual, no requiere despliegue mensual.') }}
+        {{ campo('retiros_14d8_ppm', 'PPM puesto a disposición de los propietarios', 'Pagos Provisionales Mensuales puestos a disposición de los propietarios. Se usa como crédito directo contra el impuesto determinado, sin restitución del 35%. Dato anual, no requiere despliegue mensual.') }}
       </div>
     </div>
   </div>
@@ -137,16 +153,20 @@
     <div class="metric"><div class="k">Gasto presunto honorarios (30%, tope 15 UTA)</div><div class="v">-{{ resultado.gasto_presunto_honorarios | clp }}</div></div>
     <div class="metric"><div class="k">Rentas arts. 42 N°2 y 48 LIR, según Recuadro N°1 (honorarios)</div><div class="v">{{ resultado.honorarios_tributables | clp }}</div></div>
     <div class="metric"><div class="k">Sueldos, pensiones y otras rentas similares de fuente nacional</div><div class="v">{{ resultado.renta_neta_sueldos | clp }}</div></div>
+    <div class="metric"><div class="k">Renta Total Neta Pagada (Pensiones)</div><div class="v">{{ resultado.renta_neta_pensiones | clp }}</div></div>
     <div class="metric"><div class="k">Renta bruta retiros</div><div class="v">{{ resultado.renta_bruta_retiros | clp }}</div></div>
     <div class="metric"><div class="k">Incremento por IDPC, según arts. 54 N° 1 y 62 LIR</div><div class="v">{{ resultado.total_creditos_idpc | clp }}</div></div>
+    <div class="metric"><div class="k">Retiros 14 D N°8 — Base Imponible a tributar con impuestos finales</div><div class="v">{{ resultado.retiros_14d8_base | clp }}</div></div>
     <div class="metric"><div class="k">SUB TOTAL (si declara IA, trasladar a código 133 o 32)</div><div class="v">{{ resultado.sub_total | clp }}</div></div>
     <div class="metric ok"><div class="k">Base Imponible Anual de IUSC o IGC</div><div class="v">{{ resultado.base_imponible | clp }}</div></div>
     <div class="metric"><div class="k">IGC según tabla</div><div class="v">{{ resultado.igc_segun_tabla | clp }}</div></div>
     <div class="metric"><div class="k">Débito por restitución (35%)</div><div class="v">{{ resultado.debito_restitucion | clp }}</div></div>
     <div class="metric"><div class="k">IGC o IUSC, débito fiscal y/o tasa adicional determinado</div><div class="v">{{ resultado.impuesto_determinado | clp }}</div></div>
     <div class="metric"><div class="k">Crédito al IGC o IUSC por IUSC, según art. 56 N° 2 LIR</div><div class="v">{{ resultado.detalle_creditos.credito_iusc | clp }}</div></div>
+    <div class="metric"><div class="k">Crédito al IGC o IUSC por IUSC (Pensiones)</div><div class="v">{{ resultado.detalle_creditos.credito_iusc_pensiones | clp }}</div></div>
     <div class="metric"><div class="k">IGC/IUSC débito fiscal determinado (neto de crédito IUSC)</div><div class="v">{{ resultado.igc_iusc_debito_determinado | clp }}</div></div>
     <div class="metric"><div class="k">Retenciones por rentas declaradas en código 110 (Recuadro N°1)</div><div class="v">{{ resultado.detalle_creditos.credito_honorarios | clp }}</div></div>
+    <div class="metric"><div class="k">PPM puesto a disposición de los propietarios (Régimen 14 D N°8)</div><div class="v">{{ resultado.detalle_creditos.credito_ppm_14d8 | clp }}</div></div>
     <div class="metric"><div class="k">Remanente de crédito por reliquidación del IUSC (códs. 162/174)</div><div class="v">{{ resultado.remanente_credito_iusc | clp }}</div></div>
     <div class="metric"><div class="k">Otros créditos (retiros, arriendos, donaciones)</div><div class="v">{{ resultado.otros_creditos_varios | clp }}</div></div>
     <div class="metric"><div class="k">Total créditos</div><div class="v">-{{ resultado.total_creditos | clp }}</div></div>
@@ -168,5 +188,106 @@
 {% endif %}
 
 </form>
+
+<script>
+// Despliegue mensual ("Meses") para campos de Calcular Global (04-09-2026).
+// Ayuda puramente visual: abre un recuadro con los 12 meses, suma lo
+// ingresado y deja el total en el campo correspondiente. No se guarda ni
+// se envía al servidor — solo el campo total (que ya existía) viaja en
+// el formulario.
+(function () {
+  var MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+  function formatoMiles(n) {
+    return Math.round(n || 0).toLocaleString('es-CL');
+  }
+
+  function crearPanel(nombreCampo) {
+    var panel = document.createElement('div');
+    panel.className = 'mensual-panel';
+    panel.setAttribute('data-mensual-panel', nombreCampo);
+
+    var grid = document.createElement('div');
+    grid.className = 'mensual-grid';
+    MESES.forEach(function (mes, i) {
+      var wrap = document.createElement('div');
+      var label = document.createElement('label');
+      label.textContent = mes;
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.step = '1';
+      input.min = '0';
+      input.placeholder = '0';
+      input.setAttribute('data-mes-index', i);
+      wrap.appendChild(label);
+      wrap.appendChild(input);
+      grid.appendChild(wrap);
+    });
+    panel.appendChild(grid);
+
+    var actions = document.createElement('div');
+    actions.className = 'mensual-actions';
+
+    var total = document.createElement('div');
+    total.className = 'mensual-total';
+    total.textContent = 'Total: $0';
+    actions.appendChild(total);
+
+    var btnCancelar = document.createElement('button');
+    btnCancelar.type = 'button';
+    btnCancelar.className = 'btn btn-secondary btn-sm';
+    btnCancelar.textContent = 'Cancelar';
+    actions.appendChild(btnCancelar);
+
+    var btnAplicar = document.createElement('button');
+    btnAplicar.type = 'button';
+    btnAplicar.className = 'btn btn-sm';
+    btnAplicar.textContent = 'Aplicar suma';
+    actions.appendChild(btnAplicar);
+
+    panel.appendChild(actions);
+
+    function recalcular() {
+      var suma = 0;
+      grid.querySelectorAll('input').forEach(function (inp) {
+        suma += parseFloat(inp.value) || 0;
+      });
+      total.textContent = 'Total: $' + formatoMiles(suma);
+      return suma;
+    }
+    grid.addEventListener('input', recalcular);
+
+    btnCancelar.addEventListener('click', function () {
+      panel.hidden = true;
+    });
+
+    btnAplicar.addEventListener('click', function () {
+      var suma = recalcular();
+      var destino = document.getElementById(nombreCampo);
+      if (destino) {
+        destino.value = Math.round(suma);
+        destino.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      panel.hidden = true;
+    });
+
+    return panel;
+  }
+
+  document.querySelectorAll('[data-mensual-btn]').forEach(function (btn) {
+    var nombreCampo = btn.getAttribute('data-mensual-btn');
+    var panel = null;
+    btn.addEventListener('click', function () {
+      if (!panel) {
+        panel = crearPanel(nombreCampo);
+        btn.closest('.field').appendChild(panel);
+        panel.hidden = false;
+      } else {
+        panel.hidden = !panel.hidden;
+      }
+    });
+  });
+})();
+</script>
 
 {% endblock %}
