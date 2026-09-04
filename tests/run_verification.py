@@ -253,6 +253,96 @@ def main():
     except Exception as exc:  # noqa: BLE001
         check("archivo F29 se puede leer como .xls con xlrd", False, str(exc))
 
+    # ---- Carga masiva de varios períodos F29 (04-09-2026) ----
+    # Datos calcados de un caso real (Kupsan Paper SpA, junio y julio 2026)
+    # usado para validar el encadenamiento automático del remanente de
+    # crédito fiscal entre períodos consecutivos del mismo lote.
+    def fake_parsear_f29_masivo(buf, configs=None):
+        contenido = buf.read()
+        if b"JULIO" in contenido:
+            return F29Data(
+                mes="07", anio="2026", rut="78241885-8", razon_social="Kupsan Paper SpA",
+                valores={"538": "31.896.719", "537": "62.058.326", "62": "419.694", "91": "419.694"},
+                remanente_504=39811050, remanente_504_encontrado=True,
+                remanente_periodo_siguiente=30161607, remanente_periodo_siguiente_encontrado=True,
+                advertencias=[],
+            )
+        return F29Data(
+            mes="06", anio="2026", rut="78241885-8", razon_social="Kupsan Paper SpA",
+            valores={"538": "17.001.126", "537": "56.812.117", "62": "223.699", "91": "223.699"},
+            remanente_504=15266252, remanente_504_encontrado=True,
+            remanente_periodo_siguiente=39810991, remanente_periodo_siguiente_encontrado=True,
+            advertencias=[],
+        )
+
+    f29_routes.parsear_f29 = fake_parsear_f29_masivo
+
+    r = client.get("/f29/masivo")
+    check("GET /f29/masivo 200", r.status_code == 200)
+
+    r = client.post("/f29/masivo/procesar", data={
+        "archivos": [
+            (io.BytesIO(b"%PDF-1.4 fake JULIO"), "07.pdf"),
+            (io.BytesIO(b"%PDF-1.4 fake JUNIO"), "06.pdf"),
+        ],
+    }, content_type="multipart/form-data")
+    check("procesar masivo (2 PDF, subidos fuera de orden) -> 200", r.status_code == 200)
+    html_masivo = r.data.decode("utf-8", errors="replace")
+    check("carga masiva reordena cronológicamente (junio primero)", "Período 1: JUNIO 2026" in html_masivo)
+    check("carga masiva reordena cronológicamente (julio segundo)", "Período 2: JULIO 2026" in html_masivo)
+    check(
+        "remanente del 2do período se sugiere encadenado (código 77 del 1ro = 39.810.991)",
+        'id="p1_remanente_anterior"' in html_masivo and 'value="39810991"' in html_masivo,
+    )
+    check(
+        "remanente del 1er período queda vacío (no hay período anterior en el lote)",
+        'id="p0_remanente_anterior"' in html_masivo and 'name="p0_remanente_anterior" value=""' in html_masivo,
+    )
+
+    masivo_form = {
+        "num_periodos": "2",
+        "p0_mes": "06", "p0_anio": "2026", "p0_remanente_504": "15266252",
+        "p0_remanente_anterior": "15235987", "p0_incluir_ajuste": "on",
+        "p0_f_cuenta": ["2108-02", "1108-02", "1108-01", "2108-05"],
+        "p0_f_codigo": ["538", "537", "62", "91"],
+        "p0_f_tipo": ["DEBE", "HABER", "DEBE", "HABER"],
+        "p0_f_monto": ["17001126", "56812117", "223699", "223699"],
+        "p0_f_incluir": ["538", "537", "62", "91"],
+        "p1_mes": "07", "p1_anio": "2026", "p1_remanente_504": "39811050",
+        "p1_remanente_anterior": "39810991", "p1_incluir_ajuste": "on",
+        "p1_f_cuenta": ["2108-02", "1108-02", "1108-01", "2108-05"],
+        "p1_f_codigo": ["538", "537", "62", "91"],
+        "p1_f_tipo": ["DEBE", "HABER", "DEBE", "HABER"],
+        "p1_f_monto": ["31896719", "62058326", "419694", "419694"],
+        "p1_f_incluir": ["538", "537", "62", "91"],
+    }
+
+    r = client.post("/f29/masivo/preview", data=masivo_form)
+    check("preview masivo -> 200", r.status_code == 200)
+    html_preview = r.data.decode("utf-8", errors="replace")
+    check("preview masivo muestra el ajuste de junio (diferencia 30.265)", "30.265" in html_preview)
+    check("preview masivo muestra el ajuste de julio (diferencia 59)", ">59<" in html_preview or "59<" in html_preview)
+
+    r = client.post("/f29/masivo/descargar", data=masivo_form)
+    check("descarga masivo -> 200", r.status_code == 200)
+    check("descarga masivo con mimetype de Excel binario", r.mimetype == "application/vnd.ms-excel")
+    check(
+        "nombre de archivo combinado junio_a_julio",
+        "centralizacion_f29_junio_a_julio_2026.xls" in (r.headers.get("Content-Disposition") or ""),
+    )
+    try:
+        wb_masivo = xlrd.open_workbook(file_contents=r.data)
+        ws_masivo = wb_masivo.sheet_by_name("Comprobantes")
+        check("xls masivo: 12 filas de datos (6 por período x 2 períodos)", ws_masivo.nrows == 13)
+        check("xls masivo: primera línea es JUNIO", "CENTRALIZACION F29 JUNIO" in ws_masivo.cell_value(1, 3))
+        check("xls masivo: 538 de junio en Debe", ws_masivo.cell_value(1, 8) == 17001126)
+        check("xls masivo: ajuste de remanente de junio (30.265) presente", any(ws_masivo.cell_value(r_, 8) == 30265 or ws_masivo.cell_value(r_, 9) == 30265 for r_ in range(1, 13)))
+        check("xls masivo: octava fila es JULIO (Número reinicia a 1)", ws_masivo.cell_value(7, 0) == 1 and "CENTRALIZACION F29 JULIO" in ws_masivo.cell_value(7, 3))
+        check("xls masivo: 538 de julio en Debe", ws_masivo.cell_value(7, 8) == 31896719)
+        check("xls masivo: ajuste de remanente de julio (59) presente", any(ws_masivo.cell_value(r_, 8) == 59 or ws_masivo.cell_value(r_, 9) == 59 for r_ in range(1, 13)))
+    except Exception as exc:  # noqa: BLE001
+        check("archivo masivo se puede leer como .xls con xlrd", False, str(exc))
+
     # ---- Calcular Global (IGC) ----
     from app.global_igc.calculator import (
         calcular_igc_tabla, calcular_global, EntradaGlobal, UTA_2026,
