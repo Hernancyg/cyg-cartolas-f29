@@ -347,13 +347,42 @@ table.data-table .badge-warn { color: #C77700; font-weight: 600; }
 }
 .field-label-info .tooltip:hover .tip-text, .field-label-info .tooltip:focus .tip-text { visibility: visible; opacity: 1; }
 
-.credit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.credit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 .credit-pair { background: #F8FAFD; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
 .credit-pair .regimen-tag {
   display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em;
   color: var(--blue); background: #EAF1FF; border-radius: 999px; padding: 3px 10px; margin-bottom: 10px;
 }
 .credit-pair .regimen-tag.d3 { color: #14713F; background: #E8F8EF; }
+.credit-pair .regimen-tag.d8 { color: #8A5A00; background: #FFF6E5; }
 @media (max-width: 720px) {
   .credit-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------------------------------------------------------------------- */
+/* Despliegue mensual de campos ("Meses") — Calcular Global (04-09-2026)   */
+/* Ayuda de UI: suma 12 valores mensuales y deja el total en el campo      */
+/* correspondiente. No se guarda ni se envía al servidor.                 */
+/* ---------------------------------------------------------------------- */
+.field-input-row { display: flex; gap: 8px; align-items: center; }
+.field-input-row input { flex: 1; min-width: 0; }
+.btn-mensual {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; flex-shrink: 0;
+  background: #EAF1FF; color: var(--blue); border: 1px solid #C9DCFB; border-radius: 8px;
+  padding: 0 10px; height: 40px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.btn-mensual:hover { background: #DCEBFF; }
+.btn-mensual.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.mensual-panel {
+  margin-top: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: #F8FAFD;
+}
+.mensual-panel .mensual-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 10px; margin-bottom: 12px;
+}
+.mensual-panel .mensual-grid label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+.mensual-panel .mensual-grid input {
+  width: 100%; padding: 6px 8px; font-size: 0.83rem; border: 1px solid var(--border); border-radius: 6px;
+}
+.mensual-panel .mensual-actions { display: flex; align-items: center; gap: 10px; }
+.mensual-panel .mensual-total { margin-right: auto; font-size: 13px; color: var(--navy-2); font-weight: 600; }
+.btn-sm { padding: 6px 14px; font-size: 0.82rem; }
