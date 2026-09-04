@@ -361,6 +361,62 @@ def main():
         res_sub_total.sub_total == res_sub_total.renta_bruta_retiros + res_sub_total.total_creditos_idpc + res_sub_total.otras_rentas_afectas,
     )
 
+    # ---- Régimen 14 D N°8 + campos de pensión (04-09-2026, octava corrección) ----
+    check(
+        "nuevos campos existen en EntradaGlobal",
+        all(
+            f in EntradaGlobal.__dataclass_fields__
+            for f in ("retiros_14d8_base", "retiros_14d8_ppm", "renta_pensiones", "credito_iusc_pensiones")
+        ),
+    )
+
+    entrada_14d8 = EntradaGlobal(retiros_14d8_base=5_000_000, retiros_14d8_ppm=800_000)
+    res_14d8 = calcular_global(entrada_14d8)
+    check("14 D N°8: la base pasa directo al resumen (sin gross-up)", res_14d8.retiros_14d8_base == 5_000_000)
+    check("14 D N°8: el PPM pasa directo como crédito", res_14d8.credito_ppm_14d8 == 800_000)
+    check("14 D N°8: la base se suma al SUB TOTAL sin incremento IDPC", res_14d8.sub_total == 5_000_000)
+    check("14 D N°8: no genera débito por restitución (exclusivo de 14 A)", res_14d8.debito_restitucion == 0)
+    check("14 D N°8: el PPM no se cuenta como incremento por IDPC", res_14d8.total_creditos_idpc == 0)
+    check("14 D N°8: el PPM entra al total de créditos", res_14d8.total_creditos == 800_000)
+    check("14 D N°8: detalle_creditos incluye credito_ppm_14d8", res_14d8.detalle_creditos.get("credito_ppm_14d8") == 800_000)
+
+    entrada_pension = EntradaGlobal(renta_pensiones=4_000_000, credito_iusc_pensiones=200_000)
+    res_pension = calcular_global(entrada_pension)
+    check("Pensiones: renta neta pasa directo (separada de sueldos)", res_pension.renta_neta_pensiones == 4_000_000)
+    check("Pensiones: renta líquida de pensión no puede ser negativa", calcular_global(EntradaGlobal(renta_pensiones=-1)).renta_neta_pensiones == 0)
+    check("Pensiones: la renta neta se suma al SUB TOTAL igual que sueldos", res_pension.sub_total == 4_000_000)
+    check("Pensiones: el crédito IUSC de pensión entra al total de créditos", res_pension.total_creditos == 200_000)
+    check("Pensiones: detalle_creditos incluye credito_iusc_pensiones", res_pension.detalle_creditos.get("credito_iusc_pensiones") == 200_000)
+    check(
+        "Pensiones: se combina con credito_iusc en la línea informativa 'IGC/IUSC débito determinado'",
+        res_pension.igc_iusc_debito_determinado == res_pension.impuesto_determinado - 200_000,
+    )
+
+    entrada_iusc_combo = EntradaGlobal(
+        base_tributable_sueldos=1_000_000, credito_iusc=300_000,
+        renta_pensiones=500_000, credito_iusc_pensiones=200_000,
+    )
+    res_combo = calcular_global(entrada_iusc_combo)
+    check(
+        "IUSC sueldos + IUSC pensiones se combinan en las líneas informativas de reliquidación",
+        res_combo.igc_iusc_debito_determinado == res_combo.impuesto_determinado - 500_000
+        and res_combo.remanente_credito_iusc == max(500_000 - res_combo.impuesto_determinado, 0),
+    )
+    check(
+        "las líneas informativas combinadas de IUSC siguen sin alterar el resultado final",
+        res_combo.resultado == round(res_combo.impuesto_determinado - res_combo.total_creditos + res_combo.pago_cotizacion_honorarios),
+    )
+
+    r = client.post("/global/calcular", data={
+        "base_tributable_sueldos": "1000000", "renta_pensiones": "500000", "credito_iusc_pensiones": "50000",
+        "retiros_14d8_base": "3000000", "retiros_14d8_ppm": "400000",
+    })
+    check("POST /global/calcular con 14 D N°8 y pensiones -> 200", r.status_code == 200)
+    check("resumen muestra la línea de Régimen 14 D N°8", "Retiros 14 D N°8".encode() in r.data)
+    check("resumen muestra la línea de Renta Total Neta Pagada (Pensiones)", "Renta Total Neta Pagada (Pensiones)".encode() in r.data)
+    check("formulario tiene el campo mensual para Base Tributable", b'data-mensual-btn="base_tributable_sueldos"' in r.data)
+    check("formulario NO ofrece despliegue mensual para el campo anual de pensiones", b'data-mensual-btn="renta_pensiones"' not in r.data)
+
     r = client.get("/global/")
     check("GET /global/ 200", r.status_code == 200 and b"Calcular Global" in r.data)
 
@@ -388,9 +444,11 @@ def main():
     r = client.post("/global/pdf", data={
         "anio_tributario": "2026", "nombre_contribuyente": "Juan Pérez González", "rut_contribuyente": "12.345.678-9",
         "base_tributable_sueldos": "20000000", "credito_iusc": "1500000",
+        "renta_pensiones": "2000000", "credito_iusc_pensiones": "150000",
         "honorarios": "8000000", "credito_honorarios": "980000",
         "retiros_14a": "15000000", "credito_retiros_14a": "5000000",
         "retiros_14d3": "6000000", "credito_retiros_14d3": "1500000",
+        "retiros_14d8_base": "4000000", "retiros_14d8_ppm": "600000",
         "arriendos_netos": "3000000", "intereses_reajustes": "500000",
         "pensiones_alimenticias": "1200000",
     })
