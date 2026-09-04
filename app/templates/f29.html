@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Generar CSV F29 · C&amp;G Group{% endblock %}
+{% block title %}Generar F29 · C&amp;G Group{% endblock %}
 {% block content %}
 {% from "_icons.html" import icon %}
 
-<div class="page-title">Centralización F29 → CSV</div>
+<div class="page-title">Centralización F29 → Excel</div>
 <div class="page-title-underline"></div>
-<p class="page-subtitle">Sube el PDF del F29 del mes, revisa los montos detectados y descarga el CSV de comprobantes unificados listo para importar.</p>
+<p class="page-subtitle">Sube el PDF del F29 del mes, revisa los montos detectados y descarga el archivo Excel (.xls) de comprobantes unificados listo para importar.</p>
 
 {% if not parsed %}
 <div class="card">
@@ -110,7 +110,7 @@
 
   <div class="actions-row">
     <button type="submit" formaction="{{ url_for('f29.preview') }}" class="btn btn-secondary">Actualizar vista previa</button>
-    <button type="submit" formaction="{{ url_for('f29.descargar') }}" class="btn">{{ icon('download', 16) }} Descargar CSV</button>
+    <button type="submit" formaction="{{ url_for('f29.descargar') }}" class="btn">{{ icon('download', 16) }} Descargar Excel</button>
   </div>
 </form>
 
