@@ -103,6 +103,41 @@ había quitado del PDF en una corrección anterior). El campo
 `pensiones_alimenticias` y la rebaja a la base imponible (`total_rebajas`)
 NO cambiaron — solo se dejó de mostrar esa línea en el resumen.
 
+Ajustado el 04-09-2026 (octava corrección) según nuevo pedido del usuario:
+
+  - Se agrega un tercer régimen de retiros, "14 D N°8" (Pro Pyme que
+    tributa con impuestos finales sobre su propia base imponible). El
+    campo "Base Imponible a tributar con impuestos finales"
+    (`retiros_14d8_base`) se suma directo al SUB TOTAL, igual que un
+    retiro neto, pero SIN incremento por IDPC (la base ya viene "a
+    tributar con impuestos finales", no lleva crédito IDPC asociado). El
+    campo "PPM puesto a disposición de los propietarios"
+    (`retiros_14d8_ppm`) actúa como crédito directo contra el impuesto
+    determinado, igual que los créditos IDPC de retiros, pero SIN la
+    restitución del 35% (esa restitución es exclusiva del crédito IDPC
+    del régimen 14 A). Confirmado explícitamente por el usuario.
+  - Se agregan dos campos nuevos e independientes en "Rentas del trabajo"
+    para pensiones: "Renta Total Neta Pagada (Pensiones)"
+    (`renta_pensiones`) e "Impuesto Único Retenido" de pensiones
+    (`credito_iusc_pensiones`). Reciben el mismo tratamiento que sueldos
+    (la renta se suma a la base imponible, el impuesto retenido es un
+    crédito contra el impuesto determinado) pero se muestran como líneas
+    separadas en el resumen y el PDF, sin mezclarse con
+    `base_tributable_sueldos` / `credito_iusc`. Al ser ambos, en
+    definitiva, Impuesto Único de 2ª Categoría, se combinan junto con
+    `credito_iusc` en las líneas informativas de reliquidación del IUSC
+    ("IGC/IUSC débito fiscal determinado (neto)" y "Remanente de crédito
+    por reliquidación del IUSC") — esas líneas siguen siendo puramente
+    informativas y no alteran el resultado final.
+  - El despliegue mensual (12 meses) para Base Tributable, IUSC,
+    Honorarios, Crédito por Honorarios, Retiros 14 A / 14 D N°3 y sus
+    créditos IDPC es puramente una ayuda de interfaz en el navegador (ver
+    `global_igc.html` y su JS): el usuario ingresa los 12 valores y al
+    confirmar se suman y se deja el total en el campo de siempre. Los
+    valores mensuales NO se envían al servidor ni se guardan — este
+    módulo no cambia por eso, solo recibe el total ya sumado como si se
+    hubiera tecleado directo en el campo.
+
 Mecánica clave (verificada contra las fórmulas reales del Excel):
 
   - "Incremento por IDPC" (art. 54 N°1 / 62 LIR): los retiros afectos a
@@ -209,6 +244,12 @@ class EntradaGlobal:
     base_tributable_sueldos: float = 0.0
     credito_iusc: float = 0.0          # Impuesto Único de 2ª Categoría ya retenido sobre el sueldo (crédito)
 
+    # Rentas del trabajo — pensiones (04-09-2026): campos nuevos e
+    # independientes de los de sueldos, mismo tratamiento (renta se suma a
+    # la base, impuesto retenido es crédito) pero mostrados por separado.
+    renta_pensiones: float = 0.0
+    credito_iusc_pensiones: float = 0.0
+
     # Rentas del trabajo — honorarios
     honorarios: float = 0.0            # honorarios brutos (boleta); se le resta 30% de gasto presunto
     credito_honorarios: float = 0.0    # retención boleta de honorarios, sobre el monto bruto (crédito directo)
@@ -218,6 +259,13 @@ class EntradaGlobal:
     credito_retiros_14a: float = 0.0
     retiros_14d3: float = 0.0
     credito_retiros_14d3: float = 0.0
+
+    # Retiros — régimen 14 D N°8 (04-09-2026): tributa con impuestos finales
+    # sobre su propia base imponible, sin incremento por IDPC. La base se
+    # suma directo al SUB TOTAL; el PPM actúa como crédito directo contra el
+    # impuesto determinado, sin restitución del 35%.
+    retiros_14d8_base: float = 0.0
+    retiros_14d8_ppm: float = 0.0
 
     # Otras rentas afectas
     arriendos_netos: float = 0.0
@@ -247,6 +295,8 @@ class EntradaGlobal:
 @dataclass
 class ResultadoGlobal:
     renta_neta_sueldos: float = 0.0
+    renta_neta_pensiones: float = 0.0
+    credito_iusc_pensiones: float = 0.0
     gasto_presunto_honorarios: float = 0.0
     tope_gasto_presunto_honorarios: float = 0.0
     honorarios_tributables: float = 0.0
@@ -254,6 +304,8 @@ class ResultadoGlobal:
     pago_cotizacion_honorarios: float = 0.0
     renta_bruta_retiros: float = 0.0
     total_creditos_idpc: float = 0.0
+    retiros_14d8_base: float = 0.0
+    credito_ppm_14d8: float = 0.0
     otras_rentas_afectas: float = 0.0
     sub_total: float = 0.0
     total_rebajas: float = 0.0
@@ -277,6 +329,11 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
 
     # --- 1) Sueldos: "Base Tributable" ingresada directamente por el usuario ---
     r.renta_neta_sueldos = max(entrada.base_tributable_sueldos, 0)
+
+    # --- 1b) Pensiones (04-09-2026): campos separados de sueldos, mismo
+    # tratamiento (se pasan directo, se muestran aparte) ---
+    r.renta_neta_pensiones = max(entrada.renta_pensiones, 0)
+    r.credito_iusc_pensiones = entrada.credito_iusc_pensiones
 
     # --- 2) Honorarios: rebaja automática de 30% de gasto presunto, con
     # tope de 15 UTA (pedido del usuario, 03-09-2026) ---
@@ -305,16 +362,26 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     # en el SUB TOTAL (paso 4b), igual que antes.
     r.renta_bruta_retiros = entrada.retiros_14a + entrada.retiros_14d3
 
+    # --- 3b) Retiros 14 D N°8 (04-09-2026): base "a tributar con impuestos
+    # finales" sin incremento por IDPC; PPM se maneja aparte como crédito
+    # (ver paso 9) ---
+    r.retiros_14d8_base = entrada.retiros_14d8_base
+    r.credito_ppm_14d8 = entrada.retiros_14d8_ppm
+
     # --- 4) Otras rentas afectas (sin gross-up) ---
     r.otras_rentas_afectas = (
-        r.renta_neta_sueldos + r.honorarios_tributables
+        r.renta_neta_sueldos + r.renta_neta_pensiones + r.honorarios_tributables
         + entrada.arriendos_netos + entrada.intereses_reajustes
         + entrada.ganancias_capital + entrada.otros_ingresos_afectos
     )
 
     # --- 4b) SUB TOTAL (estilo F22: total de rentas antes de rebajas) ---
-    # Retiro neto + incremento por IDPC + otras rentas afectas.
-    r.sub_total = r.renta_bruta_retiros + r.total_creditos_idpc + r.otras_rentas_afectas
+    # Retiro neto (14A/14D N°3) + incremento por IDPC + base 14 D N°8 (sin
+    # incremento) + otras rentas afectas (incluye sueldos y pensiones).
+    r.sub_total = (
+        r.renta_bruta_retiros + r.total_creditos_idpc
+        + r.retiros_14d8_base + r.otras_rentas_afectas
+    )
 
     # --- 5) Rebajas de la base imponible ---
     # La cotización previsional de honorarios NO es una rebaja de la base
@@ -342,21 +409,32 @@ def calcular_global(entrada: EntradaGlobal) -> ResultadoGlobal:
     # final, que sigue sumando el crédito IUSC completo en el total de
     # créditos del paso 9. Confirmado explícitamente por el usuario: son
     # informativas, "sin sumar nada nuevo al resultado".
-    r.igc_iusc_debito_determinado = r.impuesto_determinado - entrada.credito_iusc
-    r.remanente_credito_iusc = max(entrada.credito_iusc - r.impuesto_determinado, 0)
+    # Se combina credito_iusc (sueldos) con credito_iusc_pensiones (ambos
+    # son, en definitiva, Impuesto Único de 2ª Categoría retenido) — sigue
+    # siendo una línea puramente informativa (04-09-2026).
+    credito_iusc_total = entrada.credito_iusc + r.credito_iusc_pensiones
+    r.igc_iusc_debito_determinado = r.impuesto_determinado - credito_iusc_total
+    r.remanente_credito_iusc = max(credito_iusc_total - r.impuesto_determinado, 0)
 
     # --- 9) Total créditos contra el impuesto ---
-    r.otros_creditos_varios = r.total_creditos_idpc + entrada.credito_arriendos + entrada.otros_creditos
+    r.otros_creditos_varios = (
+        r.total_creditos_idpc + r.credito_ppm_14d8
+        + entrada.credito_arriendos + entrada.otros_creditos
+    )
     r.total_creditos = (
         r.total_creditos_idpc
+        + r.credito_ppm_14d8
         + entrada.credito_iusc
+        + r.credito_iusc_pensiones
         + entrada.credito_honorarios
         + entrada.credito_arriendos
         + entrada.otros_creditos
     )
     r.detalle_creditos = {
         "credito_idpc_retiros": r.total_creditos_idpc,
+        "credito_ppm_14d8": r.credito_ppm_14d8,
         "credito_iusc": entrada.credito_iusc,
+        "credito_iusc_pensiones": r.credito_iusc_pensiones,
         "credito_honorarios": entrada.credito_honorarios,
         "credito_arriendos": entrada.credito_arriendos,
         "otros_creditos": entrada.otros_creditos,

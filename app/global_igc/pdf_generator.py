@@ -31,6 +31,14 @@ un ajuste pedido en esa misma ronda: se eliminó del cálculo de base
 imponible la línea "Menos: Rebajas (Pensiones Alimenticias)" por
 considerarse un concepto sobrante.
 
+Ajustado el 04-09-2026 (octava corrección): se agregan filas para el nuevo
+régimen de retiros "14 D N°8" (monto = Base Imponible a tributar con
+impuestos finales, crédito = PPM puesto a disposición de los propietarios)
+y para los nuevos campos de pensiones (monto = Renta Total Neta Pagada,
+crédito = Impuesto Único Retenido), tanto en "Resumen de Rentas" como en
+"Detalle de Créditos" — mismos nombres simples que el resto del PDF, sin
+terminología F22.
+
 Usa reportlab (pura Python, sin dependencias de sistema como Cairo/Pango)
 para poder desplegar sin problemas en Render.
 """
@@ -199,8 +207,12 @@ class _PdfBuilder:
                 entrada.retiros_14d3 + entrada.credito_retiros_14d3,
                 entrada.credito_retiros_14d3,
             ))
+        if r.retiros_14d8_base or r.credito_ppm_14d8:
+            filas.append(("Retiros 14 D N°8", r.retiros_14d8_base, r.credito_ppm_14d8))
         if r.renta_neta_sueldos or entrada.credito_iusc:
             filas.append(("Sueldos", r.renta_neta_sueldos, entrada.credito_iusc))
+        if r.renta_neta_pensiones or r.credito_iusc_pensiones:
+            filas.append(("Pensiones", r.renta_neta_pensiones, r.credito_iusc_pensiones))
         if r.honorarios_tributables or entrada.credito_honorarios:
             filas.append(("Honorarios", r.honorarios_tributables, entrada.credito_honorarios))
         if entrada.arriendos_netos or entrada.credito_arriendos:
@@ -277,8 +289,10 @@ class _PdfBuilder:
         por pedido explícito (03-09-2026, concepto sobrante)."""
         creditos = [
             ("Crédito IUSC", r.detalle_creditos.get("credito_iusc", 0)),
+            ("Crédito IUSC Pensiones", r.detalle_creditos.get("credito_iusc_pensiones", 0)),
             ("Crédito por Honorarios", r.detalle_creditos.get("credito_honorarios", 0)),
             ("Crédito IDPC Retiros 14 A/14 D N°3", r.total_creditos_idpc),
+            ("Crédito PPM Retiros 14 D N°8", r.detalle_creditos.get("credito_ppm_14d8", 0)),
             ("Crédito por Arriendos", r.detalle_creditos.get("credito_arriendos", 0)),
             ("Otros Créditos", r.detalle_creditos.get("otros_creditos", 0)),
         ]
