@@ -61,6 +61,31 @@ CUENTA_REMANENTE_AUMENTA = "5203-01"   # cuando el remanente del F29 > el de los
 CUENTA_REMANENTE_DISMINUYE = "4405-01"  # cuando el remanente del F29 < el de los libros
 CENTRO_COSTO_REMANENTE = "100"
 
+# ---------------------------------------------------------------------------
+# Remanente de Crédito Fiscal "para el período siguiente" (código 77).
+#
+# Agregado 04-09-2026 para la carga masiva de varios períodos: es el
+# remanente que el propio F29 de ESTE mes declara que se traspasa al mes
+# SIGUIENTE. Sirve para encadenar automáticamente el remanente_anterior del
+# período siguiente cuando se procesan varios F29 consecutivos de una vez
+# (en vez de pedírselo al usuario a mano, como hay que hacer para el primer
+# período de la carga, que no tiene un F29 previo en el lote).
+#
+# El recuadro donde vive el código 77 en el PDF del SII queda muy pegado a
+# los recuadros vecinos ("Postergación pago del IVA" / "IVA determinado"),
+# así que `page.extract_text()` de pdfplumber entrega esa zona con el texto
+# de la etiqueta entrelazado letra por letra con el de los recuadros de al
+# lado (ej.: "R pe e r m ío a d n o e s n i t g e u d ie e n c te rédito
+# fiscal para el 77 39.810.991 756 Postergación..."). Es un texto raro pero
+# ESTABLE: sale exactamente igual en todos los F29 (mismo layout de
+# plantilla del SII), así que sirve igual de bien como texto ancla fijo que
+# cualquier otro código de esta app — se verificó contra dos F29 reales de
+# meses distintos y el texto ancla salió idéntico en ambos.
+CODIGO_REMANENTE_SIGUIENTE = "77"
+TEXTO_ANCLA_REMANENTE_SIGUIENTE = (
+    "R pe e r m ío a d n o e s n i t g e u d ie e n c te rédito fiscal para el"
+)
+
 
 @dataclass
 class F29Data:
@@ -71,6 +96,8 @@ class F29Data:
     valores: dict = field(default_factory=dict)  # codigo_f29 -> str monto crudo
     remanente_504: int = 0
     remanente_504_encontrado: bool = False
+    remanente_periodo_siguiente: int = 0
+    remanente_periodo_siguiente_encontrado: bool = False
     advertencias: list = field(default_factory=list)
 
 
@@ -182,6 +209,23 @@ def parsear_f29(path_or_file, configs=None) -> F29Data:
             f"Fiscal mes anterior) en el PDF. Se asumirá que no hay remanente "
             f"este mes; verifica manualmente si esperabas que lo hubiera."
         )
+
+    # --- Remanente de Crédito Fiscal para el período SIGUIENTE (código 77) ---
+    # Usado solo por la carga masiva de varios períodos, para encadenar el
+    # remanente_anterior del período que sigue a este en el mismo lote.
+    match_77 = re.search(
+        re.escape(TEXTO_ANCLA_REMANENTE_SIGUIENTE)
+        + r"[\s\S]{0,200}?\b"
+        + re.escape(CODIGO_REMANENTE_SIGUIENTE)
+        + r"\b\s+([\d.,]+)?",
+        texto,
+    )
+    if match_77:
+        data.remanente_periodo_siguiente = _clean_monto(match_77.group(1))
+        data.remanente_periodo_siguiente_encontrado = True
+    else:
+        data.remanente_periodo_siguiente = 0
+        data.remanente_periodo_siguiente_encontrado = False
 
     return data
 
