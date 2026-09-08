@@ -67,6 +67,34 @@ def _detalle_error_http(resp):
     return " | ".join(partes)[:400]
 
 
+def _diagnostico_http(resp, token):
+    """Información técnica adicional para diagnosticar un error cuando ni
+    el cuerpo ni las cabeceras de la respuesta traen ningún detalle (caso
+    real: un 401 completamente vacío de Microsoft Graph, sin JSON, sin
+    texto y sin `WWW-Authenticate` — atípico para Graph, que normalmente
+    es explícito con sus errores, así que apunta a algo *antes* de llegar
+    a la lógica de Graph: un proxy/gateway intermedio, un token con forma
+    inválida, o una URL mal construida). Nunca incluye el token en sí,
+    solo su longitud, para no exponer un secreto en pantalla."""
+    partes = []
+    try:
+        partes.append(f"URL llamada: {resp.request.url}")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        cabeceras = dict(resp.headers)
+        partes.append(f"Cabeceras de la respuesta: {cabeceras}" if cabeceras else "Cabeceras de la respuesta: (ninguna)")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        partes.append(f"Largo del token obtenido: {len(token)} caracteres")
+    except Exception:  # noqa: BLE001
+        pass
+    if not partes:
+        return ""
+    return "[Diagnóstico: " + " | ".join(partes) + "]"
+
+
 def _config_incompleta(cfg):
     return not all(cfg.get(k) for k in ("MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_TENANT_ID", "MS_USER_UPN"))
 
@@ -134,14 +162,10 @@ def obtener_eventos_de_hoy(cfg, tz_iana="America/Santiago"):
         return data.get("value", []), None
     except requests.HTTPError as exc:
         detalle = _detalle_error_http(exc.response)
-        pista = ""
-        if exc.response.status_code == 401:
-            pista = (
-                " Si acabas de otorgar el consentimiento de administrador en Azure, "
-                "vuelve a desplegar el servicio en Render (o espera unos minutos): "
-                "el token ya obtenido antes del consentimiento queda en caché hasta "
-                "por una hora y sigue siendo rechazado hasta que se pida uno nuevo."
-            )
-        return None, f"Microsoft Graph devolvió un error ({exc.response.status_code}). {detalle}{pista}"
+        diagnostico = _diagnostico_http(exc.response, token)
+        return None, (
+            f"Microsoft Graph devolvió un error ({exc.response.status_code}). "
+            f"{detalle} {diagnostico}"
+        )
     except Exception as exc:  # noqa: BLE001
         return None, f"No se pudo contactar a Microsoft Graph: {exc}"
