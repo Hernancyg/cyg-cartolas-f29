@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Reuniones · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Reuniones de Hoy</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Tomadas directo de tu calendario de Outlook. Solo tú (admin) puedes ver esta pestaña por ahora.</p>
+
+{% if config_pendiente %}
+<div class="alert alert-info">
+  <strong>Falta conectar Outlook.</strong> Para que esta pestaña muestre tus reuniones reales, necesitas crear una
+  app en Azure/Microsoft Entra ID (permiso de aplicación <code>Calendars.Read</code>, con consentimiento de
+  administrador) y configurar en Render las variables <code>MS_CLIENT_ID</code>, <code>MS_CLIENT_SECRET</code>,
+  <code>MS_TENANT_ID</code> y <code>MS_USER_UPN</code> (tu correo de Outlook). El paso a paso completo está en el
+  <code>README.md</code> del repositorio, sección "Reuniones (Microsoft Graph)".
+</div>
+{% elif error %}
+<div class="alert alert-warn">{{ error }}</div>
+{% elif not reuniones %}
+<div class="alert alert-info">No tienes reuniones agendadas para hoy.</div>
+{% else %}
+<div class="card highlight">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('calendar', 18) }}</div>
+    <div class="section-title">Agenda de hoy</div>
+  </div>
+
+  {% for r in reuniones %}
+  <div class="reunion-card" data-inicio="{{ r.inicio }}" data-asunto="{{ r.asunto }}" data-tipo="{{ r.tipo or '' }}" data-enlace="{{ r.enlace or '' }}">
+    <div class="reunion-hora">{{ r.inicio[11:16] if r.inicio else '—' }}</div>
+    <div class="reunion-info">
+      <div class="reunion-asunto">{{ r.asunto }}</div>
+      {% if r.organizador %}<div class="reunion-organizador">{{ r.organizador }}</div>{% endif %}
+    </div>
+    {% if r.tipo == 'teams' %}<span class="meeting-tag teams">Teams</span>
+    {% elif r.tipo == 'zoom' %}<span class="meeting-tag zoom">Zoom</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script>
+(function(){
+  var reuniones = {{ reuniones | tojson }};
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function showToast(opts) {
+    var stack = document.getElementById('toast-stack');
+    var el = document.createElement('div');
+    el.className = 'toast';
+    var linkRow = '';
+    if (opts.link) {
+      linkRow = '<div class="toast-link-row"><code>' + escapeHtml(opts.link) + '</code>' +
+        '<button class="toast-copy-btn" type="button">Copiar</button></div>';
+    }
+    el.innerHTML =
+      '<div class="toast-icon">{{ icon("calendar", 18) }}</div>' +
+      '<div class="toast-body">' +
+        '<div class="toast-title">' + escapeHtml(opts.title) + '</div>' +
+        '<div class="toast-text">' + escapeHtml(opts.text) + '</div>' +
+        linkRow +
+        '<div class="toast-time">' + new Date().toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'}) + '</div>' +
+      '</div>' +
+      '<button class="toast-close" type="button" aria-label="Cerrar">×</button>';
+    stack.appendChild(el);
+    el.querySelector('.toast-close').addEventListener('click', function(){ el.remove(); });
+    var copyBtn = el.querySelector('.toast-copy-btn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function(){
+        var done = function(){ copyBtn.textContent = 'Copiado ✓'; setTimeout(function(){ copyBtn.textContent='Copiar'; }, 2000); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(opts.link).then(done).catch(done);
+        } else { done(); }
+      });
+    }
+    setTimeout(function(){ if (el.parentNode) el.remove(); }, 30000);
+  }
+
+  function programarAlertas() {
+    var ahora = Date.now();
+    reuniones.forEach(function(r){
+      if (!r.inicio) return;
+      var inicio = new Date(r.inicio).getTime();
+      if (isNaN(inicio)) return;
+
+      var msRecordatorio = inicio - 15*60*1000 - ahora;
+      if (msRecordatorio > 0 && msRecordatorio < 24*60*60*1000) {
+        setTimeout(function(){
+          showToast({
+            title: 'En 15 minutos: ' + r.asunto,
+            text: 'Procura tener todo listo para la reunión.'
+          });
+        }, msRecordatorio);
+      }
+
+      if (r.tipo === 'zoom' && r.enlace) {
+        var msZoom = inicio - 5*60*1000 - ahora;
+        if (msZoom > 0 && msZoom < 24*60*60*1000) {
+          setTimeout(function(){
+            showToast({
+              title: 'Link de Zoom listo: ' + r.asunto,
+              text: 'Cópialo para enviárselo al cliente.',
+              link: r.enlace
+            });
+          }, msZoom);
+        }
+      }
+    });
+  }
+
+  programarAlertas();
+})();
+</script>
+{% endblock %}

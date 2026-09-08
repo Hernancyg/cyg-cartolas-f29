@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Indicadores · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Indicadores Económicos</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Valores del día, actualizados automáticamente desde mindicador.cl.</p>
+
+{% if error %}
+<div class="alert alert-warn">{{ error }}</div>
+{% endif %}
+
+{% if not filas %}
+<div class="alert alert-info">No se pudieron cargar los indicadores en este momento. Vuelve a intentar en unos minutos.</div>
+{% else %}
+<div class="card highlight">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('info', 18) }}</div>
+    <div class="section-title">Valores vigentes{% if fecha_api %} — {{ fecha_api[:10] }}{% endif %}</div>
+  </div>
+
+  <div class="metrics">
+    {% for f in filas %}
+    <div class="metric">
+      <div class="k">{{ f.label }}</div>
+      <div class="v">{{ f.valor_fmt }}</div>
+      <div class="muted" style="font-size:0.78rem;margin-top:2px">{{ f.detalle }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<p class="muted" style="margin-top:1rem">Fuente: <a href="https://mindicador.cl" target="_blank" rel="noopener">mindicador.cl</a> (API pública). Los valores se refrescan cada 10 minutos.</p>
+{% endblock %}
