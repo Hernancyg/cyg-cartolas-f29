@@ -56,7 +56,7 @@
 
 :root[data-theme="dark"] {
   --navy-2: #F1F4FF; --sidebar-grad-1: #070C18; --sidebar-grad-2: #0F1830;
-  --indigo: #4C8DFF; --indigo-rgb: 76,141,255;
+  --indigo: #4C8DFF; --indigo-rgb: 76,141,255; --indigo-dark: #3A78E0;
   --teal: #1FC7B6; --teal-rgb: 31,199,182;
   --emerald: #2FDE9A; --emerald-rgb: 47,222,154;
   --amber: #F0A93E; --amber-rgb: 240,169,62;
@@ -281,35 +281,50 @@ a { color: var(--indigo); text-decoration: none; }
 
 .bank-card {
   border-radius: 12px;
-  border: 1px solid var(--card-border);
-  background: var(--card-bg);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  color: var(--navy-2);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
   font-weight: 600;
   font-size: 0.84rem;
   height: 76px;
-  box-shadow: 0 1px 2px rgba(16,24,40,0.05);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
   padding: 6px 8px;
   width: 100%;
   transition: all .2s ease;
 }
-.bank-card:hover { border-color: rgba(var(--indigo-rgb),0.4); box-shadow: 0 2px 10px rgba(var(--indigo-rgb),0.18); }
-.bank-card.selected { background: linear-gradient(135deg, var(--indigo), var(--teal)); border-color: transparent; color: var(--btn-text); }
+.bank-card:hover { transform: translateY(-2px); color: var(--navy-2); }
+.bank-card:hover .bank-logo-wrap img { filter: drop-shadow(0 2px 10px rgba(var(--indigo-rgb),0.35)); }
+.bank-card.selected { color: var(--indigo); }
+.bank-card.selected .bank-logo-wrap img { filter: drop-shadow(0 0 10px rgba(var(--indigo-rgb),0.55)); }
+.bank-card.selected::after {
+  content: ""; width: 22px; height: 3px; border-radius: 2px; margin-top: -2px;
+  background: linear-gradient(135deg, var(--indigo), var(--teal));
+}
 
-.bank-logo-wrap { height: 30px; display: flex; align-items: center; justify-content: center; }
-.bank-logo-wrap img { max-height: 30px; max-width: 90px; object-fit: contain; }
-/* Varios logos de banco llevan una sombra/trazo pensado para fondo claro
-   (se nota como un halo oscuro sobre fondo oscuro) — se les da un chip
-   blanco detrás solo en tema oscuro, como hacen la mayoría de apps con
-   logos de marcas de terceros. */
-:root[data-theme="dark"] .bank-logo-wrap {
-  background: #FFFFFF; border-radius: 8px; padding: 5px 12px; height: 30px; box-sizing: content-box;
+/* Los logos van "sueltos" (sin caja/chip detrás), directo sobre el fondo
+   de la app — pedido explícito del usuario. Algunos PNG de banco (Bci,
+   Santander, Security, Banco de Chile) tienen un recorte de origen algo
+   irregular (un fino ribete claro en el borde) que se nota un poco más
+   sobre fondo oscuro que sobre blanco, pero se ve aceptable a este tamaño;
+   si se quiere perfecto habría que reemplazar esos PNG por versiones
+   oficiales de mejor calidad. */
+.bank-logo-wrap { height: 32px; display: flex; align-items: center; justify-content: center; }
+.bank-logo-wrap img { max-height: 32px; max-width: 96px; object-fit: contain; transition: filter .2s ease; }
+/* Bci, Santander y Security tienen un recorte de origen algo irregular
+   (un ribete claro pegado al borde del logo) que se nota como un halo
+   blanco sobre fondo oscuro cuando el logo va suelto — a estos 3 se les
+   da un chip translúcido apenas perceptible, solo para disimular ese
+   ribete, sin volver a la caja sólida de antes. El resto de los bancos
+   queda sin fondo. */
+:root[data-theme="dark"] .bank-card[data-key="bci"] .bank-logo-wrap,
+:root[data-theme="dark"] .bank-card[data-key="santander"] .bank-logo-wrap,
+:root[data-theme="dark"] .bank-card[data-key="security"] .bank-logo-wrap {
+  background: rgba(255,255,255,0.92); border-radius: 8px; padding: 4px 10px; height: 32px; box-sizing: content-box;
 }
 .bank-accent { width: 26px; height: 4px; border-radius: 2px; background: currentColor; opacity: .7; }
 
@@ -351,8 +366,8 @@ a { color: var(--indigo); text-decoration: none; }
 .dropzone-left .cloud-icon { color: var(--indigo); }
 .dropzone-left .dz-title { font-weight: 700; color: var(--navy-2); font-size: 1rem; }
 .dropzone-left .dz-or { color: var(--text-muted); font-size: 0.85rem; }
-.dropzone-illustration { width: 210px; max-width: 35%; flex-shrink: 0; opacity: .95; }
-.dropzone-illustration img { width: 100%; display: block; }
+.dropzone-illustration { width: 150px; max-width: 35%; flex-shrink: 0; opacity: .95; }
+.dropzone-illustration img, .dropzone-illustration svg { width: 100%; display: block; }
 .dropzone input[type=file] { display: none; }
 
 .btn {
@@ -550,3 +565,54 @@ table.data-table .badge-warn { color: var(--amber); font-weight: 600; }
 .mensual-panel .mensual-actions { display: flex; align-items: center; gap: 10px; }
 .mensual-panel .mensual-total { margin-right: auto; font-size: 13px; color: var(--navy-2); font-weight: 600; }
 .btn-sm { padding: 6px 14px; font-size: 0.82rem; }
+
+/* ---------------------------------------------------------------------- */
+/* Reuniones (Outlook)                                                     */
+/* ---------------------------------------------------------------------- */
+.reunion-card {
+  display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-radius: var(--r-md);
+  background: var(--table-bg); border: 1px solid var(--table-border); margin-bottom: 10px;
+}
+.reunion-hora { font-family: var(--font-heading); font-weight: 700; font-size: 1rem; color: var(--navy-2); min-width: 92px; }
+.reunion-info { flex: 1; min-width: 0; }
+.reunion-asunto { font-weight: 700; color: var(--navy-2); }
+.reunion-organizador { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
+.meeting-tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .02em;
+}
+.meeting-tag.teams { background: rgba(91,95,199,0.18); color: #7B7FE0; }
+.meeting-tag.zoom { background: rgba(45,140,255,0.18); color: #2D8CFF; }
+
+.toast-stack {
+  position: fixed; top: 20px; right: 20px; z-index: 2000;
+  display: flex; flex-direction: column; gap: 12px; max-width: 340px;
+}
+.toast {
+  background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px;
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--card-shadow); padding: 14px 16px; display: flex; gap: 10px;
+  animation: toast-in .25s ease;
+}
+@keyframes toast-in { from { opacity:0; transform: translateY(-8px);} to { opacity:1; transform:none; } }
+.toast .toast-icon { color: var(--indigo); flex-shrink: 0; margin-top: 2px; }
+.toast .toast-body { flex: 1; min-width: 0; }
+.toast .toast-title { font-weight: 700; color: var(--navy-2); font-size: 0.86rem; margin-bottom: 3px; }
+.toast .toast-text { font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; }
+.toast .toast-time { font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; }
+.toast .toast-close {
+  background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px;
+  line-height: 1; padding: 2px; flex-shrink: 0;
+}
+.toast .toast-close:hover { color: var(--navy-2); }
+.toast-link-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.toast-link-row code {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.74rem; background: rgba(var(--indigo-rgb),0.08); padding: 4px 8px; border-radius: 6px;
+  color: var(--navy-2);
+}
+.toast-copy-btn {
+  background: var(--indigo); color: #fff; border: none; border-radius: 6px; padding: 4px 10px;
+  font-size: 0.74rem; font-weight: 700; cursor: pointer; flex-shrink: 0;
+}
+.toast-copy-btn:hover { background: var(--indigo-dark); }
