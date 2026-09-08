@@ -16,6 +16,16 @@ class Config:
     # --- Llave maestra de administrador (bypass de usuarios/contraseña) ---
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
+    # --- Microsoft Graph (pestaña "Reuniones", solo admin) ---
+    # App registrada en Azure/Microsoft Entra ID, permiso de aplicación
+    # Calendars.Read con consentimiento de administrador otorgado, y el
+    # correo (UPN) de la casilla de Outlook cuyo calendario se va a leer.
+    # Ver README para el paso a paso de creación de la app en Azure.
+    MS_CLIENT_ID = os.environ.get("MS_CLIENT_ID", "")
+    MS_CLIENT_SECRET = os.environ.get("MS_CLIENT_SECRET", "")
+    MS_TENANT_ID = os.environ.get("MS_TENANT_ID", "")
+    MS_USER_UPN = os.environ.get("MS_USER_UPN", "")
+
     # --- Flask ---
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "")
 
@@ -48,4 +58,11 @@ def validate_config(app):
             "ADMIN_PASSWORD no está configurado: no habrá clave maestra de "
             "administrador disponible (solo se podrá entrar con usuarios "
             "ya creados en Supabase)."
+        )
+    if not all(app.config.get(k) for k in ("MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_TENANT_ID", "MS_USER_UPN")):
+        app.logger.warning(
+            "Variables de Microsoft Graph incompletas (MS_CLIENT_ID/"
+            "MS_CLIENT_SECRET/MS_TENANT_ID/MS_USER_UPN): la pestaña "
+            "'Reuniones' mostrará un mensaje de configuración pendiente "
+            "en vez de las reuniones reales."
         )
