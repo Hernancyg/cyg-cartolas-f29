@@ -21,6 +21,34 @@ import requests
 _TOKEN_CACHE = {"access_token": None, "expires_at": 0}
 
 
+def _detalle_error_http(resp):
+    """Extrae un mensaje legible de una respuesta de error, sin asumir un
+    único formato: Graph normalmente devuelve {"error": {"message": "..."}}
+    pero Azure AD / la capa de autenticación a veces devuelve el formato
+    OAuth clásico {"error": "invalid_token", "error_description": "..."}
+    (con "error" como texto plano, no un objeto) — si no se contempla este
+    segundo formato, intentar leer .message sobre un string revienta con
+    un AttributeError que quedaba silenciado, dejando el mensaje en blanco
+    para quien lo ve en pantalla."""
+    try:
+        data = resp.json()
+    except Exception:  # noqa: BLE001
+        texto = (resp.text or "")[:200]
+        return texto or "(sin detalle en la respuesta)"
+
+    error = data.get("error")
+    if isinstance(error, dict):
+        msg = error.get("message") or error.get("code") or ""
+    elif isinstance(error, str):
+        msg = data.get("error_description") or error
+    else:
+        msg = ""
+    msg = (msg or "").strip()
+    if not msg:
+        return str(data)[:200]
+    return msg[:300]
+
+
 def _config_incompleta(cfg):
     return not all(cfg.get(k) for k in ("MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_TENANT_ID", "MS_USER_UPN"))
 
@@ -50,11 +78,7 @@ def _obtener_token(cfg):
         _TOKEN_CACHE["expires_at"] = ahora + int(data.get("expires_in", 3600))
         return token, None
     except requests.HTTPError as exc:
-        detalle = ""
-        try:
-            detalle = exc.response.json().get("error_description", "")[:200]
-        except Exception:  # noqa: BLE001
-            pass
+        detalle = _detalle_error_http(exc.response)
         return None, f"Azure rechazó la autenticación ({exc.response.status_code}). {detalle}"
     except Exception as exc:  # noqa: BLE001
         return None, f"No se pudo contactar a Microsoft (login.microsoftonline.com): {exc}"
@@ -91,11 +115,15 @@ def obtener_eventos_de_hoy(cfg, tz_iana="America/Santiago"):
         data = resp.json()
         return data.get("value", []), None
     except requests.HTTPError as exc:
-        detalle = ""
-        try:
-            detalle = exc.response.json().get("error", {}).get("message", "")[:200]
-        except Exception:  # noqa: BLE001
-            pass
-        return None, f"Microsoft Graph devolvió un error ({exc.response.status_code}). {detalle}"
+        detalle = _detalle_error_http(exc.response)
+        pista = ""
+        if exc.response.status_code == 401:
+            pista = (
+                " Si acabas de otorgar el consentimiento de administrador en Azure, "
+                "vuelve a desplegar el servicio en Render (o espera unos minutos): "
+                "el token ya obtenido antes del consentimiento queda en caché hasta "
+                "por una hora y sigue siendo rechazado hasta que se pida uno nuevo."
+            )
+        return None, f"Microsoft Graph devolvió un error ({exc.response.status_code}). {detalle}{pista}"
     except Exception as exc:  # noqa: BLE001
         return None, f"No se pudo contactar a Microsoft Graph: {exc}"
