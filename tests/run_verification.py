@@ -657,6 +657,26 @@ def main():
         _detalle_error_http(_FakeResp(None, text="")) == "(sin detalle en la respuesta ni en las cabeceras)",
     )
 
+    # ---- _diagnostico_http: info técnica de respaldo cuando no hay ningún
+    # detalle en el cuerpo ni en las cabeceras (caso real reportado por el
+    # usuario) — incluye la URL llamada y las cabeceras, pero NUNCA el
+    # token en sí, solo su longitud ----
+    from app.reuniones.graph_client import _diagnostico_http
+
+    class _FakeRequest:
+        def __init__(self, url):
+            self.url = url
+
+    class _FakeRespConReq(_FakeResp):
+        def __init__(self, *a, url="https://graph.microsoft.com/v1.0/users/x/calendarView", **kw):
+            super().__init__(*a, **kw)
+            self.request = _FakeRequest(url)
+
+    diag = _diagnostico_http(_FakeRespConReq(headers={"request-id": "abc-123"}), "token-de-prueba-1234567890")
+    check("_diagnostico_http: incluye la URL llamada", "calendarView" in diag)
+    check("_diagnostico_http: incluye las cabeceras de la respuesta", "request-id" in diag)
+    check("_diagnostico_http: incluye el largo del token, no el token en sí", "26 caracteres" in diag and "token-de-prueba" not in diag)
+
     # ---- Logout y login como 'trabajador' (no admin) ----
     client.post("/logout")
     r = client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
