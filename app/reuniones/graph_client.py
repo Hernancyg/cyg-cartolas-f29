@@ -29,24 +29,42 @@ def _detalle_error_http(resp):
     (con "error" como texto plano, no un objeto) — si no se contempla este
     segundo formato, intentar leer .message sobre un string revienta con
     un AttributeError que quedaba silenciado, dejando el mensaje en blanco
-    para quien lo ve en pantalla."""
+    para quien lo ve en pantalla.
+
+    Además, un 401 puede venir con el CUERPO de la respuesta completamente
+    vacío (sin JSON ni texto) — en ese caso el detalle real casi siempre
+    está en la cabecera HTTP `WWW-Authenticate` (RFC 6750: los servidores
+    OAuth que rechazan un bearer token suelen mandar ahí `error="..."` y
+    `error_description="..."` en vez de, o además de, un cuerpo)."""
+    partes = []
+
     try:
         data = resp.json()
     except Exception:  # noqa: BLE001
-        texto = (resp.text or "")[:200]
-        return texto or "(sin detalle en la respuesta)"
+        data = None
+    if isinstance(data, dict):
+        error = data.get("error")
+        if isinstance(error, dict):
+            msg = (error.get("message") or error.get("code") or "").strip()
+        elif isinstance(error, str):
+            msg = (data.get("error_description") or error).strip()
+        else:
+            msg = str(data)[:200] if data else ""
+        if msg:
+            partes.append(msg)
 
-    error = data.get("error")
-    if isinstance(error, dict):
-        msg = error.get("message") or error.get("code") or ""
-    elif isinstance(error, str):
-        msg = data.get("error_description") or error
-    else:
-        msg = ""
-    msg = (msg or "").strip()
-    if not msg:
-        return str(data)[:200]
-    return msg[:300]
+    try:
+        www_auth = resp.headers.get("WWW-Authenticate", "")
+    except Exception:  # noqa: BLE001
+        www_auth = ""
+    if www_auth:
+        partes.append(f"WWW-Authenticate: {www_auth}")
+
+    if not partes:
+        texto = (resp.text or "")[:200]
+        partes.append(texto or "(sin detalle en la respuesta ni en las cabeceras)")
+
+    return " | ".join(partes)[:400]
 
 
 def _config_incompleta(cfg):
