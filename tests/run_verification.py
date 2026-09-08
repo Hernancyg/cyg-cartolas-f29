@@ -605,6 +605,42 @@ def main():
     check("GET /reuniones/ 200 (admin, sin credenciales MS configuradas)", r.status_code == 200)
     check("reuniones muestra aviso de configuración pendiente", "Falta conectar Outlook" in r.get_data(as_text=True))
 
+    # ---- _detalle_error_http: extrae mensaje legible sin importar el
+    # formato de error que devuelva Azure/Graph (bug real: un 401 de la
+    # capa de autenticación con formato {"error":"invalid_token",...}
+    # quedaba en blanco porque el código solo esperaba el formato de Graph
+    # {"error":{"message":...}}) ----
+    from app.reuniones.graph_client import _detalle_error_http
+
+    class _FakeResp:
+        def __init__(self, payload=None, text=""):
+            self._payload = payload
+            self.text = text
+        def json(self):
+            if self._payload is None:
+                raise ValueError("no json")
+            return self._payload
+
+    check(
+        "_detalle_error_http: formato Graph {error:{message}}",
+        _detalle_error_http(_FakeResp({"error": {"message": "Access token missing"}})) == "Access token missing",
+    )
+    check(
+        "_detalle_error_http: formato OAuth {error:'invalid_token', error_description}",
+        "CompactToken" in _detalle_error_http(_FakeResp({
+            "error": "invalid_token",
+            "error_description": "CompactToken parsing failed",
+        })),
+    )
+    check(
+        "_detalle_error_http: formato OAuth sin error_description usa el código",
+        _detalle_error_http(_FakeResp({"error": "invalid_token"})) == "invalid_token",
+    )
+    check(
+        "_detalle_error_http: respuesta no-JSON usa el texto crudo",
+        _detalle_error_http(_FakeResp(None, text="Bad Gateway")) == "Bad Gateway",
+    )
+
     # ---- Logout y login como 'trabajador' (no admin) ----
     client.post("/logout")
     r = client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
