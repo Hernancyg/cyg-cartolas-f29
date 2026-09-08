@@ -10,10 +10,7 @@ BANKS = [
     {"key": "santander", "name": "Santander", "color": "#EC0000", "logo": "santander.png"},
     {"key": "itau", "name": "Itaú", "color": "#004A93", "logo": "itau.png"},
     {"key": "scotiabank", "name": "Scotiabank", "color": "#EC111A", "logo": "scotiabank.png"},
-    {"key": "falabella", "name": "Falabella", "color": "#6DBE45", "logo": "falabella.png"},
     {"key": "security", "name": "Security", "color": "#4A4A4A", "logo": "security.png"},
-    {"key": "banco_internacional", "name": "Banco Internacional", "color": "#F5A623", "logo": "banco_internacional.png"},
-    {"key": "consorcio", "name": "Consorcio", "color": "#2E8B8B", "logo": None},
 ]
 
 # Mapea el nombre de la tarjeta elegida al nombre que devuelve detect_bank()
