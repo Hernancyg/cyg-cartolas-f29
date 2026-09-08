@@ -315,15 +315,10 @@ a { color: var(--indigo); text-decoration: none; }
    oficiales de mejor calidad. */
 .bank-logo-wrap { height: 32px; display: flex; align-items: center; justify-content: center; }
 .bank-logo-wrap img { max-height: 32px; max-width: 96px; object-fit: contain; transition: filter .2s ease; }
-/* Bci, Santander y Security tienen un recorte de origen algo irregular
-   (un ribete claro pegado al borde del logo) que se nota como un halo
-   blanco sobre fondo oscuro cuando el logo va suelto — a estos 3 se les
-   da un chip translúcido apenas perceptible, solo para disimular ese
-   ribete, sin volver a la caja sólida de antes. El resto de los bancos
-   queda sin fondo. */
-:root[data-theme="dark"] .bank-card[data-key="bci"] .bank-logo-wrap,
-:root[data-theme="dark"] .bank-card[data-key="santander"] .bank-logo-wrap,
-:root[data-theme="dark"] .bank-card[data-key="security"] .bank-logo-wrap {
+/* En tema oscuro todos los logos van en un chip blanco (confirmado por el
+   usuario tras ver Bci con y sin chip — se ve mejor parejo). En tema claro
+   siguen sueltos, sin chip, porque ahí no hace falta. */
+:root[data-theme="dark"] .bank-logo-wrap {
   background: rgba(255,255,255,0.92); border-radius: 8px; padding: 4px 10px; height: 32px; box-sizing: content-box;
 }
 .bank-accent { width: 26px; height: 4px; border-radius: 2px; background: currentColor; opacity: .7; }
@@ -616,3 +611,31 @@ table.data-table .badge-warn { color: var(--amber); font-weight: 600; }
   font-size: 0.74rem; font-weight: 700; cursor: pointer; flex-shrink: 0;
 }
 .toast-copy-btn:hover { background: var(--indigo-dark); }
+
+/* ---------------------------------------------------------------------- */
+/* Overlay de carga (cualquier envío de formulario)                       */
+/* ---------------------------------------------------------------------- */
+.loading-overlay {
+  position: fixed; inset: 0; z-index: 3000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(4,7,15,0.45); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  opacity: 0; pointer-events: none; transition: opacity .15s ease;
+}
+.loading-overlay.visible { opacity: 1; pointer-events: all; }
+.loading-box {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--r-lg);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--card-shadow); padding: 28px 40px;
+}
+.loading-spinner {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 3px solid rgba(var(--indigo-rgb),0.2);
+  border-top-color: var(--indigo);
+  animation: loading-spin .8s linear infinite;
+}
+.loading-text { font-family: var(--font-heading); font-weight: 700; color: var(--navy-2); font-size: 0.92rem; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner { animation-duration: 2.4s; }
+}
