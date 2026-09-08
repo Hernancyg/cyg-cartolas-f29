@@ -54,7 +54,7 @@
         <div class="dz-title">Arrastra tu archivo aquí</div>
         <div class="dz-or">o</div>
         <label for="archivo" class="btn" style="cursor:pointer;">Seleccionar archivo</label>
-        <input type="file" id="archivo" name="archivo" accept=".pdf,.xlsx,.xlsm,.xls" {{ 'disabled' if not banco_elegido else '' }} onchange="document.getElementById('form-upload').submit()">
+        <input type="file" id="archivo" name="archivo" accept=".pdf,.xlsx,.xlsm,.xls" {{ 'disabled' if not banco_elegido else '' }} onchange="document.getElementById('form-upload').requestSubmit()">
       </div>
       <div class="dropzone-illustration">
         <svg viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

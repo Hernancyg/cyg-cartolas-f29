@@ -71,6 +71,47 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+
+<div class="loading-overlay" id="loading-overlay" aria-hidden="true">
+  <div class="loading-box">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Procesando…</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('loading-overlay');
+  var visible = false;
+  var hideTimer = null;
+
+  function show() {
+    if (visible) return;
+    visible = true;
+    overlay.classList.add('visible');
+    // Salvavidas: si la respuesta es una descarga de archivo (Excel/PDF/CSV),
+    // la página nunca navega, así que el overlay se ocultaría solo si
+    // esperáramos un cambio de página que no va a llegar — se oculta solo
+    // después de un rato como tope máximo.
+    hideTimer = setTimeout(hide, 12000);
+  }
+
+  function hide() {
+    visible = false;
+    overlay.classList.remove('visible');
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  }
+
+  document.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return; // p.ej. el confirm() de "Eliminar usuario" cancelado
+    show();
+  }, false);
+
+  // Vuelve a mostrar la página normal al navegar hacia atrás/adelante
+  // (bfcache) o al cargar cualquier página nueva.
+  window.addEventListener('pageshow', hide);
+})();
+</script>
 <script>
 (function () {
   var ICON_MOON = {{ icon('moon', 16) | tojson }};
