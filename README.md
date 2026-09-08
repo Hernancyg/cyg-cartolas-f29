@@ -32,9 +32,46 @@ propia (Flask + Supabase + Render), para poder controlar el HTML/CSS al
 1. Crea un nuevo **Web Service** en Render, conectado a este repositorio.
 2. **Build Command**: `pip install -r requirements.txt`
 3. **Start Command**: `gunicorn wsgi:app`
-4. En **Environment**, agrega las mismas 4 variables que en `.env`
+4. En **Environment**, agrega las mismas variables que en `.env`
    (`SUPABASE_URL`, `SUPABASE_KEY`, `ADMIN_PASSWORD`, `FLASK_SECRET_KEY`) —
    además, `FLASK_DEBUG` no debe estar configurada (o en `0`).
+5. Opcional: `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID`, `MS_USER_UPN`
+   para la pestaña "Reuniones" — ver sección dedicada más abajo. Si se
+   dejan vacías, esa pestaña muestra un aviso de configuración pendiente en
+   vez de fallar.
+
+## Reuniones (Microsoft Graph)
+
+La pestaña "Reuniones" (solo visible para el rol admin) lee de verdad el
+calendario de Outlook de una casilla fija, vía Microsoft Graph API, sin
+login interactivo (flujo *client credentials*: la app entra "como sí
+misma"). Para activarla:
+
+1. Entra a [portal.azure.com](https://portal.azure.com) → **Microsoft Entra
+   ID** → **Registros de aplicaciones** → **Nuevo registro**. Dale un nombre
+   (p. ej. "CyG Cartolas - Reuniones") y deja el resto por defecto.
+2. Copia de la pantalla de "Introducción": **Id. de aplicación (cliente)**
+   → `MS_CLIENT_ID`, y **Id. de directorio (inquilino)** → `MS_TENANT_ID`.
+3. **Certificados y secretos** → **Nuevo secreto de cliente** → copia el
+   **valor** (no el Id.) apenas se genera, no se vuelve a mostrar →
+   `MS_CLIENT_SECRET`.
+4. **Permisos de API** → **Agregar un permiso** → **Microsoft Graph** →
+   **Permisos de aplicación** (no "delegados") → busca `Calendars.Read` →
+   agrégalo.
+5. En esa misma pantalla, botón **"Conceder consentimiento de
+   administrador para \<tu organización\>"** — sin este paso el permiso
+   queda pedido pero no autorizado, y la API va a rechazar las
+   solicitudes. Necesitas ser administrador global (o que alguien que lo
+   sea haga este clic).
+6. `MS_USER_UPN` es el correo de la casilla de Outlook cuyo calendario se
+   va a leer (por ejemplo `hhernandez@cyggroup.cl`) — tiene que ser una
+   casilla real del mismo tenant de Microsoft 365.
+7. Agrega las 4 variables en Render (Environment) y vuelve a desplegar.
+
+Los enlaces de Zoom se extraen automáticamente del cuerpo de la invitación
+(cuando el organizador pega el link de Zoom en la descripción de la
+reunión); los enlaces de Teams vienen directo del campo `onlineMeeting`
+de Graph cuando la reunión se creó como "Teams meeting" desde Outlook.
 
 ## Estructura del proyecto
 
