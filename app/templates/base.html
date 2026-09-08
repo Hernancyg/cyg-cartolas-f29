@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}C&amp;G Group{% endblock %}</title>
+<script>
+// Aplica el tema guardado ANTES de pintar la página, para evitar el
+// "flash" de tema claro al recargar con el tema oscuro activo.
+(function () {
+  try {
+    var t = localStorage.getItem('cyg-theme');
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.setAttribute('data-theme', t);
+    }
+  } catch (e) {}
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 {% block extra_head %}{% endblock %}
 </head>
@@ -32,6 +47,10 @@
     </nav>
     <hr class="sidebar-divider">
     <div class="sidebar-footer">
+      <button type="button" class="theme-toggle" id="theme-toggle" onclick="cygToggleTheme()">
+        <span id="theme-toggle-icon">{{ icon('moon', 16) }}</span>
+        <span id="theme-toggle-label">Tema oscuro</span>
+      </button>
       <div class="connected-as">Conectado como <strong>{{ usuario_actual.nombre }}</strong>{% if es_admin %} (admin){% endif %}</div>
       <form method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -52,5 +71,31 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+<script>
+(function () {
+  var ICON_MOON = {{ icon('moon', 16) | tojson }};
+  var ICON_SUN = {{ icon('sun', 16) | tojson }};
+
+  function aplicar(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    var iconEl = document.getElementById('theme-toggle-icon');
+    var labelEl = document.getElementById('theme-toggle-label');
+    if (iconEl) { iconEl.innerHTML = (t === 'dark') ? ICON_SUN : ICON_MOON; }
+    if (labelEl) { labelEl.textContent = (t === 'dark') ? 'Tema claro' : 'Tema oscuro'; }
+  }
+
+  window.cygToggleTheme = function () {
+    var actual = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    var nuevo = actual === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('cyg-theme', nuevo); } catch (e) {}
+    aplicar(nuevo);
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var actual = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    aplicar(actual);
+  });
+})();
+</script>
 </body>
 </html>

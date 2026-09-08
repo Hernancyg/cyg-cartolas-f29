@@ -7,7 +7,7 @@
 <div class="page-title-underline"></div>
 <p class="page-subtitle">Selecciona tu banco y carga tu cartola en PDF o Excel.</p>
 
-<div class="card">
+<div class="card mergeable">
   <div class="section-header">
     <div class="section-badge">{{ icon('bank', 18) }}</div>
     <div class="section-title">1. Selecciona tu banco</div>
@@ -35,7 +35,7 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card mergeable">
   <div class="section-header">
     <div class="section-badge">{{ icon('upload', 18) }}</div>
     <div class="section-title">2. Selecciona y carga tu cartola</div>
@@ -79,7 +79,7 @@
   </div>
 
   {% if resultado.transacciones %}
-  <div class="card">
+  <div class="card highlight">
     <div class="section-title" style="margin-bottom:6px">Ajustes antes de exportar (opcional)</div>
     <p class="muted" style="margin-top:0">Si algún movimiento quedó mal separado, puedes editar fecha, detalle, cargo o abono, o agregar/quitar filas antes de descargar.</p>
 
