@@ -593,6 +593,18 @@ def main():
     check("crear usuario -> 200", r.status_code == 200)
     check("usuario nuevo quedó en la tabla", any(u["usuario"] == "nuevo_test" for u in FAKE._store.get("usuarios", [])))
 
+    # ---- Indicadores (nueva pestaña, todos los roles) ----
+    r = client.get("/indicadores/")
+    check("GET /indicadores/ 200 (admin)", r.status_code == 200)
+
+    # ---- Reuniones (nueva pestaña, solo admin) ----
+    # En este entorno de pruebas MS_CLIENT_ID/MS_CLIENT_SECRET/MS_TENANT_ID/
+    # MS_USER_UPN no están configurados, así que debe mostrar el aviso de
+    # configuración pendiente en vez de fallar.
+    r = client.get("/reuniones/")
+    check("GET /reuniones/ 200 (admin, sin credenciales MS configuradas)", r.status_code == 200)
+    check("reuniones muestra aviso de configuración pendiente", "Falta conectar Outlook" in r.get_data(as_text=True))
+
     # ---- Logout y login como 'trabajador' (no admin) ----
     client.post("/logout")
     r = client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
@@ -609,6 +621,12 @@ def main():
 
     r = client.get("/global/")
     check("trabajador SÍ puede ver Calcular Global", r.status_code == 200)
+
+    r = client.get("/indicadores/")
+    check("trabajador SÍ puede ver Indicadores", r.status_code == 200)
+
+    r = client.get("/reuniones/")
+    check("trabajador NO puede ver Reuniones (403)", r.status_code == 403)
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")
     if FAILED:
