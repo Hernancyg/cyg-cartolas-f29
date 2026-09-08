@@ -613,9 +613,10 @@ def main():
     from app.reuniones.graph_client import _detalle_error_http
 
     class _FakeResp:
-        def __init__(self, payload=None, text=""):
+        def __init__(self, payload=None, text="", headers=None):
             self._payload = payload
             self.text = text
+            self.headers = headers or {}
         def json(self):
             if self._payload is None:
                 raise ValueError("no json")
@@ -639,6 +640,21 @@ def main():
     check(
         "_detalle_error_http: respuesta no-JSON usa el texto crudo",
         _detalle_error_http(_FakeResp(None, text="Bad Gateway")) == "Bad Gateway",
+    )
+    # Caso real reportado por el usuario: 401 con cuerpo COMPLETAMENTE vacío
+    # (ni JSON ni texto) — el detalle real vive en la cabecera WWW-Authenticate
+    # (RFC 6750), no en el cuerpo. Antes de este fix, este caso caía siempre
+    # en "(sin detalle en la respuesta...)" sin mirar las cabeceras.
+    check(
+        "_detalle_error_http: cuerpo vacío, detalle real en WWW-Authenticate",
+        "invalid_token" in _detalle_error_http(_FakeResp(
+            None, text="",
+            headers={"WWW-Authenticate": 'Bearer realm="Microsoft Graph", error="invalid_token", error_description="Lifetime validation failed"'},
+        )),
+    )
+    check(
+        "_detalle_error_http: cuerpo y cabeceras vacíos -> mensaje explícito de 'sin detalle'",
+        _detalle_error_http(_FakeResp(None, text="")) == "(sin detalle en la respuesta ni en las cabeceras)",
     )
 
     # ---- Logout y login como 'trabajador' (no admin) ----
