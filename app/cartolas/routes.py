@@ -17,7 +17,7 @@ import io
 
 from flask import Blueprint, render_template, request, send_file, flash, redirect, url_for
 
-from app.auth.decorators import login_required
+from app.auth.decorators import pagina_required
 from app.cartolas.banks import BANKS, BANK_DISPLAY_TO_DETECTED, bank_by_key
 from app.parsers.bank_parsers import parse_pdf, parse_excel, Transaction
 from app.parsers.output_writer import build_output_workbook
@@ -28,7 +28,7 @@ ALLOWED_EXT = (".pdf", ".xlsx", ".xlsm", ".xls")
 
 
 @cartolas_bp.route("/", methods=["GET"])
-@login_required
+@pagina_required("cartolas.index")
 def index():
     banco_key = request.args.get("banco")
     banco = bank_by_key(banco_key) if banco_key else None
@@ -42,7 +42,7 @@ def index():
 
 
 @cartolas_bp.route("/procesar", methods=["POST"])
-@login_required
+@pagina_required("cartolas.index")
 def procesar():
     banco_key = request.form.get("banco")
     banco = bank_by_key(banco_key) if banco_key else None
@@ -102,7 +102,7 @@ def procesar():
 
 
 @cartolas_bp.route("/descargar", methods=["POST"])
-@login_required
+@pagina_required("cartolas.index")
 def descargar():
     fechas = request.form.getlist("fecha")
     detalles = request.form.getlist("detalle")
