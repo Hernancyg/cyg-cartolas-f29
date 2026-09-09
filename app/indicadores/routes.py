@@ -16,7 +16,7 @@ import time
 import requests
 from flask import Blueprint, render_template
 
-from app.auth.decorators import login_required
+from app.auth.decorators import pagina_required
 
 indicadores_bp = Blueprint("indicadores", __name__, url_prefix="/indicadores")
 
@@ -77,7 +77,7 @@ def _formatear(valor, unidad):
 
 
 @indicadores_bp.route("/", methods=["GET"])
-@login_required
+@pagina_required("indicadores.index")
 def index():
     data, error = _fetch_indicadores()
     filas = []
