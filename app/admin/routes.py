@@ -7,7 +7,7 @@ que permite tener una base de datos real detrás.
 
 import io
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 
 from app.auth.decorators import admin_required, login_required
 from app.auth.security import hash_password
@@ -204,6 +204,23 @@ def pestanas_guardar():
     for p in configurables:
         valor = request.form.get(f"vis_{p['endpoint']}", "admin")
         mapa[p["endpoint"]] = (valor == "admin")
-    visibilidad_repo.guardar_todas(mapa)
+    try:
+        visibilidad_repo.guardar_todas(mapa)
+    except Exception as exc:  # noqa: BLE001
+        # La causa más común es que todavía no se haya ejecutado
+        # `migration/003_visibilidad_pestanas.sql` en Supabase (la tabla
+        # `visibilidad_pestanas` no existe). En vez de un Internal Server
+        # Error sin explicación, se avisa qué falta y no se pierde nada:
+        # la lectura (`obtener_mapa`) ya tolera esto y sigue usando los
+        # valores por defecto de `app/nav.py`.
+        current_app.logger.warning("No se pudo guardar visibilidad_pestanas: %s", exc)
+        flash(
+            "No se pudo guardar: falta crear la tabla 'visibilidad_pestanas' en Supabase "
+            "(ejecuta migration/003_visibilidad_pestanas.sql una vez en el SQL Editor) o "
+            "hubo un problema de conexión. Mientras tanto, las pestañas siguen con su "
+            "configuración de siempre.",
+            "error",
+        )
+        return redirect(url_for("admin.pestanas"))
     flash("Visibilidad de pestañas guardada. Se aplica de inmediato.", "success")
     return redirect(url_for("admin.pestanas"))
