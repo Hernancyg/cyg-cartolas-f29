@@ -10,13 +10,15 @@
 <div class="nav subnav">
   <a href="{{ url_for('admin.cuentas') }}" class="nav-item">Cuentas F29</a>
   <a href="{{ url_for('admin.usuarios') }}" class="nav-item active">Usuarios</a>
+  <a href="{{ url_for('admin.pestanas') }}" class="nav-item">Pestañas</a>
 </div>
 
 <div class="card">
   <div class="section-title" style="margin-bottom:6px">{{ icon('user', 16) }} Usuarios</div>
   <p class="muted" style="margin-top:0">
-    Rol <strong>trabajador</strong>: solo ve "Subir Cartolas" y "Generar F29". Rol <strong>admin</strong>: ve todo, incluida esta pantalla.
-    No puedes cambiar tu propio rol ni desactivarte, para no quedar bloqueado.
+    Rol <strong>admin</strong>: ve todas las pestañas, incluida esta pantalla. Rol <strong>trabajador</strong>: ve las pestañas que estén
+    marcadas "todos los usuarios" en <a href="{{ url_for('admin.pestanas') }}">Administrador → Pestañas</a> — por defecto, todas menos
+    Reuniones, Conciliación y Administrador. No puedes cambiar tu propio rol ni desactivarte, para no quedar bloqueado.
   </p>
 
   {% if usuarios %}

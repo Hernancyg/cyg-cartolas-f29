@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Pestañas · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">⚙ Panel de Administrador</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Elige, para cada pestaña, si la ven todos los usuarios o solo los administradores. Se aplica de inmediato, sin tener que crear ni editar usuarios uno por uno.</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('admin.cuentas') }}" class="nav-item">Cuentas F29</a>
+  <a href="{{ url_for('admin.usuarios') }}" class="nav-item">Usuarios</a>
+  <a href="{{ url_for('admin.pestanas') }}" class="nav-item active">Pestañas</a>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('shield', 16) }} Visibilidad de pestañas</div>
+  <p class="muted" style="margin-top:0">
+    "Administrador" no aparece en esta lista: siempre queda solo para administradores, ya que es la
+    pantalla que administra usuarios y esta misma configuración.
+  </p>
+
+  <form method="post" action="{{ url_for('admin.pestanas_guardar') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Pestaña</th><th>Todos los usuarios</th><th>Solo administradores</th></tr></thead>
+        <tbody>
+          {% for p in paginas %}
+          <tr>
+            <td>{{ icon(p.icon, 16) }} {{ p.label }}</td>
+            <td style="text-align:center">
+              <input type="radio" name="vis_{{ p.endpoint }}" value="todos" {{ 'checked' if not p.admin_only else '' }}>
+            </td>
+            <td style="text-align:center">
+              <input type="radio" name="vis_{{ p.endpoint }}" value="admin" {{ 'checked' if p.admin_only else '' }}>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="btn" style="margin-top:14px">{{ icon('save', 16) }} Guardar visibilidad</button>
+  </form>
+</div>
+{% endblock %}
