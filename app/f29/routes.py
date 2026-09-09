@@ -18,7 +18,7 @@ import io
 
 from flask import Blueprint, render_template, request, send_file, flash, redirect, url_for
 
-from app.auth.decorators import login_required
+from app.auth.decorators import pagina_required
 from app.parsers.f29_parser import (
     parsear_f29, construir_filas, calcular_lineas_remanente,
     ultimo_dia_mes, nombre_mes, _clean_monto, MESES,
@@ -31,7 +31,7 @@ f29_bp = Blueprint("f29", __name__, url_prefix="/f29")
 
 
 @f29_bp.route("/", methods=["GET"])
-@login_required
+@pagina_required("f29.index")
 def index():
     configs = cargar_config()
     if not configs:
@@ -43,7 +43,7 @@ def index():
 
 
 @f29_bp.route("/procesar", methods=["POST"])
-@login_required
+@pagina_required("f29.index")
 def procesar():
     configs = cargar_config()
     archivo = request.files.get("archivo")
@@ -168,7 +168,7 @@ def _leer_formulario(form, prefix=""):
 
 
 @f29_bp.route("/preview", methods=["POST"])
-@login_required
+@pagina_required("f29.index")
 def preview():
     configs = cargar_config()
     ctx = _leer_formulario(request.form)
@@ -225,7 +225,7 @@ def preview():
 
 
 @f29_bp.route("/descargar", methods=["POST"])
-@login_required
+@pagina_required("f29.index")
 def descargar():
     ctx = _leer_formulario(request.form)
     if not ctx["mes"] or not ctx["anio"].isdigit() or len(ctx["anio"]) != 4 or not ctx["lineas_finales"]:
@@ -281,7 +281,7 @@ def _filas_tabla_desde_data(configs, data):
 
 
 @f29_bp.route("/masivo", methods=["GET"])
-@login_required
+@pagina_required("f29.index")
 def masivo():
     configs = cargar_config()
     if not configs:
@@ -293,7 +293,7 @@ def masivo():
 
 
 @f29_bp.route("/masivo/procesar", methods=["POST"])
-@login_required
+@pagina_required("f29.index")
 def masivo_procesar():
     configs = cargar_config()
     archivos = [a for a in request.files.getlist("archivos") if a and a.filename]
@@ -367,7 +367,7 @@ def masivo_procesar():
 
 
 @f29_bp.route("/masivo/preview", methods=["POST"])
-@login_required
+@pagina_required("f29.index")
 def masivo_preview():
     configs = cargar_config()
     num_periodos = int(request.form.get("num_periodos") or 0)
@@ -451,7 +451,7 @@ def masivo_preview():
 
 
 @f29_bp.route("/masivo/descargar", methods=["POST"])
-@login_required
+@pagina_required("f29.index")
 def masivo_descargar():
     num_periodos = int(request.form.get("num_periodos") or 0)
     if num_periodos < 2:
