@@ -37,7 +37,7 @@ from datetime import datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, send_file, url_for
 
-from app.auth.decorators import admin_required
+from app.auth.decorators import pagina_required
 from app.conciliacion.export_writer import FilaSinFecha, comprobantes_a_xls_bytes
 from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO, PLAN_CUENTAS
 from openpyxl import load_workbook
@@ -97,13 +97,13 @@ def _rango_periodo_iso(filas):
 
 
 @conciliacion_bp.route("/", methods=["GET"])
-@admin_required
+@pagina_required("conciliacion.index")
 def index():
     return render_template("conciliacion.html", filas=None, cuentas=PLAN_CUENTAS)
 
 
 @conciliacion_bp.route("/procesar", methods=["POST"])
-@admin_required
+@pagina_required("conciliacion.index")
 def procesar():
     archivo = request.files.get("archivo")
     if not archivo or not archivo.filename:
@@ -157,7 +157,7 @@ def _leer_filas_del_formulario(form):
 
 
 @conciliacion_bp.route("/descargar", methods=["POST"])
-@admin_required
+@pagina_required("conciliacion.index")
 def descargar():
     archivo_nombre = request.form.get("archivo_nombre", "")
     cuenta_banco_codigo = request.form.get("cuenta_banco_codigo", "").strip()
