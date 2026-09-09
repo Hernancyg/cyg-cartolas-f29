@@ -8,5 +8,6 @@ PAGINAS = [
     {"endpoint": "global_igc.index", "icon": "calculator", "label": "Calcular Global", "admin_only": False},
     {"endpoint": "indicadores.index", "icon": "trending", "label": "Indicadores", "admin_only": False},
     {"endpoint": "reuniones.index", "icon": "calendar", "label": "Reuniones", "admin_only": True},
+    {"endpoint": "conciliacion.index", "icon": "reconcile", "label": "Conciliación", "admin_only": True},
     {"endpoint": "admin.cuentas", "icon": "gear", "label": "Administrador", "admin_only": True},
 ]
