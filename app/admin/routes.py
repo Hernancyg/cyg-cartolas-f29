@@ -13,7 +13,8 @@ from app.auth.decorators import admin_required, login_required
 from app.auth.security import hash_password
 from app.parsers.config_manager import cargar_config, guardar_config, CuentaConfig
 from app.parsers.f29_parser import parsear_f29, _clean_monto
-from app.data import usuarios_repo
+from app.data import usuarios_repo, visibilidad_repo
+from app.nav import paginas_con_visibilidad
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -179,3 +180,30 @@ def usuarios_eliminar():
     else:
         flash("No puedes eliminar tu propio usuario.", "error")
     return redirect(url_for("admin.usuarios"))
+
+
+# ---------------------------------------------------------------------------
+# Visibilidad de pestañas (09-09-2026): activar cada pestaña del menú para
+# todos los usuarios o dejarla solo para administradores, sin tocar código
+# ni redesplegar. "Administrador" no aparece aquí a propósito — es la
+# pantalla que administra esto mismo, así que se queda siempre solo-admin.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/pestanas", methods=["GET"])
+@admin_required
+def pestanas():
+    configurables = [p for p in paginas_con_visibilidad() if p["configurable"]]
+    return render_template("admin/pestanas.html", paginas=configurables)
+
+
+@admin_bp.route("/pestanas/guardar", methods=["POST"])
+@admin_required
+def pestanas_guardar():
+    configurables = [p for p in paginas_con_visibilidad() if p["configurable"]]
+    mapa = {}
+    for p in configurables:
+        valor = request.form.get(f"vis_{p['endpoint']}", "admin")
+        mapa[p["endpoint"]] = (valor == "admin")
+    visibilidad_repo.guardar_todas(mapa)
+    flash("Visibilidad de pestañas guardada. Se aplica de inmediato.", "success")
+    return redirect(url_for("admin.pestanas"))
