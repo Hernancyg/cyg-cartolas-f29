@@ -88,16 +88,15 @@ def create_app():
             return redirect(url_for("cartolas.index"))
         return redirect(url_for("auth.login"))
 
-    from app.nav import PAGINAS
-
     @app.context_processor
     def inject_globals():
         from flask import session
+        from app.nav import paginas_con_visibilidad
         usuario = session.get("usuario")
         return {
             "usuario_actual": usuario,
             "es_admin": bool(usuario and usuario.get("rol") == "admin"),
-            "paginas": PAGINAS,
+            "paginas": paginas_con_visibilidad(),
         }
 
     @app.errorhandler(403)
