@@ -17,7 +17,7 @@ import re
 
 from flask import Blueprint, current_app, render_template
 
-from app.auth.decorators import admin_required
+from app.auth.decorators import pagina_required
 from app.reuniones.graph_client import obtener_eventos_de_hoy
 
 reuniones_bp = Blueprint("reuniones", __name__, url_prefix="/reuniones")
@@ -46,7 +46,7 @@ def _extraer_zoom(evento):
 
 
 @reuniones_bp.route("/", methods=["GET"])
-@admin_required
+@pagina_required("reuniones.index")
 def index():
     cfg = current_app.config
     eventos_raw, error = obtener_eventos_de_hoy(cfg)
