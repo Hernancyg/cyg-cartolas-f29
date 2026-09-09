@@ -11,7 +11,7 @@ import re
 
 from flask import Blueprint, render_template, request, send_file
 
-from app.auth.decorators import login_required
+from app.auth.decorators import pagina_required
 from app.global_igc.calculator import EntradaGlobal, calcular_global
 from app.global_igc.pdf_generator import generar_pdf_global
 
@@ -19,13 +19,13 @@ global_igc_bp = Blueprint("global_igc", __name__, url_prefix="/global")
 
 
 @global_igc_bp.route("/", methods=["GET"])
-@login_required
+@pagina_required("global_igc.index")
 def index():
     return render_template("global_igc.html", entrada=None, resultado=None)
 
 
 @global_igc_bp.route("/calcular", methods=["POST"])
-@login_required
+@pagina_required("global_igc.index")
 def calcular():
     entrada = EntradaGlobal.desde_formulario(request.form)
     resultado = calcular_global(entrada)
@@ -33,7 +33,7 @@ def calcular():
 
 
 @global_igc_bp.route("/pdf", methods=["POST"])
-@login_required
+@pagina_required("global_igc.index")
 def pdf():
     """Descarga en PDF el mismo cálculo que se está mostrando en pantalla
     (mismo <form> del resultado, botón "Descargar PDF" con formaction a
