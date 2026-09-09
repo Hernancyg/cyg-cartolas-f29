@@ -671,3 +671,21 @@ table.data-table .badge-warn { color: var(--amber); font-weight: 600; }
 .cuenta-search-item-desc { color: var(--text); }
 table.data-table tbody tr.fila-conciliacion.fila-conciliada { background: rgba(var(--emerald-rgb),0.08); }
 table.data-table tbody tr.fila-conciliacion.fila-conciliada:hover { background: rgba(var(--emerald-rgb),0.13); }
+
+/* Cuenta bancaria fija (09-09-2026, archivo de salida): mismo buscador de
+   arriba, pero suelto en su propia tarjeta en vez de dentro de una fila
+   de tabla — se le da más ancho para que se lea cómodo. */
+.cuenta-search-banco { max-width: 420px; }
+
+/* "Detalle de transacción" editable (09-09-2026): un input que se ve como
+   texto normal de tabla hasta que se enfoca, para no ensuciar visualmente
+   filas que el admin no necesita tocar. */
+.td-editable-input {
+  width: 100%; box-sizing: border-box; font: inherit; color: inherit;
+  background: transparent; border: 1px solid transparent; border-radius: 6px;
+  padding: 4px 6px; margin: -4px -6px;
+}
+.td-editable-input:hover { background: var(--table-row-hover); }
+.td-editable-input:focus {
+  outline: none; background: var(--input-bg); border-color: var(--indigo);
+}
