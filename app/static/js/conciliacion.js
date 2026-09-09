@@ -40,6 +40,15 @@
     if (elTotal) elTotal.textContent = total;
     if (elConc) elConc.textContent = conciliados;
     if (elPend) elPend.textContent = total - conciliados;
+
+    // Si el admin ya corrigió lo que faltaba (todas las filas conciliadas
+    // y la cuenta bancaria elegida), se limpia el aviso de error en vez de
+    // dejarlo pegado en pantalla hasta el próximo intento de descarga.
+    var bancoCodigo = document.getElementById("cuenta-banco-codigo");
+    var errorBox = document.getElementById("conciliacion-error");
+    if (errorBox && !errorBox.hidden && conciliados === total && bancoCodigo && bancoCodigo.value) {
+      errorBox.hidden = true;
+    }
   }
 
   function cerrarDropdown() {
@@ -163,4 +172,59 @@
   });
 
   actualizarContadores();
+
+  // Validación antes de descargar (09-09-2026, ronda del archivo de
+  // salida): la cuenta bancaria de arriba y el "Concepto" de cada fila
+  // son obligatorios para poder armar los comprobantes — si falta algo,
+  // se avisa en pantalla en vez de dejar que el servidor lo rechace sin
+  // explicación. Se registra en fase de "capture" (tercer argumento
+  // true) para que corra ANTES que el listener de `base.html` que
+  // muestra el overlay de carga global: así, si esta validación cancela
+  // el envío con `preventDefault()`, ese overlay ya no llega a mostrarse
+  // (revisa `event.defaultPrevented` antes de mostrarse él mismo).
+  document.addEventListener("submit", function (ev) {
+    var form = ev.target.closest("#form-conciliacion");
+    if (!form) return;
+    var errorBox = document.getElementById("conciliacion-error");
+    var problemas = [];
+
+    var bancoCodigo = document.getElementById("cuenta-banco-codigo");
+    var bancoFalta = !bancoCodigo || !bancoCodigo.value;
+    if (bancoFalta) {
+      problemas.push("Selecciona arriba la cuenta bancaria con la que se está conciliando esta cartola.");
+    }
+
+    var filasSinConcepto = [];
+    document.querySelectorAll(".fila-conciliacion").forEach(function (fila) {
+      var codigo = fila.querySelector(".cuenta-codigo");
+      if (!codigo || !codigo.value) {
+        filasSinConcepto.push(parseInt(fila.dataset.row, 10) + 1);
+      }
+    });
+    if (filasSinConcepto.length === 1) {
+      problemas.push("Clasifica el movimiento de la fila " + filasSinConcepto[0] + " antes de descargar.");
+    } else if (filasSinConcepto.length > 1) {
+      problemas.push("Clasifica los movimientos de las filas " + filasSinConcepto.join(", ") + " antes de descargar.");
+    }
+
+    if (!problemas.length) {
+      if (errorBox) errorBox.hidden = true;
+      return; // todo listo, el formulario se envía normalmente
+    }
+
+    ev.preventDefault();
+    if (errorBox) {
+      errorBox.textContent = problemas.join("\n");
+      errorBox.hidden = false;
+      errorBox.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    if (bancoFalta) {
+      var bancoInput = document.getElementById("cuenta-banco-input");
+      if (bancoInput) bancoInput.focus();
+    } else if (filasSinConcepto.length) {
+      var primeraFila = document.querySelector('.fila-conciliacion[data-row="' + (filasSinConcepto[0] - 1) + '"]');
+      var primerInput = primeraFila && primeraFila.querySelector(".cuenta-search-input");
+      if (primerInput) primerInput.focus();
+    }
+  }, true);
 })();
