@@ -17,10 +17,13 @@ que dibuja el menú o entra a una página, y para seguir funcionando con el
 último valor bueno conocido si Supabase está lento o caído.
 """
 
+import logging
 import time
 from typing import Dict
 
 from app.extensions import get_supabase
+
+logger = logging.getLogger(__name__)
 
 TABLE = "visibilidad_pestanas"
 _CACHE_TTL_SEGUNDOS = 30
@@ -43,8 +46,12 @@ def obtener_mapa() -> Dict[str, bool]:
         resp = get_supabase().table(TABLE).select("endpoint, admin_only").execute()
         _cache = {fila["endpoint"]: bool(fila["admin_only"]) for fila in (resp.data or [])}
         _cache_at = ahora
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "No se pudo leer visibilidad_pestanas (¿falta ejecutar "
+            "migration/003_visibilidad_pestanas.sql en Supabase?): %s. "
+            "Se sigue con el último valor conocido.", exc,
+        )
     return _cache
 
 
