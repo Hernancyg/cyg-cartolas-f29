@@ -5,7 +5,7 @@
 
 <div class="page-title">Conciliación</div>
 <div class="page-title-underline"></div>
-<p class="page-subtitle">Sube la cartola ya convertida y asigna una cuenta del plan de cuentas a cada movimiento.</p>
+<p class="page-subtitle">Sube la cartola ya convertida, elige la cuenta bancaria y asigna una cuenta del plan de cuentas a cada movimiento.</p>
 
 {% if not filas %}
 <div class="card mergeable">
@@ -39,53 +39,93 @@
   <div class="metric warn"><div class="k">Pendientes</div><div class="v" id="stat-pendientes">{{ filas | length }}</div></div>
 </div>
 
-<div class="card highlight">
-  <div class="section-header">
-    <div class="section-badge">{{ icon('reconcile', 18) }}</div>
-    <div class="section-title">Movimientos</div>
-  </div>
-  <p class="muted" style="margin-top:0">
-    Escribe parte del nombre de la cuenta (por ejemplo "banco" o "sueldo") en la columna Concepto
-    y selecciónala de la lista.
-  </p>
+<form method="post" action="{{ url_for('conciliacion.descargar') }}" id="form-conciliacion">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="archivo_nombre" value="{{ archivo_nombre }}">
+  <input type="hidden" name="total_filas" value="{{ filas | length }}">
 
-  <div class="table-wrap">
-    <table class="data-table" id="tabla-conciliacion">
-      <thead>
-        <tr>
-          <th>Fecha</th>
-          <th>Detalle de transacción</th>
-          <th>Monto cheque o cargo</th>
-          <th>Monto depósito o abono</th>
-          <th style="min-width:280px">Concepto</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for f in filas %}
-        <tr class="fila-conciliacion" data-row="{{ loop.index0 }}">
-          <td style="white-space:nowrap">{{ f.fecha }}</td>
-          <td>{{ f.detalle }}</td>
-          <td>{{ (f.cargo | clp) if f.cargo else '' }}</td>
-          <td>{{ (f.abono | clp) if f.abono else '' }}</td>
-          <td>
-            <div class="cuenta-search">
-              <input type="text" class="cuenta-search-input" placeholder="Buscar cuenta…" autocomplete="off" spellcheck="false">
-              <input type="hidden" class="cuenta-codigo" value="">
-              <input type="hidden" class="cuenta-descripcion" value="">
-              <div class="cuenta-search-results" hidden></div>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('reconcile', 18) }}</div>
+      <div class="section-title">Cuenta bancaria a conciliar</div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      La cuenta del plan de cuentas que representa esta cartola (por ejemplo "1101-29 — BANCO BCI").
+      Es la misma para todos los movimientos de este archivo.
+    </p>
+    <div class="cuenta-search cuenta-search-banco">
+      <input type="text" id="cuenta-banco-input" class="cuenta-search-input" placeholder="Buscar cuenta bancaria…"
+             autocomplete="off" spellcheck="false"
+             value="{{ (cuenta_banco_codigo + ' — ' + cuenta_banco_descripcion) if cuenta_banco_codigo else '' }}">
+      <input type="hidden" id="cuenta-banco-codigo" class="cuenta-codigo" name="cuenta_banco_codigo" value="{{ cuenta_banco_codigo }}">
+      <input type="hidden" id="cuenta-banco-descripcion" class="cuenta-descripcion" name="cuenta_banco_descripcion" value="{{ cuenta_banco_descripcion }}">
+      <div class="cuenta-search-results" hidden></div>
+    </div>
   </div>
 
-  <p class="muted" style="margin-top:14px">
-    Por ahora esta pantalla solo permite cargar y clasificar los movimientos — la descarga del
-    archivo de salida se agrega en una próxima etapa.
-  </p>
-</div>
+  <div class="card highlight">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('reconcile', 18) }}</div>
+      <div class="section-title">Movimientos</div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      Escribe parte del nombre de la cuenta (por ejemplo "banco" o "sueldo") en la columna Concepto
+      y selecciónala de la lista. El texto de "Detalle" es editable si necesitas ajustarlo.
+    </p>
+
+    <div class="table-wrap">
+      <table class="data-table" id="tabla-conciliacion">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th style="min-width:280px">Detalle de transacción</th>
+            <th>Monto cheque o cargo</th>
+            <th>Monto depósito o abono</th>
+            <th style="min-width:280px">Concepto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in filas %}
+          <tr class="fila-conciliacion {{ 'fila-conciliada' if f.concepto_codigo else '' }}" data-row="{{ loop.index0 }}">
+            <td style="white-space:nowrap">
+              {{ f.fecha }}
+              <input type="hidden" name="fecha_{{ loop.index0 }}" value="{{ f.fecha }}">
+              <input type="hidden" name="fecha_iso_{{ loop.index0 }}" value="{{ f.fecha_iso }}">
+            </td>
+            <td>
+              <input type="text" class="td-editable-input" name="detalle_{{ loop.index0 }}" value="{{ f.detalle }}" autocomplete="off">
+            </td>
+            <td>
+              {{ (f.cargo | clp) if f.cargo else '' }}
+              <input type="hidden" name="cargo_{{ loop.index0 }}" value="{{ f.cargo }}">
+            </td>
+            <td>
+              {{ (f.abono | clp) if f.abono else '' }}
+              <input type="hidden" name="abono_{{ loop.index0 }}" value="{{ f.abono }}">
+            </td>
+            <td>
+              <div class="cuenta-search">
+                <input type="text" class="cuenta-search-input" placeholder="Buscar cuenta…" autocomplete="off" spellcheck="false"
+                       value="{{ (f.concepto_codigo + ' — ' + f.concepto_descripcion) if f.concepto_codigo else '' }}">
+                <input type="hidden" class="cuenta-codigo" name="concepto_codigo_{{ loop.index0 }}" value="{{ f.concepto_codigo }}">
+                <input type="hidden" class="cuenta-descripcion" name="concepto_descripcion_{{ loop.index0 }}" value="{{ f.concepto_descripcion }}">
+                <div class="cuenta-search-results" hidden></div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="actions-row" style="margin-top:14px">
+      <div id="conciliacion-error" class="alert alert-error" style="white-space:pre-line" hidden></div>
+    </div>
+    <div class="actions-row">
+      <button type="submit" class="btn">{{ icon('download', 16) }} Descargar archivo de salida</button>
+    </div>
+  </div>
+</form>
 
 <script>window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};</script>
 <script src="{{ url_for('static', filename='js/conciliacion.js') }}"></script>
