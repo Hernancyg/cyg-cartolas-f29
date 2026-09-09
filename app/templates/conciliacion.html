@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Conciliación · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Conciliación</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Sube la cartola ya convertida y asigna una cuenta del plan de cuentas a cada movimiento.</p>
+
+{% if not filas %}
+<div class="card mergeable">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('upload', 18) }}</div>
+    <div class="section-title">Sube la cartola convertida</div>
+  </div>
+  <p class="muted" style="margin-top:0">
+    Este es el Excel que descargas desde <strong>Subir Cartolas</strong> (columnas Fecha, Detalle,
+    Cargo y Abono) — no el PDF ni el Excel original del banco.
+  </p>
+  <form method="post" action="{{ url_for('conciliacion.procesar') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="archivo">Excel convertido (.xlsx)</label>
+      <input type="file" id="archivo" name="archivo" accept=".xlsx,.xlsm" required>
+    </div>
+    <button type="submit" class="btn">{{ icon('upload', 16) }} Cargar movimientos</button>
+  </form>
+</div>
+
+{% else %}
+
+<div class="metrics">
+  <div class="metric"><div class="k">Archivo</div><div class="v" style="font-size:14px" title="{{ archivo_nombre }}">{{ archivo_nombre }}</div></div>
+  {% if periodo %}
+  <div class="metric"><div class="k">Período</div><div class="v" style="font-size:14px">{{ periodo }}</div></div>
+  {% endif %}
+  <div class="metric"><div class="k">Total registros</div><div class="v" id="stat-total">{{ filas | length }}</div></div>
+  <div class="metric ok"><div class="k">Conciliados</div><div class="v" id="stat-conciliados">0</div></div>
+  <div class="metric warn"><div class="k">Pendientes</div><div class="v" id="stat-pendientes">{{ filas | length }}</div></div>
+</div>
+
+<div class="card highlight">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('reconcile', 18) }}</div>
+    <div class="section-title">Movimientos</div>
+  </div>
+  <p class="muted" style="margin-top:0">
+    Escribe parte del nombre de la cuenta (por ejemplo "banco" o "sueldo") en la columna Concepto
+    y selecciónala de la lista.
+  </p>
+
+  <div class="table-wrap">
+    <table class="data-table" id="tabla-conciliacion">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Detalle de transacción</th>
+          <th>Monto cheque o cargo</th>
+          <th>Monto depósito o abono</th>
+          <th style="min-width:280px">Concepto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in filas %}
+        <tr class="fila-conciliacion" data-row="{{ loop.index0 }}">
+          <td style="white-space:nowrap">{{ f.fecha }}</td>
+          <td>{{ f.detalle }}</td>
+          <td>{{ (f.cargo | clp) if f.cargo else '' }}</td>
+          <td>{{ (f.abono | clp) if f.abono else '' }}</td>
+          <td>
+            <div class="cuenta-search">
+              <input type="text" class="cuenta-search-input" placeholder="Buscar cuenta…" autocomplete="off" spellcheck="false">
+              <input type="hidden" class="cuenta-codigo" value="">
+              <input type="hidden" class="cuenta-descripcion" value="">
+              <div class="cuenta-search-results" hidden></div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="muted" style="margin-top:14px">
+    Por ahora esta pantalla solo permite cargar y clasificar los movimientos — la descarga del
+    archivo de salida se agrega en una próxima etapa.
+  </p>
+</div>
+
+<script>window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};</script>
+<script src="{{ url_for('static', filename='js/conciliacion.js') }}"></script>
+
+{% endif %}
+{% endblock %}
