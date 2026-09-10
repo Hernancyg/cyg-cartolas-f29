@@ -395,7 +395,7 @@ a { color: var(--indigo); text-decoration: none; }
 /* Formularios                                                             */
 /* ---------------------------------------------------------------------- */
 label { display: block; font-size: 0.85rem; font-weight: 700; color: var(--navy-2); margin-bottom: 6px; }
-input[type=text], input[type=password], input[type=number], select, textarea {
+input[type=text], input[type=password], input[type=number], input[type=date], select, textarea {
   width: 100%;
   border: 1px solid var(--input-border);
   border-radius: 10px;
@@ -410,6 +410,19 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--i
 .field { margin-bottom: 16px; }
 .field-row { display: flex; gap: 16px; }
 .field-row > .field { flex: 1; }
+
+/* input[type=date]: el navegador no deja re-estilar el widget nativo por
+   dentro, pero sí el ícono del calendario — se despega del borde derecho
+   igual que el resto de los inputs y se ve consistente en tema oscuro. */
+input[type=date] { cursor: pointer; }
+input[type=date]::-webkit-calendar-picker-indicator {
+  cursor: pointer; opacity: 0.65; border-radius: 6px; padding: 3px;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; background: rgba(var(--indigo-rgb),0.12); }
+:root[data-theme="dark"] input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.85); }
+.fechas-calculadas { font-size: 0.82rem; line-height: 1.5; white-space: nowrap; }
+.fechas-calculadas .muted { font-weight: 600; }
 
 /* ---------------------------------------------------------------------- */
 /* Tablas editables                                                        */
