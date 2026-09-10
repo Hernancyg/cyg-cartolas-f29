@@ -13,7 +13,7 @@ from app.auth.decorators import admin_required, login_required
 from app.auth.security import hash_password
 from app.parsers.config_manager import cargar_config, guardar_config, CuentaConfig
 from app.parsers.f29_parser import parsear_f29, _clean_monto
-from app.data import usuarios_repo, visibilidad_repo
+from app.data import usuarios_repo, visibilidad_repo, tipos_documento_repo
 from app.nav import paginas_con_visibilidad
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -224,3 +224,48 @@ def pestanas_guardar():
         return redirect(url_for("admin.pestanas"))
     flash("Visibilidad de pestañas guardada. Se aplica de inmediato.", "success")
     return redirect(url_for("admin.pestanas"))
+
+
+# ---------------------------------------------------------------------------
+# Tipos de Documento (10-09-2026): mapeo de texto ("FAC-EL", "BOL-HE", etc.)
+# a código numérico, usado por "Empresas Caja" para la columna "Tipo De
+# Documento" del bloque de Tipo Auxiliar "A"/"H" del archivo de salida —
+# ver `app/data/tipos_documento_repo.py`.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/tipos_documento", methods=["GET"])
+@admin_required
+def tipos_documento():
+    mapa = tipos_documento_repo.obtener_mapa()
+    filas = sorted(mapa.items())
+    return render_template("admin/tipos_documento.html", filas=filas)
+
+
+@admin_bp.route("/tipos_documento/guardar", methods=["POST"])
+@admin_required
+def tipos_documento_guardar():
+    textos = request.form.getlist("td_texto")
+    codigos = request.form.getlist("td_codigo")
+    mapa = {}
+    for i in range(len(textos)):
+        texto = (textos[i] or "").strip()
+        codigo = (codigos[i] if i < len(codigos) else "").strip()
+        if not texto or not codigo:
+            continue
+        try:
+            mapa[texto] = int(codigo)
+        except ValueError:
+            flash(f"El código de “{texto}” debe ser un número entero — no se guardó esa fila.", "error")
+    try:
+        tipos_documento_repo.guardar_todos(mapa)
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning("No se pudo guardar tipos_documento: %s", exc)
+        flash(
+            "No se pudo guardar: falta crear la tabla 'tipos_documento' en Supabase "
+            "(ejecuta migration/004_tipos_documento.sql una vez en el SQL Editor) o "
+            "hubo un problema de conexión. Mientras tanto, siguen los códigos de siempre.",
+            "error",
+        )
+        return redirect(url_for("admin.tipos_documento"))
+    flash("Tipos de Documento guardados. Se aplican de inmediato.", "success")
+    return redirect(url_for("admin.tipos_documento"))
