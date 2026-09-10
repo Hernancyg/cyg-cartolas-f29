@@ -155,7 +155,12 @@ def _meses_grid(anio, incluye_diciembre_anterior):
 
 
 def _fecha_remuneraciones(anio_efectivo, mes_num):
-    """Último día del mes/año efectivo."""
+    """Último día del mes/año efectivo — excepto Diciembre, que el usuario
+    confirmó que se paga el 5 de enero del año siguiente (10-09-2026: "las
+    remuneraciones de diciembre se pagan el 05-01-2026 y no el 31-12-2025"),
+    en vez del último día del mes como el resto de los meses."""
+    if mes_num == 12:
+        return datetime(anio_efectivo + 1, 1, 5)
     ultimo_dia = calendar.monthrange(anio_efectivo, mes_num)[1]
     return datetime(anio_efectivo, mes_num, ultimo_dia)
 
