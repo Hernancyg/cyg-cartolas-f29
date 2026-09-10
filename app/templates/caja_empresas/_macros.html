@@ -22,8 +22,9 @@
     <input type="checkbox" class="chk-documento" name="{{ modulo }}_check_{{ idx }}" {{ 'checked' if f.seleccionado else '' }}>
   </td>
   <td>
-    {{ f.nombre }}
+    {{ f.nombre }}{% if f.rut %} <span class="muted">({{ f.rut }})</span>{% endif %}
     <input type="hidden" name="{{ modulo }}_nombre_{{ idx }}" value="{{ f.nombre }}">
+    <input type="hidden" name="{{ modulo }}_rut_{{ idx }}" value="{{ f.rut }}">
   </td>
   <td style="white-space:nowrap">
     {{ f.fecha }}
@@ -42,9 +43,6 @@
     {{ f.monto | clp }}
     <input type="hidden" name="{{ modulo }}_monto_{{ idx }}" value="{{ f.monto }}">
   </td>
-  <td style="min-width:260px">
-    {{ cuenta_search(none, modulo ~ "_cuenta_codigo_" ~ idx, modulo ~ "_cuenta_descripcion_" ~ idx, f.cuenta_codigo, f.cuenta_descripcion) }}
-  </td>
 </tr>
 {%- endmacro %}
 
@@ -54,12 +52,11 @@
     <thead>
       <tr>
         <th style="width:32px"></th>
-        <th>Nombre</th>
+        <th>Nombre (RUT)</th>
         <th>Fecha</th>
         <th>Tipo Doc.</th>
         <th>N° Doc.</th>
         <th style="text-align:right">Monto</th>
-        <th style="min-width:260px">Cuenta contra</th>
       </tr>
     </thead>
     <tbody id="tbody-{{ modulo }}">
@@ -70,28 +67,35 @@
 <input type="hidden" name="{{ modulo }}_total_filas" id="total-{{ modulo }}" value="{{ filas | length }}">
 {%- endmacro %}
 
-{% macro fila_mes(prefijo, idx, nombre_mes, mes, campos) -%}
+{% macro fila_mes(prefijo, idx, mes, campos, fecha_calculada) -%}
 <tr>
-  <td>{{ nombre_mes }}</td>
+  <td style="white-space:nowrap">{{ mes.label }}</td>
+  {% if fecha_calculada %}
+  <td class="fechas-calculadas">
+    <div><span class="muted">Remuner.:</span> {{ mes.remuneraciones_fecha_display }}</div>
+    <div><span class="muted">Imposic.:</span> {{ mes.imposiciones_fecha_display }}</div>
+  </td>
+  {% else %}
   <td><input type="date" class="input-fecha-mes" data-prefijo="{{ prefijo }}" name="{{ prefijo }}_fecha_{{ idx }}" value="{{ mes.fecha_iso }}"></td>
+  {% endif %}
   {% for campo, _label in campos %}
   <td><input type="number" step="1" min="0" class="input-monto-mes" data-prefijo="{{ prefijo }}" name="{{ prefijo }}_{{ campo }}_{{ idx }}" value="{{ mes[campo] | numval }}" placeholder="0"></td>
   {% endfor %}
 </tr>
 {%- endmacro %}
 
-{% macro grilla_mensual(prefijo, meses_label, meses_data, campos) -%}
+{% macro grilla_mensual(prefijo, meses_data, campos, fecha_calculada=False) -%}
 <div class="table-wrap">
   <table class="data-table">
     <thead>
       <tr>
         <th>Mes</th>
-        <th>Fecha</th>
+        <th>{{ 'Fecha de pago (calculada)' if fecha_calculada else 'Fecha' }}</th>
         {% for _campo, label in campos %}<th style="text-align:right">{{ label }}</th>{% endfor %}
       </tr>
     </thead>
     <tbody>
-      {% for nombre_mes in meses_label %}{{ fila_mes(prefijo, loop.index0, nombre_mes, meses_data[loop.index0], campos) }}{% endfor %}
+      {% for mes in meses_data %}{{ fila_mes(prefijo, loop.index0, mes, campos, fecha_calculada) }}{% endfor %}
     </tbody>
   </table>
 </div>
