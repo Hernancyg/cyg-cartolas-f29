@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Tipos de Documento · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">⚙ Panel de Administrador</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  Códigos numéricos de "Tipo de Documento" que usa Empresas Caja para el archivo de salida
+  (columna "Tipo De Documento" de Clientes/Proveedores/Honorarios) — agrega los que falten,
+  sin necesidad de pedir un cambio de código.
+</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('admin.cuentas') }}" class="nav-item">Cuentas F29</a>
+  <a href="{{ url_for('admin.usuarios') }}" class="nav-item">Usuarios</a>
+  <a href="{{ url_for('admin.pestanas') }}" class="nav-item">Pestañas</a>
+  <a href="{{ url_for('admin.tipos_documento') }}" class="nav-item active">Tipos de Documento</a>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:10px">Tipos de documento configurados</div>
+  <p class="muted" style="margin-top:0">
+    <strong>Texto</strong>: tal como aparece en la columna "Tipo Documento"/"Boleta" del archivo
+    de origen (ej. <code>FAC-EL</code>, <code>BOL-HE</code>). <strong>Código</strong>: el número
+    que exige la plantilla de salida para ese tipo de documento.
+  </p>
+
+  <form method="post" action="{{ url_for('admin.tipos_documento_guardar') }}" id="form-tipos-documento">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table" id="tabla-tipos-documento">
+        <thead>
+          <tr><th>Texto</th><th>Código</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for texto, codigo in filas %}
+          <tr>
+            <td><input type="text" name="td_texto" value="{{ texto }}"></td>
+            <td><input type="number" step="1" name="td_codigo" value="{{ codigo }}"></td>
+            <td><button type="button" class="row-remove" title="Quitar fila">{{ icon('trash', 16) }}</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="btn btn-secondary" id="btn-add-row" data-table="tabla-tipos-documento">{{ icon('plus', 16) }} Agregar fila</button>
+      <button type="submit" class="btn">{{ icon('save', 16) }} Guardar cambios</button>
+    </div>
+  </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
+{% endblock %}
