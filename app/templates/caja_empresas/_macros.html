@@ -1,1 +1,98 @@
+{# Macros compartidas entre la página principal de "Empresas Caja" y los
+   fragmentos que devuelven /caja_empresas/cargar/<modulo> al subir cada
+   archivo (ver app/caja_empresas/routes.py). Se separan aquí para no
+   duplicar el HTML de una fila de documento o de la grilla mensual en dos
+   lugares. #}
+{% from "_icons.html" import icon %}
 
+{% macro cuenta_search(input_id, codigo_name, descripcion_name, codigo, descripcion, placeholder="Buscar cuenta…") -%}
+<div class="cuenta-search">
+  <input type="text" {% if input_id %}id="{{ input_id }}"{% endif %} class="cuenta-search-input" placeholder="{{ placeholder }}"
+         autocomplete="off" spellcheck="false"
+         value="{{ (codigo + ' — ' + descripcion) if codigo else '' }}">
+  <input type="hidden" class="cuenta-codigo" name="{{ codigo_name }}" value="{{ codigo }}">
+  <input type="hidden" class="cuenta-descripcion" name="{{ descripcion_name }}" value="{{ descripcion }}">
+  <div class="cuenta-search-results" hidden></div>
+</div>
+{%- endmacro %}
+
+{% macro fila_documento(modulo, idx, f) -%}
+<tr class="fila-documento" data-modulo="{{ modulo }}" data-row="{{ idx }}">
+  <td class="td-check">
+    <input type="checkbox" class="chk-documento" name="{{ modulo }}_check_{{ idx }}" {{ 'checked' if f.seleccionado else '' }}>
+  </td>
+  <td>
+    {{ f.nombre }}
+    <input type="hidden" name="{{ modulo }}_nombre_{{ idx }}" value="{{ f.nombre }}">
+  </td>
+  <td style="white-space:nowrap">
+    {{ f.fecha }}
+    <input type="hidden" name="{{ modulo }}_fecha_{{ idx }}" value="{{ f.fecha }}">
+    <input type="hidden" name="{{ modulo }}_fecha_iso_{{ idx }}" value="{{ f.fecha_iso }}">
+  </td>
+  <td>
+    {{ f.tipo_documento }}
+    <input type="hidden" name="{{ modulo }}_tipo_documento_{{ idx }}" value="{{ f.tipo_documento }}">
+  </td>
+  <td>
+    {{ f.numero_documento }}
+    <input type="hidden" name="{{ modulo }}_numero_documento_{{ idx }}" value="{{ f.numero_documento }}">
+  </td>
+  <td style="text-align:right">
+    {{ f.monto | clp }}
+    <input type="hidden" name="{{ modulo }}_monto_{{ idx }}" value="{{ f.monto }}">
+  </td>
+  <td style="min-width:260px">
+    {{ cuenta_search(none, modulo ~ "_cuenta_codigo_" ~ idx, modulo ~ "_cuenta_descripcion_" ~ idx, f.cuenta_codigo, f.cuenta_descripcion) }}
+  </td>
+</tr>
+{%- endmacro %}
+
+{% macro tabla_documentos(modulo, filas) -%}
+<div class="table-wrap">
+  <table class="data-table" id="tabla-{{ modulo }}">
+    <thead>
+      <tr>
+        <th style="width:32px"></th>
+        <th>Nombre</th>
+        <th>Fecha</th>
+        <th>Tipo Doc.</th>
+        <th>N° Doc.</th>
+        <th style="text-align:right">Monto</th>
+        <th style="min-width:260px">Cuenta contra</th>
+      </tr>
+    </thead>
+    <tbody id="tbody-{{ modulo }}">
+      {% for f in filas %}{{ fila_documento(modulo, loop.index0, f) }}{% endfor %}
+    </tbody>
+  </table>
+</div>
+<input type="hidden" name="{{ modulo }}_total_filas" id="total-{{ modulo }}" value="{{ filas | length }}">
+{%- endmacro %}
+
+{% macro fila_mes(prefijo, idx, nombre_mes, mes, campos) -%}
+<tr>
+  <td>{{ nombre_mes }}</td>
+  <td><input type="date" class="input-fecha-mes" data-prefijo="{{ prefijo }}" name="{{ prefijo }}_fecha_{{ idx }}" value="{{ mes.fecha_iso }}"></td>
+  {% for campo, _label in campos %}
+  <td><input type="number" step="1" min="0" class="input-monto-mes" data-prefijo="{{ prefijo }}" name="{{ prefijo }}_{{ campo }}_{{ idx }}" value="{{ mes[campo] | numval }}" placeholder="0"></td>
+  {% endfor %}
+</tr>
+{%- endmacro %}
+
+{% macro grilla_mensual(prefijo, meses_label, meses_data, campos) -%}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Mes</th>
+        <th>Fecha</th>
+        {% for _campo, label in campos %}<th style="text-align:right">{{ label }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for nombre_mes in meses_label %}{{ fila_mes(prefijo, loop.index0, nombre_mes, meses_data[loop.index0], campos) }}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{%- endmacro %}
