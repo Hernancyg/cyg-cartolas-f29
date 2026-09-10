@@ -71,6 +71,7 @@ def create_app():
     from app.indicadores.routes import indicadores_bp
     from app.reuniones.routes import reuniones_bp
     from app.conciliacion.routes import conciliacion_bp
+    from app.caja_empresas.routes import caja_empresas_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(cartolas_bp)
@@ -80,6 +81,7 @@ def create_app():
     app.register_blueprint(indicadores_bp)
     app.register_blueprint(reuniones_bp)
     app.register_blueprint(conciliacion_bp)
+    app.register_blueprint(caja_empresas_bp)
 
     @app.route("/")
     def raiz():
