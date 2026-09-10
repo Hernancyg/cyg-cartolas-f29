@@ -294,19 +294,11 @@
     var errorBox = document.getElementById("caja-empresas-error");
     var problemas = [];
 
-    ["clientes", "proveedores", "honorarios"].forEach(function (modulo) {
-      var filasSinCuenta = [];
-      document.querySelectorAll('.fila-documento[data-modulo="' + modulo + '"]').forEach(function (fila, i) {
-        var chk = fila.querySelector(".chk-documento");
-        var codigo = fila.querySelector(".cuenta-codigo");
-        if (chk && chk.checked && (!codigo || !codigo.value)) {
-          filasSinCuenta.push(i + 1);
-        }
-      });
-      if (filasSinCuenta.length) {
-        problemas.push(modulo + ": asigna una cuenta a la fila " + filasSinCuenta.join(", ") + " antes de generar.");
-      }
-    });
+    // Clientes/Proveedores/Honorarios no necesitan validación de cuenta:
+    // la cuenta contra la que se cobra/paga es fija por módulo (no se
+    // elige en pantalla) — solo la fecha y el monto (ya vienen del
+    // archivo) importan, y esos siempre están completos si se llegó a
+    // cargar el archivo.
 
     document.querySelectorAll(".input-monto-mes").forEach(function (input) {
       var valor = num(input.value);
