@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Empresas Caja · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+{% from "caja_empresas/_macros.html" import cuenta_search, tabla_documentos, grilla_mensual %}
+
+<div class="page-title">Empresas Caja</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  Genera los comprobantes contables masivos del movimiento de caja de la empresa: cobros, pagos, F29,
+  remuneraciones, imposiciones, créditos — todo en un solo archivo de salida, cubriendo los meses que necesites.
+</p>
+
+<form method="post" action="{{ url_for('caja_empresas.generar') }}" id="form-caja-empresas">
+  <input type="hidden" name="csrf_token" id="csrf-token-global" value="{{ csrf_token() }}">
+
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('cash', 18) }}</div>
+      <div class="section-title">Saldo inicial</div>
+    </div>
+    <p class="muted" style="margin-top:0">El saldo de caja disponible antes de este lote.</p>
+    <div class="field" style="max-width:260px">
+      <label for="saldo-inicial">Saldo inicial</label>
+      <input type="number" step="1" id="saldo-inicial" name="saldo_inicial" value="{{ saldo_inicial }}" placeholder="0">
+    </div>
+  </div>
+
+  <!-- Módulo 1: Clientes -->
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('invoice', 18) }}</div>
+      <div class="section-title">1. Clientes — cobros</div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      Sube el Excel de "Estado de Cuentas - Pendientes" de Clientes. Todos los documentos quedan
+      pre-seleccionados; destilda los que no correspondan a esta cobranza y asigna la cuenta contra la
+      que se cobra cada uno.
+    </p>
+    <div class="field-input-row" style="max-width:520px;margin-bottom:14px">
+      <input type="file" id="archivo-clientes" accept=".xlsx,.xlsm">
+      <button type="button" class="btn btn-sm" data-cargar-modulo="clientes">{{ icon('upload', 16) }} Cargar clientes</button>
+    </div>
+    <div id="error-clientes" hidden></div>
+    <div id="wrap-clientes">{{ tabla_documentos('clientes', clientes_filas) }}</div>
+    <div class="metrics" style="margin-top:14px">
+      <div class="metric"><div class="k">Subtotal saldo</div><div class="v" id="subtotal-clientes">$0</div></div>
+    </div>
+  </div>
+
+  <!-- Módulo 2: Proveedores -->
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('invoice', 18) }}</div>
+      <div class="section-title">2. Proveedores — pagos</div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      Sube el Excel de "Estado de Cuentas - Pendientes" de Proveedores. Mismo mecanismo que Clientes.
+    </p>
+    <div class="field-input-row" style="max-width:520px;margin-bottom:14px">
+      <input type="file" id="archivo-proveedores" accept=".xlsx,.xlsm">
+      <button type="button" class="btn btn-sm" data-cargar-modulo="proveedores">{{ icon('upload', 16) }} Cargar proveedores</button>
+    </div>
+    <div id="error-proveedores" hidden></div>
+    <div id="wrap-proveedores">{{ tabla_documentos('proveedores', proveedores_filas) }}</div>
+    <div class="metrics" style="margin-top:14px">
+      <div class="metric"><div class="k">Subtotal saldo</div><div class="v" id="subtotal-proveedores">$0</div></div>
+    </div>
+  </div>
+
+  <!-- Módulo 3: Honorarios -->
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('invoice', 18) }}</div>
+      <div class="section-title">3. Honorarios — pagos</div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      Sube el Excel de "Estado de Cuentas de Honorario - Pendientes". El tipo y número de documento se
+      separan automáticamente de la columna "Boleta" (por ejemplo "BOL-HE 2").
+    </p>
+    <div class="field-input-row" style="max-width:520px;margin-bottom:14px">
+      <input type="file" id="archivo-honorarios" accept=".xlsx,.xlsm">
+      <button type="button" class="btn btn-sm" data-cargar-modulo="honorarios">{{ icon('upload', 16) }} Cargar honorarios</button>
+    </div>
+    <div id="error-honorarios" hidden></div>
+    <div id="wrap-honorarios">{{ tabla_documentos('honorarios', honorarios_filas) }}</div>
+    <div class="metrics" style="margin-top:14px">
+      <div class="metric"><div class="k">Subtotal saldo</div><div class="v" id="subtotal-honorarios">$0</div></div>
+    </div>
+  </div>
+
+  <!-- Módulo 4: F29 -->
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('calculator', 18) }}</div>
+      <div class="section-title">4. F29</div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      Ingresa el monto del F29 y, si corresponde, las multas de los meses que quieras incluir en este
+      lote — un mes sin ningún monto simplemente no genera comprobante. La fecha de cada mes se digita
+      a mano.
+    </p>
+    {{ grilla_mensual('f29', meses_label, f29_meses, [('monto','Monto F29'), ('multas','Multas')]) }}
+    <div class="metrics" style="margin-top:14px">
+      <div class="metric"><div class="k">Subtotal saldo</div><div class="v" id="subtotal-f29">$0</div></div>
+    </div>
+  </div>
+
+  <!-- Módulo 5: Remuneraciones e Imposiciones -->
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('user', 18) }}</div>
+      <div class="section-title">5. Remuneraciones e Imposiciones</div>
+    </div>
+    <p class="muted" style="margin-top:0">Mismo funcionamiento: un recuadro para Remuneraciones y otro para Imposiciones, por mes.</p>
+    {{ grilla_mensual('remimp', meses_label, remimp_meses, [('remuneraciones','Remuneraciones'), ('imposiciones','Imposiciones')]) }}
+    <div class="metrics" style="margin-top:14px">
+      <div class="metric"><div class="k">Subtotal saldo</div><div class="v" id="subtotal-remimp">$0</div></div>
+    </div>
+  </div>
+
+  <!-- Módulo 6: Créditos -->
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('bank', 18) }}</div>
+      <div class="section-title">6. Créditos</div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      Amortización, Intereses y Comisiones por mes — juntos forman la cuota final de cada mes. La cuenta
+      de Amortización se elige una sola vez para todo el lote (busca por nombre o código).
+    </p>
+    <div class="field" style="max-width:420px;margin-bottom:18px">
+      <label>Cuenta Amortización</label>
+      {{ cuenta_search("credito-cuenta-amortizacion-input", "credito_cuenta_amortizacion_codigo", "credito_cuenta_amortizacion_descripcion", credito_cuenta_amortizacion_codigo, credito_cuenta_amortizacion_descripcion, "Buscar cuenta de amortización…") }}
+    </div>
+    {{ grilla_mensual('credito', meses_label, credito_meses, [('amortizacion','Amortización'), ('intereses','Intereses'), ('comisiones','Comisiones')]) }}
+    <div class="metrics" style="margin-top:14px">
+      <div class="metric"><div class="k">Subtotal saldo</div><div class="v" id="subtotal-credito">$0</div></div>
+    </div>
+  </div>
+
+  <!-- Saldo final + Préstamo Socio + Generar -->
+  <div class="card highlight">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('cash', 18) }}</div>
+      <div class="section-title">Saldo final</div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric" id="metric-saldo-final"><div class="k">Saldo final</div><div class="v" id="saldo-final">$0</div></div>
+    </div>
+
+    <div id="panel-prestamo-socio" class="alert alert-warn" style="margin-top:14px" {{ '' if prestamo_socio_check else 'hidden' }}>
+      <div style="font-weight:700;margin-bottom:8px">El saldo queda negativo — agrega un préstamo socio para poder generar el archivo</div>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:10px">
+        <input type="checkbox" id="prestamo-socio-check" name="prestamo_socio_check" {{ 'checked' if prestamo_socio_check else '' }}>
+        Agregar asiento "Préstamo Socio"
+      </label>
+      <div class="field-row">
+        <div class="field">
+          <label for="prestamo-socio-monto">Monto</label>
+          <input type="number" step="1" min="0" id="prestamo-socio-monto" name="prestamo_socio_monto" value="{{ prestamo_socio_monto }}" placeholder="0">
+        </div>
+        <div class="field">
+          <label for="prestamo-socio-fecha">Fecha</label>
+          <input type="date" id="prestamo-socio-fecha" name="prestamo_socio_fecha" value="{{ prestamo_socio_fecha }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="actions-row" style="margin-top:14px">
+      <div id="caja-empresas-error" class="alert alert-error" style="white-space:pre-line" hidden></div>
+    </div>
+    <div class="actions-row">
+      <button type="submit" class="btn">{{ icon('download', 16) }} Generar comprobante masivo</button>
+    </div>
+  </div>
+</form>
+
+<script>window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};</script>
+<script src="{{ url_for('static', filename='js/caja_empresas.js') }}"></script>
+{% endblock %}
