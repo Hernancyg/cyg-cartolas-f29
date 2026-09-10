@@ -19,7 +19,7 @@
       <div class="section-badge">{{ icon('cash', 18) }}</div>
       <div class="section-title">Saldo inicial</div>
     </div>
-    <p class="muted" style="margin-top:0">El saldo de caja disponible antes de este lote, y el año calendario de las grillas mensuales de abajo.</p>
+    <p class="muted" style="margin-top:0">El saldo de caja disponible antes de esta carga.</p>
     <div class="field-row" style="max-width:520px">
       <div class="field">
         <label for="saldo-inicial">Saldo inicial</label>
@@ -122,9 +122,10 @@
     </div>
     <p class="muted" style="margin-top:0">
       Un recuadro para Remuneraciones y otro para Imposiciones, por mes — se pagan en fechas distintas
-      y la app las calcula sola: Remuneraciones el último día del mes, Imposiciones el 13 del mes
-      siguiente (por ejemplo, las de enero se pagan el 13 de febrero). Cada mes con montos genera dos
-      comprobantes independientes, uno por cada fecha. Incluye Diciembre del año anterior.
+      y la app las calcula sola: Remuneraciones el último día del mes (Diciembre es la excepción: se
+      paga el 5 de enero siguiente), Imposiciones el 13 del mes siguiente (por ejemplo, las de enero se
+      pagan el 13 de febrero). Cada mes con montos genera dos comprobantes independientes, uno por cada
+      fecha. Incluye Diciembre del año anterior.
     </p>
     {{ grilla_mensual('remimp', remimp_meses, [('remuneraciones','Remuneraciones'), ('imposiciones','Imposiciones')], fecha_calculada=True) }}
     <div class="metrics" style="margin-top:14px">
