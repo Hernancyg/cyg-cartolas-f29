@@ -424,6 +424,39 @@ input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; backgrou
 .fechas-calculadas { font-size: 0.82rem; line-height: 1.5; white-space: nowrap; }
 .fechas-calculadas .muted { font-weight: 600; }
 
+/* input[type=file] (fuera de .dropzone, que ya trae su propia zona
+   grande con ilustración): el botón nativo "Seleccionar archivo" del
+   navegador se re-viste como un botón sólido más, del mismo estilo que
+   ".btn", pero en otro color (verde esmeralda) para distinguirlo del
+   botón de "Cargar" que va al lado — uno elige el archivo, el otro lo
+   sube. */
+input[type=file] {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+input[type=file]::file-selector-button,
+input[type=file]::-webkit-file-upload-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 9px 16px;
+  margin-right: 12px;
+  border-radius: 10px;
+  border: none;
+  background: var(--emerald);
+  color: var(--btn-text);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(var(--emerald-rgb),0.32);
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+input[type=file]::file-selector-button:hover,
+input[type=file]::-webkit-file-upload-button:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 6px 18px rgba(var(--emerald-rgb),0.4);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Tablas editables                                                        */
 /* ---------------------------------------------------------------------- */
