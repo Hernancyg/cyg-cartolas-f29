@@ -9,21 +9,38 @@ del anterior, empezando por el saldo inicial digitado):
 
 1. Clientes  (cobros — sube el saldo): se sube un Excel con los documentos
    pendientes de cobro (ver `app/caja_empresas/parsers.py` para el mapeo de
-   columnas), se destildan los que no correspondan a esta cobranza, y se
-   elige una cuenta del plan de cuentas por documento (buscador, igual que
-   Conciliación) — el archivo no trae una cuenta contable, así que no hay
-   forma de adivinarla.
-2. Proveedores (pagos — baja el saldo): mismo mecanismo que Clientes.
-3. Honorarios  (pagos — baja el saldo): mismo mecanismo, con la
-   particularidad de que "Tipo Documento"/"N° Documento" se separan de la
-   columna "Boleta" del archivo (por ejemplo "BOL-HE 2").
-4. F29 (baja el saldo): grilla de 12 meses, fecha digitada a mano por mes,
+   columnas) y se destildan los que no correspondan a esta cobranza. La
+   cuenta contra la que se cobra es FIJA (1104-01 DEUDORES CLIENTES) — el
+   usuario confirmó que no se digita ni se elige por documento. Glosa:
+   "INGRESO F {n° documento} {nombre}". Lleva Tipo Auxiliar "A" en el
+   archivo de salida (RUT + nombre + tipo/n° de documento + fecha).
+2. Proveedores (pagos — baja el saldo): mismo mecanismo, cuenta fija
+   2105-01 FACTURAS POR PAGAR, glosa "PAGO F {n° documento} {nombre}",
+   también Tipo Auxiliar "A".
+3. Honorarios  (pagos — baja el saldo): mismo mecanismo, cuenta fija
+   2105-04 HONORARIOS POR PAGAR, con la particularidad de que "Tipo
+   Documento"/"N° Documento" se separan de la columna "Boleta" del
+   archivo (por ejemplo "BOL-HE 2"). Glosa "PAGO BH {n° documento}
+   {nombre}", Tipo Auxiliar "H".
+4. F29 (baja el saldo): grilla de 13 meses (Diciembre del año anterior +
+   Enero..Diciembre del "Año del lote"), fecha digitada a mano por fila,
    monto F29 (cuenta fija 2108-05) y monto Multas (cuenta fija 4201-11).
-5. Remuneraciones e Imposiciones (baja el saldo): misma grilla, montos de
-   Remuneraciones (2108-15) e Imposiciones (2108-25).
-6. Créditos (baja el saldo): misma grilla, Amortización (cuenta elegida por
+5. Remuneraciones e Imposiciones (baja el saldo): misma grilla de 13 meses,
+   pero SIN fecha digitada — Remuneraciones (2108-15) se paga el último
+   día de ese mes; Imposiciones (2108-25) el día 13 del mes siguiente
+   (confirmado por el usuario, 10-09-2026). Por eso cada mes con montos
+   genera hasta DOS comprobantes independientes, cada uno con su propia
+   fecha calculada.
+6. Créditos (baja el saldo): grilla de 12 meses (Enero..Diciembre del "Año
+   del lote"), fecha digitada a mano, Amortización (cuenta elegida por
    buscador, una sola vez para todo el lote — no cambia mes a mes),
    Intereses (4401-01) y Comisiones (4301-07).
+
+El "Año del lote" (campo `anio`) es lo que permite calcular a qué mes/año
+calendario corresponde cada fila de las grillas y, con eso, las fechas
+automáticas de Remuneraciones/Imposiciones — el servidor SIEMPRE recalcula
+todo desde el `anio` que llega en el POST, nunca confía en lo que ya se ve
+en pantalla.
 
 Si el saldo final queda negativo, se puede agregar un asiento extra
 "Préstamo Socio" (cuenta 2106-04, monto y fecha a elección) que sube el
@@ -44,6 +61,7 @@ orden) sin perder lo ya cargado ni tener que repetir los 3 archivos cada
 vez que se ajusta algo.
 """
 
+import calendar
 import io
 from datetime import datetime
 
@@ -53,6 +71,7 @@ from app.auth.decorators import pagina_required
 from app.caja_empresas import parsers
 from app.caja_empresas.export_writer import comprobantes_a_xls_bytes, construir_filas_comprobante
 from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO, PLAN_CUENTAS
+from app.data import tipos_documento_repo
 
 caja_empresas_bp = Blueprint("caja_empresas", __name__, url_prefix="/caja_empresas")
 
@@ -61,51 +80,115 @@ MESES_LABEL = [
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
 
+# Clientes/Proveedores/Honorarios: cuenta fija (no se digita ni se elige,
+# confirmado por el usuario), glosa de cada comprobante en el formato
+# exacto que pidió (10-09-2026), y el tipo de bloque auxiliar que le
+# corresponde en el archivo de salida ("A" para Clientes/Proveedores, "H"
+# para Honorarios — ver `app/caja_empresas/export_writer.py`).
 DOCUMENTO_MODULOS = {
     "clientes": {
         "parser": parsers.parsear_clientes,
         "titulo": "Clientes",
-        "glosa": "Cobro",
         "ingreso": True,
+        "cuenta_codigo": "1104-01",
+        "tipo_auxiliar": "A",
+        "glosa": lambda f: f"INGRESO F {f['numero_documento']} {f['nombre']}".strip(),
         "error_archivo": "¿Es el Excel de “Estado de Cuentas - Pendientes” de Clientes?",
     },
     "proveedores": {
         "parser": parsers.parsear_proveedores,
         "titulo": "Proveedores",
-        "glosa": "Pago proveedor",
         "ingreso": False,
+        "cuenta_codigo": "2105-01",
+        "tipo_auxiliar": "A",
+        "glosa": lambda f: f"PAGO F {f['numero_documento']} {f['nombre']}".strip(),
         "error_archivo": "¿Es el Excel de “Estado de Cuentas - Pendientes” de Proveedores?",
     },
     "honorarios": {
         "parser": parsers.parsear_honorarios,
         "titulo": "Honorarios",
-        "glosa": "Pago honorarios",
         "ingreso": False,
+        "cuenta_codigo": "2105-04",
+        "tipo_auxiliar": "H",
+        "glosa": lambda f: f"PAGO BH {f['numero_documento']} {f['nombre']}".strip(),
         "error_archivo": "¿Es el Excel de “Estado de Cuentas de Honorario - Pendientes”?",
     },
 }
 
-# Cada entrada: (prefijo, título, [(campo, etiqueta, código_cuenta_fijo_o_None)])
-# La cuenta de "amortizacion" es None porque se elige con un buscador
-# (una sola vez para todo el lote), no es fija como las demás.
+# Cada entrada: (prefijo, título, [(campo, etiqueta, código_cuenta_fijo_o_None)],
+# incluye_diciembre_anterior, fecha_manual).
+# La cuenta de "amortizacion" es None porque se elige con un buscador (una
+# sola vez para todo el lote), no es fija como las demás.
+#
+# F29 y Remuneraciones-e-Imposiciones agregan una fila extra de "Diciembre
+# del año anterior" (10-09-2026: las imposiciones de diciembre se pagan el
+# 13 de enero, que puede caer en el mismo lote) — Créditos no la necesita.
+# Remuneraciones-e-Imposiciones ya no trae fecha manual: se calcula sola
+# (ver `_comprobantes_remuneraciones_imposiciones`).
 GRILLAS_MENSUALES = [
-    ("f29", "F29", [("monto", "Monto F29", "2108-05"), ("multas", "Multas", "4201-11")]),
+    ("f29", "F29", [("monto", "Monto F29", "2108-05"), ("multas", "Multas", "4201-11")], True, True),
     ("remimp", "Remuneraciones e Imposiciones", [
         ("remuneraciones", "Remuneraciones", "2108-15"),
         ("imposiciones", "Imposiciones", "2108-25"),
-    ]),
+    ], True, False),
     ("credito", "Créditos", [
         ("amortizacion", "Amortización", None),
         ("intereses", "Intereses", "4401-01"),
         ("comisiones", "Comisiones", "4301-07"),
-    ]),
+    ], False, True),
 ]
 
 CUENTA_PRESTAMO_SOCIO = "2106-04"
 
 
-def _grilla_vacia(campos):
-    return [dict({"fecha_iso": ""}, **{campo: 0 for campo, _label, _cuenta in campos}) for _ in range(12)]
+def _meses_grid(anio, incluye_diciembre_anterior):
+    """Devuelve la lista de (mes_num, anio_efectivo, etiqueta) de la
+    grilla: 13 filas (Diciembre del año anterior + Enero..Diciembre del
+    año elegido) para F29/Remuneraciones-Imposiciones, o 12 filas
+    (Enero..Diciembre) para Créditos."""
+    filas = []
+    if incluye_diciembre_anterior:
+        filas.append((12, anio - 1, f"Diciembre {anio - 1}"))
+    for mes_num in range(1, 13):
+        filas.append((mes_num, anio, f"{MESES_LABEL[mes_num - 1]} {anio}"))
+    return filas
+
+
+def _fecha_remuneraciones(anio_efectivo, mes_num):
+    """Último día del mes/año efectivo."""
+    ultimo_dia = calendar.monthrange(anio_efectivo, mes_num)[1]
+    return datetime(anio_efectivo, mes_num, ultimo_dia)
+
+
+def _fecha_imposiciones(anio_efectivo, mes_num):
+    """El 13 del mes siguiente (regla confirmada por el usuario: las
+    imposiciones de enero se pagan el 13-02; diciembre rueda al enero del
+    año siguiente)."""
+    if mes_num == 12:
+        return datetime(anio_efectivo + 1, 1, 13)
+    return datetime(anio_efectivo, mes_num + 1, 13)
+
+
+def _grilla_vacia(campos, filas_count=12):
+    return [dict({"fecha_iso": ""}, **{campo: 0 for campo, _label, _cuenta in campos}) for _ in range(filas_count)]
+
+
+def _enriquecer_meses(meses, anio, incluye_diciembre_anterior, con_fechas_calculadas):
+    """Agrega a cada fila de la grilla su etiqueta ("Diciembre 2025",
+    "Enero 2026", ...) y, si corresponde (Remuneraciones e Imposiciones),
+    las fechas de pago YA calculadas para mostrarlas en pantalla — el
+    cálculo real que manda es el que hace `generar()` con el `anio` que
+    de verdad vino en el POST, esto es solo para que se vea en la
+    pantalla."""
+    info = _meses_grid(anio, incluye_diciembre_anterior)
+    for mes, (mes_num, anio_ef, label) in zip(meses, info):
+        mes["label"] = label
+        mes["mes_num"] = mes_num
+        mes["anio_efectivo"] = anio_ef
+        if con_fechas_calculadas:
+            mes["remuneraciones_fecha_display"] = _fecha_remuneraciones(anio_ef, mes_num).strftime("%d-%m-%Y")
+            mes["imposiciones_fecha_display"] = _fecha_imposiciones(anio_ef, mes_num).strftime("%d-%m-%Y")
+    return meses
 
 
 def _leer_filas_documentos(form, modulo):
@@ -118,21 +201,20 @@ def _leer_filas_documentos(form, modulo):
             monto = 0.0
         filas.append({
             "nombre": form.get(f"{modulo}_nombre_{i}", ""),
+            "rut": form.get(f"{modulo}_rut_{i}", ""),
             "fecha": form.get(f"{modulo}_fecha_{i}", ""),
             "fecha_iso": form.get(f"{modulo}_fecha_iso_{i}", ""),
             "tipo_documento": form.get(f"{modulo}_tipo_documento_{i}", ""),
             "numero_documento": form.get(f"{modulo}_numero_documento_{i}", ""),
             "monto": monto,
-            "cuenta_codigo": form.get(f"{modulo}_cuenta_codigo_{i}", "").strip(),
-            "cuenta_descripcion": form.get(f"{modulo}_cuenta_descripcion_{i}", "").strip(),
             "seleccionado": form.get(f"{modulo}_check_{i}") == "on",
         })
     return filas
 
 
-def _leer_grilla_mensual(form, prefijo, campos):
+def _leer_grilla_mensual(form, prefijo, campos, filas_count=12):
     meses = []
-    for m in range(12):
+    for m in range(filas_count):
         fila = {"fecha_iso": form.get(f"{prefijo}_fecha_{m}", "")}
         for campo, _label, _cuenta in campos:
             try:
@@ -143,17 +225,29 @@ def _leer_grilla_mensual(form, prefijo, campos):
     return meses
 
 
+def _anio_desde_form(form, errores):
+    crudo = (form.get("anio") or "").strip()
+    try:
+        anio = int(crudo)
+        if not (2000 <= anio <= 2100):
+            raise ValueError
+        return anio
+    except ValueError:
+        errores.append("El “Año del lote” no es válido — ingresa un año de 4 dígitos (ej. 2026).")
+        return datetime.now().year
+
+
 def _contexto_vacio():
+    anio = datetime.now().year
     return {
         "cuentas": PLAN_CUENTAS,
-        "meses_label": MESES_LABEL,
-        "grillas": GRILLAS_MENSUALES,
+        "anio": anio,
         "clientes_filas": [],
         "proveedores_filas": [],
         "honorarios_filas": [],
-        "f29_meses": _grilla_vacia(GRILLAS_MENSUALES[0][2]),
-        "remimp_meses": _grilla_vacia(GRILLAS_MENSUALES[1][2]),
-        "credito_meses": _grilla_vacia(GRILLAS_MENSUALES[2][2]),
+        "f29_meses": _enriquecer_meses(_grilla_vacia(GRILLAS_MENSUALES[0][2], 13), anio, True, False),
+        "remimp_meses": _enriquecer_meses(_grilla_vacia(GRILLAS_MENSUALES[1][2], 13), anio, True, True),
+        "credito_meses": _enriquecer_meses(_grilla_vacia(GRILLAS_MENSUALES[2][2], 12), anio, False, False),
         "credito_cuenta_amortizacion_codigo": "",
         "credito_cuenta_amortizacion_descripcion": "",
         "saldo_inicial": "",
@@ -193,20 +287,20 @@ def cargar(modulo):
     return render_template("caja_empresas/_fragmento_documentos.html", modulo=modulo, filas=filas)
 
 
-def _comprobantes_documentos(filas, ingreso, glosa_prefix, errores, etiqueta_modulo):
-    """Arma un comprobante por cada documento SELECCIONADO. Agrega a
-    `errores` (in-place) un mensaje por cada fila seleccionada sin cuenta
-    válida, en vez de fallar silenciosamente. Devuelve (filas_planas,
+def _comprobantes_documentos(filas, modulo, errores):
+    """Arma un comprobante por cada documento SELECCIONADO de un módulo de
+    Clientes/Proveedores/Honorarios, contra la cuenta FIJA de ese módulo
+    (no se digita ni se elige en pantalla, el usuario confirmó que son
+    siempre las mismas), con la glosa exacta y el bloque de Tipo Auxiliar
+    "A"/"H" que pidió el usuario (10-09-2026). Devuelve (filas_planas,
     total_monto_seleccionado)."""
+    info = DOCUMENTO_MODULOS[modulo]
+    cuenta = CUENTAS_POR_CODIGO[info["cuenta_codigo"]]
+    etiqueta_modulo = info["titulo"]
     todas = []
     total = 0.0
-    faltantes = []
     for i, f in enumerate(filas):
         if not f["seleccionado"]:
-            continue
-        cuenta = CUENTAS_POR_CODIGO.get(f["cuenta_codigo"])
-        if not cuenta:
-            faltantes.append(str(i + 1))
             continue
         try:
             fecha = datetime.strptime(f["fecha_iso"], "%Y-%m-%d")
@@ -215,13 +309,17 @@ def _comprobantes_documentos(filas, ingreso, glosa_prefix, errores, etiqueta_mod
                 f"{etiqueta_modulo}: el documento de la fila {i + 1} no trae una fecha reconocible."
             )
             continue
-        glosa = f"{glosa_prefix} {f['nombre']} - {f['tipo_documento']} {f['numero_documento']}".strip()
-        todas.extend(construir_filas_comprobante(fecha, glosa, [(cuenta, f["monto"])], ingreso=ingreso))
+        glosa = info["glosa"](f)
+        auxiliar = {
+            "tipo": info["tipo_auxiliar"],
+            "rut": f.get("rut", ""),
+            "nombre": f["nombre"],
+            "tipo_documento_codigo": tipos_documento_repo.codigo_de(f["tipo_documento"]),
+            "numero_documento": f["numero_documento"],
+            "fecha": fecha,
+        }
+        todas.extend(construir_filas_comprobante(fecha, glosa, [(cuenta, f["monto"], auxiliar)], ingreso=info["ingreso"]))
         total += f["monto"]
-
-    if faltantes:
-        etiqueta = "el documento de la fila" if len(faltantes) == 1 else "los documentos de las filas"
-        errores.append(f"{etiqueta_modulo}: asigna una cuenta a {etiqueta} {', '.join(faltantes)} antes de generar.")
 
     return todas, total
 
@@ -231,10 +329,12 @@ def _comprobantes_mensuales(meses, campos, glosa_prefix, errores, etiqueta_modul
     de `GRILLAS_MENSUALES`. `cuenta_amortizacion`: dict de la cuenta
     elegida por buscador para el campo cuyo código fijo es None (hoy solo
     ocurre en Créditos/Amortización) — puede ser None si ese campo no se
-    usa este lote."""
+    usa este lote. Usado por F29 y Créditos, que siguen con fecha digitada
+    a mano por fila (a diferencia de Remuneraciones e Imposiciones, ver
+    `_comprobantes_remuneraciones_imposiciones`)."""
     todas = []
     total = 0.0
-    for idx, mes in enumerate(meses):
+    for mes in meses:
         lineas = []
         campo_sin_cuenta = False
         for campo, _label, codigo_fijo in campos:
@@ -250,18 +350,49 @@ def _comprobantes_mensuales(meses, campos, glosa_prefix, errores, etiqueta_modul
         if campo_sin_cuenta:
             errores.append(
                 f"{etiqueta_modulo}: selecciona la cuenta de Amortización arriba de la grilla — "
-                f"{MESES_LABEL[idx]} trae un monto de amortización."
+                f"{mes['label']} trae un monto de amortización."
             )
         if not lineas:
             continue
         if not mes["fecha_iso"]:
-            errores.append(f"{etiqueta_modulo}: falta la fecha de {MESES_LABEL[idx]}.")
+            errores.append(f"{etiqueta_modulo}: falta la fecha de {mes['label']}.")
             continue
 
         fecha = datetime.strptime(mes["fecha_iso"], "%Y-%m-%d")
-        glosa = f"{glosa_prefix} {MESES_LABEL[idx]}"
+        glosa = f"{glosa_prefix} {mes['label']}"
         todas.extend(construir_filas_comprobante(fecha, glosa, lineas, ingreso=False))
         total += sum(m for _c, m in lineas)
+
+    return todas, total
+
+
+def _comprobantes_remuneraciones_imposiciones(meses):
+    """Remuneraciones e Imposiciones se pagan en fechas distintas (regla
+    confirmada por el usuario, 10-09-2026): Remuneraciones el último día
+    del mes; Imposiciones el 13 del mes siguiente. Por eso cada mes con
+    montos genera hasta DOS comprobantes independientes (no uno solo como
+    el resto de las grillas mensuales), cada uno con su propia fecha ya
+    calculada — no hay fecha digitada a mano aquí, así que no hay caso de
+    "falta la fecha"."""
+    cuenta_remuneraciones = CUENTAS_POR_CODIGO["2108-15"]
+    cuenta_imposiciones = CUENTAS_POR_CODIGO["2108-25"]
+    todas = []
+    total = 0.0
+    for mes in meses:
+        monto_remuneraciones = mes.get("remuneraciones") or 0
+        monto_imposiciones = mes.get("imposiciones") or 0
+
+        if monto_remuneraciones > 0:
+            fecha = _fecha_remuneraciones(mes["anio_efectivo"], mes["mes_num"])
+            glosa = f"Pago remuneraciones {mes['label']}"
+            todas.extend(construir_filas_comprobante(fecha, glosa, [(cuenta_remuneraciones, monto_remuneraciones)], ingreso=False))
+            total += monto_remuneraciones
+
+        if monto_imposiciones > 0:
+            fecha = _fecha_imposiciones(mes["anio_efectivo"], mes["mes_num"])
+            glosa = f"Pago imposiciones {mes['label']}"
+            todas.extend(construir_filas_comprobante(fecha, glosa, [(cuenta_imposiciones, monto_imposiciones)], ingreso=False))
+            total += monto_imposiciones
 
     return todas, total
 
@@ -278,13 +409,15 @@ def generar():
         saldo_inicial = 0.0
         errores.append("El saldo inicial no es un número válido.")
 
+    anio = _anio_desde_form(form, errores)
+
     clientes_filas = _leer_filas_documentos(form, "clientes")
     proveedores_filas = _leer_filas_documentos(form, "proveedores")
     honorarios_filas = _leer_filas_documentos(form, "honorarios")
 
-    f29_meses = _leer_grilla_mensual(form, "f29", GRILLAS_MENSUALES[0][2])
-    remimp_meses = _leer_grilla_mensual(form, "remimp", GRILLAS_MENSUALES[1][2])
-    credito_meses = _leer_grilla_mensual(form, "credito", GRILLAS_MENSUALES[2][2])
+    f29_meses = _enriquecer_meses(_leer_grilla_mensual(form, "f29", GRILLAS_MENSUALES[0][2], 13), anio, True, False)
+    remimp_meses = _enriquecer_meses(_leer_grilla_mensual(form, "remimp", GRILLAS_MENSUALES[1][2], 13), anio, True, True)
+    credito_meses = _enriquecer_meses(_leer_grilla_mensual(form, "credito", GRILLAS_MENSUALES[2][2], 12), anio, False, False)
 
     credito_cuenta_codigo = form.get("credito_cuenta_amortizacion_codigo", "").strip()
     credito_cuenta_descripcion = form.get("credito_cuenta_amortizacion_descripcion", "").strip()
@@ -297,22 +430,13 @@ def generar():
         prestamo_socio_monto = 0.0
     prestamo_socio_fecha_iso = form.get("prestamo_socio_fecha", "")
 
-    filas_clientes, total_clientes = _comprobantes_documentos(
-        clientes_filas, True, "Cobro", errores, "Clientes",
-    )
-    filas_proveedores, total_proveedores = _comprobantes_documentos(
-        proveedores_filas, False, "Pago proveedor", errores, "Proveedores",
-    )
-    filas_honorarios, total_honorarios = _comprobantes_documentos(
-        honorarios_filas, False, "Pago honorarios", errores, "Honorarios",
-    )
+    filas_clientes, total_clientes = _comprobantes_documentos(clientes_filas, "clientes", errores)
+    filas_proveedores, total_proveedores = _comprobantes_documentos(proveedores_filas, "proveedores", errores)
+    filas_honorarios, total_honorarios = _comprobantes_documentos(honorarios_filas, "honorarios", errores)
     filas_f29, total_f29 = _comprobantes_mensuales(
         f29_meses, GRILLAS_MENSUALES[0][2], "Pago F29", errores, "F29",
     )
-    filas_remimp, total_remimp = _comprobantes_mensuales(
-        remimp_meses, GRILLAS_MENSUALES[1][2], "Pago remuneraciones e imposiciones", errores,
-        "Remuneraciones e Imposiciones",
-    )
+    filas_remimp, total_remimp = _comprobantes_remuneraciones_imposiciones(remimp_meses)
     filas_credito, total_credito = _comprobantes_mensuales(
         credito_meses, GRILLAS_MENSUALES[2][2], "Pago crédito", errores, "Créditos",
         cuenta_amortizacion=cuenta_amortizacion,
@@ -355,8 +479,7 @@ def generar():
         return render_template(
             "caja_empresas.html",
             cuentas=PLAN_CUENTAS,
-            meses_label=MESES_LABEL,
-            grillas=GRILLAS_MENSUALES,
+            anio=anio,
             clientes_filas=clientes_filas,
             proveedores_filas=proveedores_filas,
             honorarios_filas=honorarios_filas,

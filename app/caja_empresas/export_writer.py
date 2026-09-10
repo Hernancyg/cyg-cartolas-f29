@@ -40,6 +40,32 @@ patrón de 2 líneas de Conciliación/F29):
   tenga "Atributo Bancario" = SI — en la práctica esto no debería aplicar
   nunca en Empresas Caja, ya que ni la cuenta Caja (1101-01) ni las cuentas
   de detalle configuradas llevan ese atributo en el plan de cuentas.
+
+## Tipo Auxiliar "A"/"H" (10-09-2026): Clientes/Proveedores/Honorarios
+
+Las cuentas fijas de Clientes (1104-01) y Proveedores (2105-01) llevan
+Tipo Auxiliar "A" en su línea; Honorarios (2105-04) lleva "H". El usuario
+confirmó el formato exacto editando a mano un archivo de salida real (ver
+`app/caja_empresas/routes.py` para el armado del dict `auxiliar`):
+
+- Rut (columna L): el RUT completo con guion (ej. "79593780-3"). Para
+  Clientes/Proveedores se arma juntando las columnas C (número) y D
+  (dígito verificador) del archivo de origen — vienen separadas ahí. Para
+  Honorarios el archivo ya trae el rut completo en la columna A.
+- Razón Social / Nombre Prestador (columna M): el nombre del documento.
+- Tipo de Documento (columna N, numérico): se traduce desde el texto del
+  archivo (por ejemplo "FAC-EL", "BOL-HE") a un código numérico
+  configurable desde Administrador → Tipos de Documento (ver
+  `app/data/tipos_documento_repo.py`) — no viene fijo en el código para
+  que el usuario pueda agregar más sin pedir un redespliegue.
+- Folio / Número de Documento (columna O): el número de documento del
+  archivo (para Honorarios, la parte numérica de "BOL-HE 2" → "2").
+- Monto (columna P): el mismo monto de esa línea.
+- Fecha (columna Q): la misma fecha del comprobante.
+
+Este bloque solo aplica a la línea de detalle (Clientes/Proveedores/
+Honorarios), nunca a la línea de Caja — igual que el bloque bancario "B"
+de Conciliación solo aplica a la cuenta bancaria, nunca a la otra.
 """
 
 from datetime import datetime
@@ -100,7 +126,7 @@ class ComprobanteSinLineas(Exception):
     del mes/módulo es distinto de cero)."""
 
 
-def _fila(cuenta_codigo, es_banco, glosa_detalle, centro_costo, debe, haber, es_primera, fecha, tipo, glosa):
+def _fila(cuenta_codigo, es_banco, glosa_detalle, centro_costo, debe, haber, es_primera, fecha, tipo, glosa, auxiliar=None):
     fila = ["", "", "", "", cuenta_codigo, glosa_detalle, centro_costo, "", debe or "", haber or "", "", "", "", "", "", "", ""]
     if es_primera:
         fila[0] = 0
@@ -114,14 +140,29 @@ def _fila(cuenta_codigo, es_banco, glosa_detalle, centro_costo, debe, haber, es_
         fila[14] = 0
         fila[15] = debe or haber
         fila[16] = fecha
+    elif auxiliar:
+        # Tipo Auxiliar "A" (Clientes/Proveedores) u "H" (Honorarios) —
+        # ver docstring del módulo. Solo aplica a la línea de detalle
+        # (nunca a la línea de Caja), igual que el bloque "B" de arriba.
+        fila[10] = auxiliar["tipo"]
+        fila[11] = auxiliar.get("rut", "")
+        fila[12] = auxiliar.get("nombre", "")
+        fila[13] = auxiliar.get("tipo_documento_codigo")
+        fila[14] = auxiliar.get("numero_documento", "")
+        fila[15] = debe or haber
+        fila[16] = auxiliar.get("fecha", fecha)
     return fila
 
 
 def construir_filas_comprobante(fecha, glosa, lineas_detalle, ingreso):
-    """`lineas_detalle`: lista de (cuenta_dict, monto) — una por cada
-    ítem con monto distinto de cero en este comprobante (por ejemplo, un
-    documento de Clientes/Proveedores/Honorarios, o los ítems de un mes de
-    F29/Remuneraciones-Imposiciones/Créditos que no estén en cero).
+    """`lineas_detalle`: lista de (cuenta_dict, monto) o (cuenta_dict,
+    monto, auxiliar_dict) — una por cada ítem con monto distinto de cero
+    en este comprobante (por ejemplo, un documento de Clientes/
+    Proveedores/Honorarios, o los ítems de un mes de F29/Remuneraciones-
+    Imposiciones/Créditos que no estén en cero). El tercer elemento
+    (`auxiliar_dict`), opcional, arma el bloque "A"/"H" de Tipo Auxiliar en
+    esa línea (ver docstring del módulo) — solo lo usan Clientes/
+    Proveedores/Honorarios.
     `ingreso`: True si es dinero que entra a Caja (Debe), False si sale
     (Haber). Devuelve la lista de filas (17 columnas) de ESTE comprobante,
     con Caja agregada (suma de todos los montos de detalle) y Número/Tipo/
@@ -131,8 +172,14 @@ def construir_filas_comprobante(fecha, glosa, lineas_detalle, ingreso):
     if not lineas_detalle:
         raise ComprobanteSinLineas(f"Comprobante sin líneas de detalle: {glosa!r}")
 
+    def _desempacar(linea):
+        if len(linea) == 3:
+            return linea
+        cuenta, monto = linea
+        return cuenta, monto, None
+
     tipo = "I" if ingreso else "E"
-    total_caja = sum(monto for _cuenta, monto in lineas_detalle)
+    total_caja = sum(_desempacar(linea)[1] for linea in lineas_detalle)
     cc_caja = 100 if CUENTA_CAJA["requiere_centro_costo"] else ""
 
     filas = []
@@ -148,15 +195,17 @@ def construir_filas_comprobante(fecha, glosa, lineas_detalle, ingreso):
         # Caja (Debe) primero, detalle (Haber) después — mismo orden que
         # Conciliación en un abono: la primera línea lleva el Debe.
         filas.append(_fila(CUENTA_CAJA["codigo"], CUENTA_CAJA["es_banco"], glosa, cc_caja, total_caja, "", _marcar_primera(), fecha, tipo, glosa))
-        for cuenta, monto in lineas_detalle:
+        for linea in lineas_detalle:
+            cuenta, monto, auxiliar = _desempacar(linea)
             cc = 100 if cuenta["requiere_centro_costo"] else ""
-            filas.append(_fila(cuenta["codigo"], cuenta["es_banco"], glosa, cc, "", monto, _marcar_primera(), fecha, tipo, glosa))
+            filas.append(_fila(cuenta["codigo"], cuenta["es_banco"], glosa, cc, "", monto, _marcar_primera(), fecha, tipo, glosa, auxiliar))
     else:
         # Detalle (Debe) primero, Caja (Haber) al final — mismo orden que
         # Conciliación en un cargo: la primera línea lleva el Debe.
-        for cuenta, monto in lineas_detalle:
+        for linea in lineas_detalle:
+            cuenta, monto, auxiliar = _desempacar(linea)
             cc = 100 if cuenta["requiere_centro_costo"] else ""
-            filas.append(_fila(cuenta["codigo"], cuenta["es_banco"], glosa, cc, monto, "", _marcar_primera(), fecha, tipo, glosa))
+            filas.append(_fila(cuenta["codigo"], cuenta["es_banco"], glosa, cc, monto, "", _marcar_primera(), fecha, tipo, glosa, auxiliar))
         filas.append(_fila(CUENTA_CAJA["codigo"], CUENTA_CAJA["es_banco"], glosa, cc_caja, "", total_caja, _marcar_primera(), fecha, tipo, glosa))
 
     return filas
