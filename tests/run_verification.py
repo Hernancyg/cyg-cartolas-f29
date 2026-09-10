@@ -605,6 +605,173 @@ def main():
     check("GET /reuniones/ 200 (admin, sin credenciales MS configuradas)", r.status_code == 200)
     check("reuniones muestra aviso de configuración pendiente", "Falta conectar Outlook" in r.get_data(as_text=True))
 
+    # ---- Conciliación (nueva pestaña, solo admin) ----
+    from datetime import datetime as _datetime_conciliacion
+    from app.conciliacion.plan_cuentas import PLAN_CUENTAS, CUENTAS_POR_CODIGO as CUENTAS_POR_CODIGO_TEST
+    from app.parsers.bank_parsers import Transaction
+    from app.parsers.output_writer import build_output_workbook
+
+    check("plan de cuentas cargado (1322 cuentas, sin duplicados de código)", (
+        len(PLAN_CUENTAS) == 1322
+        and len({c["codigo"] for c in PLAN_CUENTAS}) == 1322
+    ))
+
+    r = client.get("/conciliacion/")
+    check("GET /conciliacion/ 200 (admin)", r.status_code == 200)
+    check("conciliación (sin archivo cargado) pide subir la cartola convertida", "Sube la cartola convertida" in r.get_data(as_text=True))
+
+    # el archivo de entrada es exactamente lo que arma output_writer (mismo
+    # camino que produce el botón "Descargar Excel convertido" de Subir
+    # Cartolas) — se genera acá para no depender de un archivo de ejemplo.
+    txs = [
+        Transaction(fecha="05/08/2026", descripcion="TRANSFERENCIA RECIBIDA DE JUAN PEREZ", cargo=0.0, abono=150000.0),
+        Transaction(fecha="07/08/2026", descripcion="PAGO A PROVEEDOR ACME LTDA", cargo=80000.0, abono=0.0),
+    ]
+    wb = build_output_workbook(txs)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    r = client.post(
+        "/conciliacion/procesar",
+        data={"archivo": (buf, "cartola_convertida.xlsx")},
+        content_type="multipart/form-data",
+    )
+    body = r.get_data(as_text=True)
+    check("POST /conciliacion/procesar -> 200", r.status_code == 200)
+    check("conciliación muestra el detalle de los 2 movimientos cargados", "TRANSFERENCIA RECIBIDA DE JUAN PEREZ" in body and "PAGO A PROVEEDOR ACME LTDA" in body)
+    check("conciliación calcula el total de registros (2)", 'id="stat-total">2<' in body)
+    check("conciliación arranca con 0 conciliados / 2 pendientes", 'id="stat-conciliados">0<' in body and 'id="stat-pendientes">2<' in body)
+    check("conciliación detecta el período (05/08/2026 - 07/08/2026)", "05/08/2026 - 07/08/2026" in body)
+    check("conciliación embebe el plan de cuentas completo para el buscador JS", "CUENTA CAJA" in body and "BANCO SANTANDER" in body)
+
+    # archivo con formato equivocado (no es el Excel convertido de Cartolas)
+    r = client.post(
+        "/conciliacion/procesar",
+        data={"archivo": (io.BytesIO(b"no es un excel"), "cualquiera.pdf")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("conciliación rechaza un formato no permitido", "Formato no permitido" in r.get_data(as_text=True))
+
+    # ---- Conciliación: archivo de salida (09-09-2026, segunda ronda) ----
+    # Plan de cuentas ahora también trae "es_banco" (Atributo Bancario) y
+    # "requiere_centro_costo" (Requiere Centro de Costo), necesarios para
+    # armar el comprobante — deducidos de una muestra real de la plantilla
+    # de salida que entregó el usuario (ver app/conciliacion/export_writer.py).
+    check("plan de cuentas trae es_banco/requiere_centro_costo por cuenta", (
+        CUENTAS_POR_CODIGO_TEST["1101-29"]["es_banco"] is True
+        and CUENTAS_POR_CODIGO_TEST["1101-29"]["requiere_centro_costo"] is False
+        and CUENTAS_POR_CODIGO_TEST["4401-01"]["es_banco"] is False
+        and CUENTAS_POR_CODIGO_TEST["4401-01"]["requiere_centro_costo"] is True
+    ))
+    check("21 cuentas bancarias y 296 cuentas requieren centro de costo", (
+        sum(1 for c in PLAN_CUENTAS if c["es_banco"]) == 21
+        and sum(1 for c in PLAN_CUENTAS if c["requiere_centro_costo"]) == 296
+    ))
+
+    from app.conciliacion.export_writer import construir_filas_comprobantes
+
+    banco_bci = CUENTAS_POR_CODIGO_TEST["1101-29"]  # es_banco=True, requiere_centro_costo=False
+    concepto_no_banco_con_cc = CUENTAS_POR_CODIGO_TEST["4401-01"]  # es_banco=False, requiere_centro_costo=True
+    concepto_no_banco_sin_cc = CUENTAS_POR_CODIGO_TEST["2105-18"]  # es_banco=False, requiere_centro_costo=False
+
+    filas_cargo = construir_filas_comprobantes(
+        [{"fecha": _datetime_conciliacion(2026, 7, 1), "detalle": "TRASPASO A OTRO BANCO", "cargo": 2449219.0, "abono": 0.0, "concepto": concepto_no_banco_con_cc}],
+        banco_bci,
+    )
+    check("cargo: línea 1 (Debe) es la cuenta Concepto, con Centro Costo 100 (Requiere Centro de Costo=SI)", (
+        filas_cargo[0][1] == "E" and filas_cargo[0][4] == "4401-01" and filas_cargo[0][6] == 100 and filas_cargo[0][8] == 2449219.0 and filas_cargo[0][9] == ""
+    ))
+    check("cargo: línea 2 (Haber) es la cuenta bancaria, con Tipo Auxiliar B y bloque de detalle bancario", (
+        filas_cargo[1][4] == "1101-29" and filas_cargo[1][9] == 2449219.0 and filas_cargo[1][10] == "B"
+        and filas_cargo[1][12] == "TRASPASO A OTRO BANCO" and filas_cargo[1][15] == 2449219.0
+    ))
+
+    filas_abono = construir_filas_comprobantes(
+        [{"fecha": _datetime_conciliacion(2026, 7, 7), "detalle": "DEPOSITO CHEQUE", "cargo": 0.0, "abono": 34498682.0, "concepto": concepto_no_banco_sin_cc}],
+        banco_bci,
+    )
+    check("abono: línea 1 (Debe) es la cuenta bancaria, tipo I, sin Centro Costo", (
+        filas_abono[0][1] == "I" and filas_abono[0][4] == "1101-29" and filas_abono[0][8] == 34498682.0 and filas_abono[0][10] == "B" and filas_abono[0][6] == ""
+    ))
+    check("abono: línea 2 (Haber) es la cuenta Concepto, sin Tipo Auxiliar (no es banco) ni Centro Costo (no lo requiere)", (
+        filas_abono[1][4] == "2105-18" and filas_abono[1][9] == 34498682.0 and filas_abono[1][10] == "" and filas_abono[1][6] == ""
+    ))
+
+    check("primera línea siempre lleva Número=0 y la segunda vacío", (
+        filas_cargo[0][0] == 0 and filas_cargo[1][0] == "" and filas_abono[0][0] == 0 and filas_abono[1][0] == ""
+    ))
+
+    from app.conciliacion.export_writer import FilaSinFecha, comprobantes_a_xls_bytes
+    _fallo_sin_fecha = False
+    try:
+        comprobantes_a_xls_bytes(
+            [{"fecha": "no-es-fecha", "detalle": "x", "cargo": 100.0, "abono": 0.0, "concepto": concepto_no_banco_sin_cc}],
+            banco_bci,
+        )
+    except FilaSinFecha:
+        _fallo_sin_fecha = True
+    check("comprobantes_a_xls_bytes rechaza una fila sin fecha real (datetime)", _fallo_sin_fecha)
+
+    # Flujo completo end-to-end: cargar la cartola, clasificar cada fila
+    # (cuenta bancaria + concepto por movimiento) y descargar el .xls.
+    txs_salida = [
+        Transaction(fecha="01/07/2026", descripcion="TRASPASO FONDOS OTRO BANCO EN LINEA", cargo=2449219.0, abono=0.0),
+        Transaction(fecha="07/07/2026", descripcion="DEPOSITO CHEQUE/DOCUMENTO OTROS BANCOS", cargo=0.0, abono=34498682.0),
+    ]
+    wb_salida = build_output_workbook(txs_salida)
+    buf_salida = io.BytesIO()
+    wb_salida.save(buf_salida)
+    buf_salida.seek(0)
+    r = client.post(
+        "/conciliacion/procesar",
+        data={"archivo": (buf_salida, "cartola_004_convertido.xlsx")},
+        content_type="multipart/form-data",
+    )
+    check("carga la cartola de prueba para el flujo de descarga", r.status_code == 200)
+
+    r = client.post("/conciliacion/descargar", data={
+        "csrf_token": "", "archivo_nombre": "cartola_004_convertido.xlsx", "total_filas": "2",
+        "cuenta_banco_codigo": "1101-29", "cuenta_banco_descripcion": "BANCO BCI",
+        "fecha_0": "01-07-2026", "fecha_iso_0": "2026-07-01", "detalle_0": "TRASPASO FONDOS OTRO BANCO EN LINEA", "cargo_0": "2449219.0", "abono_0": "0.0",
+        "concepto_codigo_0": "4401-01", "concepto_descripcion_0": "INTERESES PAGADOS",
+        "fecha_1": "07-07-2026", "fecha_iso_1": "2026-07-07", "detalle_1": "DEPOSITO CHEQUE/DOCUMENTO OTROS BANCOS", "cargo_1": "0.0", "abono_1": "34498682.0",
+        "concepto_codigo_1": "1101-01", "concepto_descripcion_1": "CUENTA CAJA",
+    })
+    check("POST /conciliacion/descargar -> 200 con la clasificación completa", r.status_code == 200)
+    check("descarga con mimetype .xls", r.mimetype == "application/vnd.ms-excel")
+    check("nombre de archivo de descarga incluye el nombre de la cartola", "Comprobantes_Conciliacion_cartola_004_convertido.xls" in r.headers.get("Content-Disposition", ""))
+
+    import xlrd as _xlrd_check
+    _wb_check = _xlrd_check.open_workbook(file_contents=r.get_data())
+    _sh_check = _wb_check.sheet_by_name("Comprobantes")
+    check("el .xls generado tiene 2 líneas por movimiento (4 filas + encabezado)", _sh_check.nrows == 5)
+    check("línea 1 del primer comprobante: Debe=Concepto (4401-01), Centro Costo 100", (
+        _sh_check.cell_value(1, 4) == "4401-01" and _sh_check.cell_value(1, 6) == 100 and _sh_check.cell_value(1, 8) == 2449219.0
+    ))
+    check("línea 2 del primer comprobante: Haber=Banco BCI (1101-29), Tipo Auxiliar B", (
+        _sh_check.cell_value(2, 4) == "1101-29" and _sh_check.cell_value(2, 9) == 2449219.0 and _sh_check.cell_value(2, 10) == "B"
+    ))
+    check("línea 3 del segundo comprobante (abono): Debe=Banco BCI", (
+        _sh_check.cell_value(3, 1) == "I" and _sh_check.cell_value(3, 4) == "1101-29" and _sh_check.cell_value(3, 8) == 34498682.0
+    ))
+
+    # Falta la cuenta bancaria: no descarga, re-muestra la página con el
+    # error y sin perder lo ya clasificado.
+    r = client.post("/conciliacion/descargar", data={
+        "csrf_token": "", "archivo_nombre": "cartola_004_convertido.xlsx", "total_filas": "2",
+        "cuenta_banco_codigo": "", "cuenta_banco_descripcion": "",
+        "fecha_0": "01-07-2026", "fecha_iso_0": "2026-07-01", "detalle_0": "TRASPASO FONDOS OTRO BANCO EN LINEA", "cargo_0": "2449219.0", "abono_0": "0.0",
+        "concepto_codigo_0": "4401-01", "concepto_descripcion_0": "INTERESES PAGADOS",
+        "fecha_1": "07-07-2026", "fecha_iso_1": "2026-07-07", "detalle_1": "DEPOSITO CHEQUE/DOCUMENTO OTROS BANCOS", "cargo_1": "0.0", "abono_1": "34498682.0",
+        "concepto_codigo_1": "", "concepto_descripcion_1": "",
+    })
+    body = r.get_data(as_text=True)
+    check("sin cuenta bancaria: 200 (re-muestra la página, no descarga)", r.status_code == 200)
+    check("sin cuenta bancaria: mensaje de error pidiendo elegirla", "Selecciona arriba la cuenta bancaria" in body)
+    check("sin cuenta bancaria: avisa qué fila falta clasificar (fila 2)", "fila 2" in body)
+    check("sin cuenta bancaria: conserva el detalle editado de la fila ya clasificada", "TRASPASO FONDOS OTRO BANCO EN LINEA" in body)
+
     # ---- _detalle_error_http: extrae mensaje legible sin importar el
     # formato de error que devuelva Azure/Graph (bug real: un 401 de la
     # capa de autenticación con formato {"error":"invalid_token",...}
@@ -677,6 +844,310 @@ def main():
     check("_diagnostico_http: incluye las cabeceras de la respuesta", "request-id" in diag)
     check("_diagnostico_http: incluye el largo del token, no el token en sí", "26 caracteres" in diag and "token-de-prueba" not in diag)
 
+    # ---- Empresas Caja (nueva pestaña, solo admin por defecto) ----
+    from datetime import datetime as _dt_caja
+    from openpyxl import Workbook as _WorkbookCaja
+    from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO as _CUENTAS_CAJA
+
+    def _wb_clientes_proveedores(filas, col_monto):
+        wb = _WorkbookCaja()
+        ws = wb.active
+        ws.append(["ESTADO DE CUENTAS - PENDIENTES"])
+        ws.append(["Codigo Cuenta", "Cuenta", "RUT", "DV", "Nombre", "Fecha Registro", "Tipo Asiento",
+                   "Comprobante", "Sec", "Descripcion Asiento", "Tipo Documento", "N Documento",
+                   "Vencimiento", "Sucursal", "Centro Costo", "Debe", "Haber", "Saldo"])
+        for f in filas:
+            row = [None] * 18
+            rut_numero, rut_dv = f["rut"].split("-")
+            row[2] = rut_numero
+            row[3] = rut_dv
+            row[4] = f["nombre"]
+            row[5] = f["fecha"]
+            row[10] = f["tipo_documento"]
+            row[11] = f["numero_documento"]
+            row[col_monto - 1] = f["monto"]
+            ws.append(row)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+
+    def _wb_honorarios(filas):
+        wb = _WorkbookCaja()
+        ws = wb.active
+        ws.append(["ESTADO DE CUENTAS DE HONORARIO - PENDIENTES"])
+        ws.append(["Movimientos Pendientes"])
+        ws.append(["Rut", "Nombre", "Fecha", "Comprobante", "Sec", "Boleta", "Sucursal",
+                   "CentroDeCosto", "Debe", "Haber", "Saldo", "Prestador"])
+        for f in filas:
+            row = [None] * 12
+            row[0] = f["rut"]
+            row[1] = f["nombre"]
+            row[2] = f["fecha"]
+            row[5] = f["boleta"]
+            row[9] = f["monto"]
+            ws.append(row)
+        ws.append([None, None, None, None, None, None, None, "Total Informe", 0, sum(f["monto"] for f in filas), 0, None])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+
+    # Con anio="2026": las grillas de F29/RemImp tienen 13 filas (índice 0 =
+    # Diciembre 2025, índice 1..12 = Enero..Diciembre 2026); Créditos tiene
+    # 12 (índice 0..11 = Enero..Diciembre 2026, índice = mes - 1). Julio
+    # 2026 cae en índice 7 para F29/RemImp e índice 6 para Créditos.
+    ANIO_CAJA = "2026"
+
+    def _meses_vacios_caja():
+        d = {"anio": ANIO_CAJA}
+        for m in range(13):
+            for campo in ("f29_fecha", "f29_monto", "f29_multas", "remimp_remuneraciones", "remimp_imposiciones"):
+                d[f"{campo}_{m}"] = ""
+        for m in range(12):
+            for campo in ("credito_fecha", "credito_amortizacion", "credito_intereses", "credito_comisiones"):
+                d[f"{campo}_{m}"] = ""
+        return d
+
+    r = client.get("/caja_empresas/")
+    check("GET /caja_empresas/ 200 (admin)", r.status_code == 200)
+    check("Empresas Caja pide saldo inicial", "Saldo inicial" in r.get_data(as_text=True))
+    check("Empresas Caja pide el año del lote", "Año del lote" in r.get_data(as_text=True))
+    check("grilla F29 incluye Diciembre del año anterior", "Diciembre" in r.get_data(as_text=True))
+    check(
+        "Diciembre (año anterior) muestra su fecha de Remuneraciones excepcional: 05-01-2026 (no 31-12-2025)",
+        "05-01-2026" in r.get_data(as_text=True) and "31-12-2025" not in r.get_data(as_text=True),
+    )
+
+    # Carga AJAX de los 3 archivos de documentos.
+    buf_clientes = _wb_clientes_proveedores(
+        [{"nombre": "CLIENTE UNO", "rut": "76543210-5", "fecha": _dt_caja(2026, 7, 1), "tipo_documento": "FAC-EL", "numero_documento": "100", "monto": 500000}],
+        col_monto=16,
+    )
+    r = client.post("/caja_empresas/cargar/clientes", data={"archivo": (buf_clientes, "clientes.xlsx")}, content_type="multipart/form-data")
+    check("POST /caja_empresas/cargar/clientes -> 200", r.status_code == 200)
+    check("fragmento de clientes muestra el documento cargado", "CLIENTE UNO" in r.get_data(as_text=True))
+    check("fragmento de clientes viene con el check pre-marcado", "checked" in r.get_data(as_text=True))
+    check("fragmento de clientes muestra el RUT junto al nombre (juntando columnas C+D)", "76543210-5" in r.get_data(as_text=True))
+
+    buf_proveedores = _wb_clientes_proveedores(
+        [{"nombre": "PROVEEDOR UNO", "rut": "11222333-4", "fecha": _dt_caja(2026, 7, 3), "tipo_documento": "FAC-EL", "numero_documento": "55", "monto": 200000}],
+        col_monto=17,
+    )
+    r = client.post("/caja_empresas/cargar/proveedores", data={"archivo": (buf_proveedores, "proveedores.xlsx")}, content_type="multipart/form-data")
+    check("POST /caja_empresas/cargar/proveedores -> 200", r.status_code == 200)
+    check("fragmento de proveedores muestra el documento cargado", "PROVEEDOR UNO" in r.get_data(as_text=True))
+    check("fragmento de proveedores muestra el RUT junto al nombre", "11222333-4" in r.get_data(as_text=True))
+
+    buf_honorarios = _wb_honorarios([{"rut": "11111111-1", "nombre": "PRESTADOR UNO", "fecha": "01-07-2026", "boleta": "BOL-HE 5", "monto": 150000}])
+    r = client.post("/caja_empresas/cargar/honorarios", data={"archivo": (buf_honorarios, "honorarios.xlsx")}, content_type="multipart/form-data")
+    check("POST /caja_empresas/cargar/honorarios -> 200", r.status_code == 200)
+    body_hon = r.get_data(as_text=True)
+    check("fragmento de honorarios muestra el prestador cargado", "PRESTADOR UNO" in body_hon)
+    check("fragmento de honorarios muestra el RUT (ya venía combinado)", "11111111-1" in body_hon)
+    check("honorarios separa 'BOL-HE 5' en tipo 'BOL-HE' y número '5'", 'value="BOL-HE"' in body_hon and 'value="5"' in body_hon)
+
+    r = client.post("/caja_empresas/cargar/clientes", data={}, content_type="multipart/form-data")
+    check("cargar sin archivo -> 400 (no revienta)", r.status_code == 400)
+
+    r = client.post(
+        "/caja_empresas/cargar/clientes",
+        data={"archivo": (io.BytesIO(b"no es un excel"), "cualquiera.xlsx")},
+        content_type="multipart/form-data",
+    )
+    check("cargar un archivo corrupto -> 400 con mensaje, no 500", r.status_code == 400 and "No se pudo abrir" in r.get_data(as_text=True))
+
+    # ---- generar(): mes con monto pero sin fecha -> error (índice 1 = Enero 2026) ----
+    payload_sin_fecha = dict(_meses_vacios_caja())
+    payload_sin_fecha.update({
+        "saldo_inicial": "1000000",
+        "clientes_total_filas": "0", "proveedores_total_filas": "0", "honorarios_total_filas": "0",
+        "f29_monto_1": "100000",
+    })
+    r = client.post("/caja_empresas/generar", data=payload_sin_fecha, follow_redirects=True)
+    check("generar con monto de mes sin fecha -> 200 (no descarga)", r.status_code == 200)
+    check("generar con monto de mes sin fecha: avisa que falta la fecha de Enero 2026", "falta la fecha de Enero 2026" in r.get_data(as_text=True))
+
+    # ---- generar(): año inválido -> error, no revienta ----
+    payload_anio_invalido = dict(_meses_vacios_caja())
+    payload_anio_invalido.update({
+        "anio": "no-es-un-año", "saldo_inicial": "0",
+        "clientes_total_filas": "0", "proveedores_total_filas": "0", "honorarios_total_filas": "0",
+    })
+    r = client.post("/caja_empresas/generar", data=payload_anio_invalido, follow_redirects=True)
+    check("año inválido -> 200 (no revienta), avisa el problema", (
+        r.status_code == 200 and "Año del lote” no es válido" in r.get_data(as_text=True)
+    ))
+
+    # ---- generar(): flujo completo, todos los módulos con datos (Julio 2026) ----
+    payload_completo = dict(_meses_vacios_caja())
+    payload_completo.update({
+        "saldo_inicial": "1000000",
+        "clientes_total_filas": "1", "clientes_nombre_0": "CLIENTE UNO", "clientes_rut_0": "76543210-5",
+        "clientes_fecha_0": "01-07-2026",
+        "clientes_fecha_iso_0": "2026-07-01", "clientes_tipo_documento_0": "FAC-EL", "clientes_numero_documento_0": "100",
+        "clientes_monto_0": "500000",
+        "clientes_check_0": "on",
+        "proveedores_total_filas": "1", "proveedores_nombre_0": "PROVEEDOR UNO", "proveedores_rut_0": "11222333-4",
+        "proveedores_fecha_0": "03-07-2026",
+        "proveedores_fecha_iso_0": "2026-07-03", "proveedores_tipo_documento_0": "FAC-EL", "proveedores_numero_documento_0": "55",
+        "proveedores_monto_0": "200000",
+        "proveedores_check_0": "on",
+        "honorarios_total_filas": "1", "honorarios_nombre_0": "PRESTADOR UNO", "honorarios_rut_0": "11111111-1",
+        "honorarios_fecha_0": "01-07-2026",
+        "honorarios_fecha_iso_0": "2026-07-01", "honorarios_tipo_documento_0": "BOL-HE", "honorarios_numero_documento_0": "5",
+        "honorarios_monto_0": "150000",
+        "honorarios_check_0": "on",
+        # índice 7 = Julio 2026 en las grillas de 13 filas (F29/RemImp).
+        "f29_fecha_7": "2026-07-31", "f29_monto_7": "300000", "f29_multas_7": "10000",
+        "remimp_remuneraciones_7": "400000", "remimp_imposiciones_7": "50000",
+        # índice 6 = Julio 2026 en la grilla de 12 filas de Créditos.
+        "credito_fecha_6": "2026-07-10", "credito_amortizacion_6": "80000", "credito_intereses_6": "5000", "credito_comisiones_6": "2000",
+        "credito_cuenta_amortizacion_codigo": "2106-01", "credito_cuenta_amortizacion_descripcion": "PRESTAMOS BANCARIOS",
+    })
+    r = client.post("/caja_empresas/generar", data=payload_completo)
+    check("POST /caja_empresas/generar (completo) -> 200", r.status_code == 200)
+    check("descarga con mimetype .xls", r.mimetype == "application/vnd.ms-excel")
+    check("nombre de archivo de descarga", "Comprobantes_EmpresasCaja_" in r.headers.get("Content-Disposition", ""))
+
+    import xlrd as _xlrd_caja
+    _wb_caja = _xlrd_caja.open_workbook(file_contents=r.get_data())
+    _sh_caja = _wb_caja.sheet_by_name("Comprobantes")
+    # Clientes (2) + Proveedores (2) + Honorarios (2) + F29 (3) + RemImp
+    # (2+2, ahora dos comprobantes independientes) + Créditos (4) = 17
+    # líneas + encabezado.
+    check("el .xls generado tiene 17 líneas de detalle + encabezado (18 filas)", _sh_caja.nrows == 18)
+
+    check("línea 1 (Clientes, ingreso): Caja al Debe", _sh_caja.cell_value(1, 0) == 0 and _sh_caja.cell_value(1, 1) == "I" and _sh_caja.cell_value(1, 4) == "1101-01" and _sh_caja.cell_value(1, 8) == 500000)
+    check("línea 1 (Clientes): glosa con el formato pedido", _sh_caja.cell_value(1, 3) == "INGRESO F 100 CLIENTE UNO")
+    check("línea 2 (Clientes): contra-cuenta 1104-01 al Haber, Tipo Auxiliar A", (
+        _sh_caja.cell_value(2, 4) == "1104-01" and _sh_caja.cell_value(2, 9) == 500000
+        and _sh_caja.cell_value(2, 10) == "A" and _sh_caja.cell_value(2, 11) == "76543210-5"
+        and _sh_caja.cell_value(2, 12) == "CLIENTE UNO" and _sh_caja.cell_value(2, 13) == 33
+        and _sh_caja.cell_value(2, 14) == 100 and _sh_caja.cell_value(2, 15) == 500000
+    ))
+
+    check("línea 3 (Proveedores, egreso): contra-cuenta al Debe primero, glosa pedida", (
+        _sh_caja.cell_value(3, 1) == "E" and _sh_caja.cell_value(3, 4) == "2105-01" and _sh_caja.cell_value(3, 8) == 200000
+        and _sh_caja.cell_value(3, 3) == "PAGO F 55 PROVEEDOR UNO"
+    ))
+    check("línea 3 (Proveedores): Tipo Auxiliar A con rut/nombre/tipo doc/folio", (
+        _sh_caja.cell_value(3, 10) == "A" and _sh_caja.cell_value(3, 11) == "11222333-4"
+        and _sh_caja.cell_value(3, 12) == "PROVEEDOR UNO" and _sh_caja.cell_value(3, 13) == 33
+        and _sh_caja.cell_value(3, 14) == 55 and _sh_caja.cell_value(3, 15) == 200000
+    ))
+    check("línea 4 (Proveedores): Caja al Haber", _sh_caja.cell_value(4, 4) == "1101-01" and _sh_caja.cell_value(4, 9) == 200000)
+
+    check("línea 5 (Honorarios, egreso): contra-cuenta fija 2105-04 al Debe, glosa pedida", (
+        _sh_caja.cell_value(5, 1) == "E" and _sh_caja.cell_value(5, 4) == "2105-04" and _sh_caja.cell_value(5, 8) == 150000
+        and _sh_caja.cell_value(5, 3) == "PAGO BH 5 PRESTADOR UNO"
+    ))
+    check("línea 5 (Honorarios): Tipo Auxiliar H con rut/nombre/código BOL-HE=99/folio", (
+        _sh_caja.cell_value(5, 10) == "H" and _sh_caja.cell_value(5, 11) == "11111111-1"
+        and _sh_caja.cell_value(5, 12) == "PRESTADOR UNO" and _sh_caja.cell_value(5, 13) == 99
+        and _sh_caja.cell_value(5, 14) == 5 and _sh_caja.cell_value(5, 15) == 150000
+    ))
+    check("línea 6 (Honorarios): Caja al Haber", _sh_caja.cell_value(6, 4) == "1101-01" and _sh_caja.cell_value(6, 9) == 150000)
+
+    check("F29 con multas genera 3 líneas (F29 + Multas + Caja), glosa con año", (
+        _sh_caja.cell_value(7, 4) == "2108-05" and _sh_caja.cell_value(7, 8) == 300000 and _sh_caja.cell_value(7, 3) == "Pago F29 Julio 2026"
+        and _sh_caja.cell_value(8, 4) == "4201-11" and _sh_caja.cell_value(8, 6) == 100 and _sh_caja.cell_value(8, 8) == 10000
+        and _sh_caja.cell_value(9, 4) == "1101-01" and _sh_caja.cell_value(9, 9) == 310000
+    ))
+
+    import datetime as _dtmod
+    check("Remuneraciones e Imposiciones: dos comprobantes independientes con fechas distintas", (
+        _sh_caja.cell_value(10, 4) == "2108-15" and _sh_caja.cell_value(10, 8) == 400000
+        and _sh_caja.cell_value(10, 3) == "Pago remuneraciones Julio 2026"
+        and _xlrd_caja.xldate_as_datetime(_sh_caja.cell_value(10, 2), _wb_caja.datemode) == _dtmod.datetime(2026, 7, 31)
+        and _sh_caja.cell_value(11, 4) == "1101-01" and _sh_caja.cell_value(11, 9) == 400000
+        and _sh_caja.cell_value(12, 4) == "2108-25" and _sh_caja.cell_value(12, 8) == 50000
+        and _sh_caja.cell_value(12, 3) == "Pago imposiciones Julio 2026"
+        and _xlrd_caja.xldate_as_datetime(_sh_caja.cell_value(12, 2), _wb_caja.datemode) == _dtmod.datetime(2026, 8, 13)
+        and _sh_caja.cell_value(13, 4) == "1101-01" and _sh_caja.cell_value(13, 9) == 50000
+    ))
+
+    check("Créditos genera 4 líneas (Amortización + Intereses + Comisiones + Caja)", (
+        _sh_caja.cell_value(14, 4) == "2106-01" and _sh_caja.cell_value(15, 4) == "4401-01"
+        and _sh_caja.cell_value(16, 4) == "4301-07" and _sh_caja.cell_value(17, 4) == "1101-01"
+        and _sh_caja.cell_value(17, 9) == 80000 + 5000 + 2000
+    ))
+
+    # ---- Diciembre (año anterior, índice 0) es la excepción de fecha de
+    # Remuneraciones: se paga el 5 de enero siguiente, no el 31 de diciembre ----
+    payload_dic_anterior = dict(_meses_vacios_caja())
+    payload_dic_anterior.update({
+        "saldo_inicial": "1000000",
+        "clientes_total_filas": "0", "proveedores_total_filas": "0", "honorarios_total_filas": "0",
+        "remimp_remuneraciones_0": "700000",
+    })
+    r = client.post("/caja_empresas/generar", data=payload_dic_anterior)
+    check("Diciembre año anterior: Remuneraciones -> 200 (descarga)", r.status_code == 200 and r.mimetype == "application/vnd.ms-excel")
+    _wb_dic = _xlrd_caja.open_workbook(file_contents=r.get_data())
+    _sh_dic = _wb_dic.sheet_by_name("Comprobantes")
+    check("Remuneraciones de Diciembre 2025 se pagan el 05-01-2026 (no el 31-12-2025)", (
+        _sh_dic.cell_value(1, 4) == "2108-15" and _sh_dic.cell_value(1, 8) == 700000
+        and _sh_dic.cell_value(1, 3) == "Pago remuneraciones Diciembre 2025"
+        and _xlrd_caja.xldate_as_datetime(_sh_dic.cell_value(1, 2), _wb_dic.datemode) == _dtmod.datetime(2026, 1, 5)
+        and _sh_dic.cell_value(2, 4) == "1101-01" and _sh_dic.cell_value(2, 9) == 700000
+    ))
+
+    # ---- Tipos de Documento sin código configurado -> celda de código queda vacía, no revienta ----
+    payload_tipo_desconocido = dict(_meses_vacios_caja())
+    payload_tipo_desconocido.update({
+        "saldo_inicial": "0",
+        "clientes_total_filas": "1", "clientes_nombre_0": "CLIENTE DOS", "clientes_rut_0": "1-9",
+        "clientes_fecha_0": "01-07-2026", "clientes_fecha_iso_0": "2026-07-01",
+        "clientes_tipo_documento_0": "TIPO-DESCONOCIDO", "clientes_numero_documento_0": "1",
+        "clientes_monto_0": "1000", "clientes_check_0": "on",
+        "proveedores_total_filas": "0", "honorarios_total_filas": "0",
+    })
+    r = client.post("/caja_empresas/generar", data=payload_tipo_desconocido)
+    check("tipo de documento sin código configurado -> igual descarga (200), no revienta", r.status_code == 200)
+    _wb_tipo_desc = _xlrd_caja.open_workbook(file_contents=r.get_data())
+    _sh_tipo_desc = _wb_tipo_desc.sheet_by_name("Comprobantes")
+    check("tipo de documento desconocido: la celda de código queda vacía", _sh_tipo_desc.cell_value(2, 13) == "")
+
+    # ---- generar(): saldo negativo exige Préstamo Socio ----
+    payload_negativo = dict(_meses_vacios_caja())
+    payload_negativo.update({
+        "saldo_inicial": "100000",
+        "clientes_total_filas": "0",
+        "proveedores_total_filas": "1", "proveedores_nombre_0": "PROVEEDOR GRANDE", "proveedores_fecha_0": "03-07-2026",
+        "proveedores_fecha_iso_0": "2026-07-03", "proveedores_tipo_documento_0": "FAC-EL", "proveedores_numero_documento_0": "9",
+        "proveedores_monto_0": "500000",
+        "proveedores_check_0": "on",
+        "honorarios_total_filas": "0",
+    })
+    r = client.post("/caja_empresas/generar", data=payload_negativo, follow_redirects=True)
+    check("saldo negativo sin Préstamo Socio -> no descarga (200, re-muestra)", r.status_code == 200)
+    check("saldo negativo: avisa que hay que marcar Préstamo Socio", "Préstamo Socio" in r.get_data(as_text=True))
+
+    payload_con_prestamo = dict(payload_negativo)
+    payload_con_prestamo.update({
+        "prestamo_socio_check": "on", "prestamo_socio_monto": "400000", "prestamo_socio_fecha": "2026-07-15",
+    })
+    r = client.post("/caja_empresas/generar", data=payload_con_prestamo)
+    check("con Préstamo Socio suficiente -> descarga (200)", r.status_code == 200 and r.mimetype == "application/vnd.ms-excel")
+    _wb_prestamo = _xlrd_caja.open_workbook(file_contents=r.get_data())
+    _sh_prestamo = _wb_prestamo.sheet_by_name("Comprobantes")
+    check("Préstamo Socio agrega 2 líneas (Caja Debe / 2106-04 Haber) al final", (
+        _sh_prestamo.nrows == 5
+        and _sh_prestamo.cell_value(3, 1) == "I" and _sh_prestamo.cell_value(3, 4) == "1101-01" and _sh_prestamo.cell_value(3, 8) == 400000
+        and _sh_prestamo.cell_value(4, 4) == "2106-04" and _sh_prestamo.cell_value(4, 9) == 400000
+    ))
+
+    payload_prestamo_insuficiente = dict(payload_negativo)
+    payload_prestamo_insuficiente.update({
+        "prestamo_socio_check": "on", "prestamo_socio_monto": "100000", "prestamo_socio_fecha": "2026-07-15",
+    })
+    r = client.post("/caja_empresas/generar", data=payload_prestamo_insuficiente, follow_redirects=True)
+    check("Préstamo Socio insuficiente -> sigue sin descargar, avisa cuánto falta", (
+        r.status_code == 200 and "no alcanza para cubrir el saldo negativo" in r.get_data(as_text=True)
+    ))
+
+    check("plan de cuentas usado por Empresas Caja: cuenta Caja fija no es bancaria", _CUENTAS_CAJA["1101-01"]["es_banco"] is False)
+
     # ---- Logout y login como 'trabajador' (no admin) ----
     client.post("/logout")
     r = client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
@@ -699,6 +1170,179 @@ def main():
 
     r = client.get("/reuniones/")
     check("trabajador NO puede ver Reuniones (403)", r.status_code == 403)
+
+    r = client.get("/conciliacion/")
+    check("trabajador NO puede ver Conciliación (403)", r.status_code == 403)
+
+    r = client.post("/conciliacion/descargar", data={"total_filas": "0", "cuenta_banco_codigo": "1101-29"})
+    check("trabajador NO puede descargar el archivo de salida de Conciliación (403)", r.status_code == 403)
+
+    r = client.get("/caja_empresas/")
+    check("trabajador NO puede ver Empresas Caja (403, admin por defecto)", r.status_code == 403)
+
+    r = client.post("/caja_empresas/cargar/clientes", data={}, content_type="multipart/form-data")
+    check("trabajador NO puede cargar documentos en Empresas Caja (403)", r.status_code == 403)
+
+    r = client.post("/caja_empresas/generar", data={})
+    check("trabajador NO puede generar comprobantes de Empresas Caja (403)", r.status_code == 403)
+
+    # ---- Visibilidad de pestañas (09-09-2026): admin activa/restringe pestañas ----
+    r = client.get("/admin/pestanas")
+    check("trabajador NO puede ver Administrador -> Pestañas (403)", r.status_code == 403)
+
+    r = client.post("/admin/pestanas/guardar", data={"vis_reuniones.index": "todos"})
+    check("trabajador NO puede guardar visibilidad de pestañas (403)", r.status_code == 403)
+
+    r = client.get("/admin/tipos_documento")
+    check("trabajador NO puede ver Administrador -> Tipos de Documento (403)", r.status_code == 403)
+
+    r = client.post("/admin/tipos_documento/guardar", data={"td_texto": ["X"], "td_codigo": ["1"]})
+    check("trabajador NO puede guardar Tipos de Documento (403)", r.status_code == 403)
+
+    client.post("/logout")
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+    r = client.get("/admin/pestanas")
+    check("GET /admin/pestanas 200 (admin)", r.status_code == 200)
+    check("panel de pestañas lista Reuniones, Conciliación y Empresas Caja", b"Reuniones" in r.data and b"Conciliaci" in r.data and b"Empresas Caja" in r.data)
+    check("panel de pestañas NO incluye Administrador (no configurable)", b'name="vis_admin.cuentas"' not in r.data)
+
+    # Por defecto (nunca guardado): Reuniones/Conciliación/Empresas Caja solo-admin, el resto para todos.
+    check(
+        "Reuniones aparece marcada 'solo administradores' por defecto",
+        b'name="vis_reuniones.index" value="admin" checked' in r.data,
+    )
+    check(
+        "Empresas Caja aparece marcada 'solo administradores' por defecto",
+        b'name="vis_caja_empresas.index" value="admin" checked' in r.data,
+    )
+    check(
+        "Subir Cartolas aparece marcada 'todos los usuarios' por defecto",
+        b'name="vis_cartolas.index" value="todos" checked' in r.data,
+    )
+
+    # ---- Tipos de Documento (10-09-2026): panel de Administrador para agregar
+    # códigos de "Tipo de Documento" sin redesplegar ----
+    r = client.get("/admin/tipos_documento")
+    check("GET /admin/tipos_documento 200 (admin)", r.status_code == 200)
+    body_td = r.get_data(as_text=True)
+    check("Tipos de Documento trae los 3 códigos de partida", (
+        "FAC-EL" in body_td and "FAC-EE" in body_td and "BOL-HE" in body_td
+    ))
+
+    from app.data import tipos_documento_repo as _tipos_doc_repo
+    check("tipos_documento_repo.codigo_de: códigos de partida", (
+        _tipos_doc_repo.codigo_de("FAC-EL") == 33 and _tipos_doc_repo.codigo_de("FAC-EE") == 34
+        and _tipos_doc_repo.codigo_de("BOL-HE") == 99
+    ))
+    check("tipos_documento_repo.codigo_de: tipo desconocido -> None (no revienta)", _tipos_doc_repo.codigo_de("NO-EXISTE") is None)
+
+    r = client.post("/admin/tipos_documento/guardar", data={
+        "td_texto": ["FAC-EL", "FAC-EE", "BOL-HE", "NOTA-CR"],
+        "td_codigo": ["33", "34", "99", "61"],
+    }, follow_redirects=True)
+    check("guardar Tipos de Documento -> 200", r.status_code == 200)
+    check("Tipos de Documento guardados: aviso de éxito", "guardados" in r.get_data(as_text=True))
+    check("agregar un tipo nuevo (NOTA-CR=61) se ve de inmediato", _tipos_doc_repo.codigo_de("NOTA-CR") == 61)
+
+    r = client.post("/admin/tipos_documento/guardar", data={
+        "td_texto": ["FAC-EL", "FAC-EE", "BOL-HE"], "td_codigo": ["33", "34", "99"],
+    })
+    check("dejar Tipos de Documento como estaban (sin NOTA-CR) para no afectar otros checks", r.status_code in (200, 302))
+
+    r = client.get("/admin/cuentas")
+    check("subnav de Administrador incluye Tipos de Documento", "Tipos de Documento" in r.get_data(as_text=True))
+
+    # Abrir Reuniones a todos los usuarios, dejando el resto en su default.
+    r = client.post("/admin/pestanas/guardar", data={
+        "vis_cartolas.index": "todos", "vis_f29.index": "todos",
+        "vis_global_igc.index": "todos", "vis_indicadores.index": "todos",
+        "vis_reuniones.index": "todos", "vis_conciliacion.index": "admin",
+    }, follow_redirects=True)
+    check("guardar visibilidad de pestañas -> 200", r.status_code == 200)
+    check("aviso de guardado exitoso", "guardada" in r.get_data(as_text=True))
+
+    client.post("/logout")
+    client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
+
+    r = client.get("/reuniones/")
+    check("trabajador SÍ puede ver Reuniones tras activarla para todos", r.status_code == 200)
+
+    r = client.get("/conciliacion/")
+    check("trabajador sigue sin poder ver Conciliación (no se activó)", r.status_code == 403)
+
+    r = client.get("/cartolas/")
+    check("el menú del trabajador ya muestra el link a Reuniones", b'href="/reuniones/"' in r.data)
+
+    # Restringir una pestaña que antes era pública (Subir Cartolas) solo a admins.
+    client.post("/logout")
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+    client.post("/admin/pestanas/guardar", data={
+        "vis_cartolas.index": "admin", "vis_f29.index": "todos",
+        "vis_global_igc.index": "todos", "vis_indicadores.index": "todos",
+        "vis_reuniones.index": "admin", "vis_conciliacion.index": "admin",
+    })
+    client.post("/logout")
+    client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
+
+    r = client.get("/cartolas/")
+    check("trabajador ya NO puede ver Subir Cartolas tras restringirla (403)", r.status_code == 403)
+
+    r = client.get("/reuniones/")
+    check("Reuniones vuelve a estar solo para admin tras restaurar el default", r.status_code == 403)
+
+    # Deja la configuración de pestañas como al principio, para no dejar
+    # este proceso de pruebas con un estado distinto al de una app recién
+    # desplegada (todas en su default de `app/nav.py`).
+    client.post("/logout")
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+    client.post("/admin/pestanas/guardar", data={
+        "vis_cartolas.index": "todos", "vis_f29.index": "todos",
+        "vis_global_igc.index": "todos", "vis_indicadores.index": "todos",
+        "vis_reuniones.index": "admin", "vis_conciliacion.index": "admin",
+    })
+    client.post("/logout")
+    client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
+    r = client.get("/cartolas/")
+    check("visibilidad de pestañas restaurada al default tras las pruebas", r.status_code == 200)
+
+    # ---- Guardar visibilidad cuando falta la tabla en Supabase (reporte real
+    # del usuario, 09-09-2026: "Internal Server Error" al intentar habilitar
+    # una pestaña para todos, porque `migration/003_visibilidad_pestanas.sql`
+    # todavía no se había ejecutado) ----
+    import app.data.visibilidad_repo as visibilidad_repo_mod
+
+    class _TablaInexistente:
+        def table(self, _name):
+            raise Exception('relation "visibilidad_pestanas" does not exist')
+
+    _get_supabase_real = visibilidad_repo_mod.get_supabase
+    visibilidad_repo_mod.get_supabase = lambda: _TablaInexistente()
+    # `guardar_todas` ya tenía algo en caché de las pruebas anteriores — se
+    # limpia para que esta prueba refleje también el caso de una app recién
+    # desplegada, sin ninguna lectura previa exitosa.
+    visibilidad_repo_mod._cache = {}
+    visibilidad_repo_mod._cache_at = 0.0
+
+    client.post("/logout")
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+    r = client.get("/admin/pestanas")
+    check("GET /admin/pestanas sigue en 200 aunque la tabla no exista (usa los defaults)", r.status_code == 200)
+
+    r = client.post("/admin/pestanas/guardar", data={"vis_reuniones.index": "todos"})
+    check("guardar sin la tabla NO tira 500 (redirige con aviso en vez de reventar)", r.status_code == 302)
+
+    r = client.get("/admin/pestanas")
+    body = r.get_data(as_text=True)
+    check("el aviso explica que falta la migración de Supabase", "migration" in body and "No se pudo guardar" in body)
+
+    visibilidad_repo_mod.get_supabase = _get_supabase_real
+    visibilidad_repo_mod._cache = {}
+    visibilidad_repo_mod._cache_at = 0.0
+
+    r = client.get("/admin/pestanas")
+    check("con Supabase de vuelta, /admin/pestanas sigue funcionando normal", r.status_code == 200)
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")
     if FAILED:
