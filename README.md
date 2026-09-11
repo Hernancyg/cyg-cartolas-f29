@@ -150,12 +150,15 @@ el SII por tipo de bien.
   activos en un mes elegido" (independiente del kardex por activo, para
   una foto mensual sin entrar a cada ficha) — mismo cálculo lineal normal,
   sin valor residual, valor libro en $1 una vez agotada la vida útil.
-- **Grupos Contables**: las 3 cuentas de depreciación (Gasto por
-  Depreciación / Depreciación Acumulada / Corrección Monetaria) de cada
-  "cuenta del activo fijo" (ej. "1204-01 VEHÍCULOS") — se configuran UNA
-  vez por grupo, no por cada activo individual (rediseño 11-09-2026). Al
-  crear un activo, solo eliges a qué grupo pertenece (buscador del plan
-  de cuentas, mismo que Conciliación/Empresas Caja); varios activos del
+- **Grupos Contables** (dentro de cada empresa): las 3 cuentas de
+  depreciación (Gasto por Depreciación / Depreciación Acumulada /
+  Corrección Monetaria) de cada "cuenta del activo fijo" (ej.
+  "1204-01 VEHÍCULOS") — se configuran UNA vez por grupo POR EMPRESA
+  (rediseño 11-09-2026: son propios de cada empresa, no globales — dos
+  empresas pueden compartir el mismo código de grupo con cuentas de
+  depreciación distintas), no por cada activo individual. Al crear un
+  activo, solo eliges a qué grupo pertenece (buscador del plan de
+  cuentas, mismo que Conciliación/Empresas Caja); varios activos del
   mismo grupo (ej. 3 camiones) comparten esas 3 cuentas sin volver a
   elegirlas. Ver `app/data/depreciacion_grupos_contables_repo.py`.
 - **Generar asiento contable**: por empresa, con un selector de **mes y
@@ -190,8 +193,9 @@ el SII por tipo de bien.
 
 Ejecuta `migration/006_depreciacion.sql`, `migration/007_depreciacion_
 periodos.sql`, `migration/008_depreciacion_ccmm.sql`, `migration/009_
-depreciacion_asientos.sql` y `migration/010_depreciacion_grupos_
-contables.sql` en Supabase (SQL Editor) para crear las tablas la primera
+depreciacion_asientos.sql`, `migration/010_depreciacion_grupos_
+contables.sql` y `migration/011_depreciacion_grupos_por_empresa.sql` en
+Supabase (SQL Editor) para crear las tablas la primera
 vez.
 
 ## Estructura del proyecto

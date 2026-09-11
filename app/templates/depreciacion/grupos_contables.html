@@ -1,22 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Depreciación · Grupos Contables · C&amp;G Group{% endblock %}
+{% block title %}{{ empresa.nombre }} · Grupos Contables · C&amp;G Group{% endblock %}
 {% block content %}
 {% from "_icons.html" import icon %}
 {% from "caja_empresas/_macros.html" import cuenta_search %}
 
-<div class="page-title">Depreciación</div>
+<div class="page-title">Grupos Contables</div>
 <div class="page-title-underline"></div>
-<p class="page-subtitle">Las 3 cuentas de depreciación de cada "cuenta del activo fijo" (ej. 1204-01 VEHÍCULOS) — se configuran una vez por grupo, no por cada activo individual.</p>
-
-<div class="nav subnav">
-  <a href="{{ url_for('depreciacion.empresas') }}" class="nav-item">Empresas</a>
-  <a href="{{ url_for('depreciacion.categorias') }}" class="nav-item">Categorías SII</a>
-  <a href="{{ url_for('depreciacion.grupos_contables') }}" class="nav-item active">Grupos Contables</a>
-</div>
+<p class="page-subtitle">
+  {{ empresa.nombre }} ·
+  <a href="{{ url_for('depreciacion.empresa_detalle', empresa_id=empresa.id) }}">← volver a {{ empresa.nombre }}</a>
+</p>
 
 <div class="alert alert-info">
-  Al crear un activo, eliges a qué grupo pertenece (ej. todos los vehículos van a "1204-01 VEHÍCULOS"). "Generar
-  asiento" suma todos los activos de un mismo grupo en una sola línea, usando las cuentas configuradas acá.
+  Las 3 cuentas de depreciación de cada "cuenta del activo fijo" (ej. 1204-01 VEHÍCULOS) — propias de
+  <strong>{{ empresa.nombre }}</strong>, otra empresa puede usar el mismo código de grupo con cuentas distintas. Al
+  crear un activo de esta empresa, eliges a qué grupo pertenece; "Generar asiento" suma todos los activos de un
+  mismo grupo en una sola línea, usando las cuentas configuradas acá.
 </div>
 
 <div class="card">
@@ -33,7 +32,7 @@
           <td>{{ g.cuenta_acumulada_codigo }}</td>
           <td>{{ g.cuenta_correccion_codigo or '—' }}</td>
           <td>
-            <form method="post" action="{{ url_for('depreciacion.grupos_contables_eliminar', codigo=g.codigo) }}" style="display:inline" onsubmit="return confirm('¿Eliminar el grupo {{ g.codigo }}? Los activos que lo tengan asignado quedarán sin grupo.');">
+            <form method="post" action="{{ url_for('depreciacion.grupos_contables_eliminar', empresa_id=empresa.id, codigo=g.codigo) }}" style="display:inline" onsubmit="return confirm('¿Eliminar el grupo {{ g.codigo }}? Los activos que lo tengan asignado quedarán sin grupo.');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="row-remove" title="Eliminar grupo">{{ icon('trash', 16) }}</button>
             </form>
@@ -44,14 +43,14 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">Todavía no has configurado ningún grupo contable.</p>
+  <p class="muted">Todavía no has configurado ningún grupo contable para {{ empresa.nombre }}.</p>
   {% endif %}
 </div>
 
 <div class="card">
   <div class="section-title" style="margin-bottom:14px">Agregar / editar grupo</div>
-  <p class="muted" style="margin-top:0">Si el grupo ya existe (mismo código), esto reemplaza sus 3 cuentas por las nuevas.</p>
-  <form method="post" action="{{ url_for('depreciacion.grupos_contables_guardar') }}">
+  <p class="muted" style="margin-top:0">Si el grupo ya existe (mismo código, en esta empresa), esto reemplaza sus 3 cuentas por las nuevas.</p>
+  <form method="post" action="{{ url_for('depreciacion.grupos_contables_guardar', empresa_id=empresa.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row">
       <div class="field">

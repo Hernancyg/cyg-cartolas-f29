@@ -26,7 +26,7 @@
   <p class="muted" style="margin-top:0">
     El grupo (la cuenta del activo fijo, ej. "1204-01 VEHÍCULOS") agrupa este activo con los demás de su misma
     clase para "Generar asiento contable" — configura las 3 cuentas de depreciación del grupo una sola vez en
-    <a href="{{ url_for('depreciacion.grupos_contables') }}">Grupos Contables</a>.
+    <a href="{{ url_for('depreciacion.grupos_contables', empresa_id=empresa.id) }}">Grupos Contables</a>.
   </p>
   <form method="post" action="{{ url_for('depreciacion.activo_grupo_guardar', empresa_id=empresa.id, activo_id=activo.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

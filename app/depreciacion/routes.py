@@ -417,7 +417,7 @@ def asientos(empresa_id):
     anio, mes = _parsear_mes_anio(request.args.get("periodo"))
     activos_con_pendientes = _pendientes_por_activo(empresa_id, anio, mes, persistir=False)
     grupos, activos_sin_grupo = comprobantes.agrupar_pendientes(activos_con_pendientes)
-    grupos_contables = {g["codigo"]: g for g in depreciacion_grupos_contables_repo.listar()}
+    grupos_contables = {g["codigo"]: g for g in depreciacion_grupos_contables_repo.listar_por_empresa(empresa_id)}
 
     filas = []
     for codigo, datos in grupos.items():
@@ -450,7 +450,7 @@ def asientos_generar(empresa_id):
 
     activos_con_pendientes = _pendientes_por_activo(empresa_id, anio, mes, persistir=True)
     grupos, activos_sin_grupo = comprobantes.agrupar_pendientes(activos_con_pendientes)
-    grupos_contables = {g["codigo"]: g for g in depreciacion_grupos_contables_repo.listar()}
+    grupos_contables = {g["codigo"]: g for g in depreciacion_grupos_contables_repo.listar_por_empresa(empresa_id)}
 
     if activos_sin_grupo:
         flash("No se incluyeron (sin grupo contable asignado): " + ", ".join(activos_sin_grupo), "error")
@@ -499,21 +499,28 @@ def asiento_deshacer(empresa_id, activo_id, fecha):
 
 
 # ---------------------------------------------------------------------------
-# Grupos Contables (cuentas de depreciación por "cuenta del activo fijo")
+# Grupos Contables (cuentas de depreciación por "cuenta del activo fijo",
+# propios de cada empresa — dos empresas pueden compartir un mismo código
+# de grupo y necesitar cuentas de depreciación distintas)
 # ---------------------------------------------------------------------------
 
-@depreciacion_bp.route("/grupos-contables", methods=["GET"])
+@depreciacion_bp.route("/empresas/<empresa_id>/grupos-contables", methods=["GET"])
 @pagina_required("depreciacion.empresas")
-def grupos_contables():
-    grupos = depreciacion_grupos_contables_repo.listar()
+def grupos_contables(empresa_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    if not empresa:
+        flash("Esa empresa ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresas"))
+
+    grupos = depreciacion_grupos_contables_repo.listar_por_empresa(empresa_id)
     for g in grupos:
         g["descripcion"] = CUENTAS_POR_CODIGO.get(g["codigo"], {}).get("descripcion", "")
-    return render_template("depreciacion/grupos_contables.html", grupos=grupos, cuentas=PLAN_CUENTAS)
+    return render_template("depreciacion/grupos_contables.html", empresa=empresa, grupos=grupos, cuentas=PLAN_CUENTAS)
 
 
-@depreciacion_bp.route("/grupos-contables/guardar", methods=["POST"])
+@depreciacion_bp.route("/empresas/<empresa_id>/grupos-contables/guardar", methods=["POST"])
 @pagina_required("depreciacion.empresas")
-def grupos_contables_guardar():
+def grupos_contables_guardar(empresa_id):
     codigo = request.form.get("grupo_codigo") or None
     cuenta_gasto = request.form.get("cuenta_gasto_codigo") or None
     cuenta_acumulada = request.form.get("cuenta_acumulada_codigo") or None
@@ -532,19 +539,19 @@ def grupos_contables_guardar():
     if errores:
         for e in errores:
             flash(e, "error")
-        return redirect(url_for("depreciacion.grupos_contables"))
+        return redirect(url_for("depreciacion.grupos_contables", empresa_id=empresa_id))
 
-    depreciacion_grupos_contables_repo.guardar(codigo, cuenta_gasto, cuenta_acumulada, cuenta_correccion)
+    depreciacion_grupos_contables_repo.guardar(empresa_id, codigo, cuenta_gasto, cuenta_acumulada, cuenta_correccion)
     flash(f"Grupo contable '{codigo}' guardado.", "success")
-    return redirect(url_for("depreciacion.grupos_contables"))
+    return redirect(url_for("depreciacion.grupos_contables", empresa_id=empresa_id))
 
 
-@depreciacion_bp.route("/grupos-contables/<codigo>/eliminar", methods=["POST"])
+@depreciacion_bp.route("/empresas/<empresa_id>/grupos-contables/<codigo>/eliminar", methods=["POST"])
 @pagina_required("depreciacion.empresas")
-def grupos_contables_eliminar(codigo):
-    depreciacion_grupos_contables_repo.eliminar(codigo)
+def grupos_contables_eliminar(empresa_id, codigo):
+    depreciacion_grupos_contables_repo.eliminar(empresa_id, codigo)
     flash("Grupo contable eliminado.", "success")
-    return redirect(url_for("depreciacion.grupos_contables"))
+    return redirect(url_for("depreciacion.grupos_contables", empresa_id=empresa_id))
 
 
 # ---------------------------------------------------------------------------

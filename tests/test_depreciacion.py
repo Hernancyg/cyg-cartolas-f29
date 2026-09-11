@@ -369,11 +369,25 @@ def test_asientos_flujo():
     check("asignar grupo al activo -> ok", r.status_code == 200 and "guardado" in r.get_data(as_text=True).lower())
 
     r = client.post(
-        "/depreciacion/grupos-contables/guardar",
+        f"/depreciacion/empresas/{empresa_id}/grupos-contables/guardar",
         data={"grupo_codigo": "1204-01", "cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25", "cuenta_correccion_codigo": "5501-05"},
         follow_redirects=True,
     )
     check("guardar grupo contable -> ok", r.status_code == 200 and "guardado" in r.get_data(as_text=True).lower())
+
+    # Otra empresa puede usar el MISMO código de grupo con cuentas distintas, sin pisarse.
+    client.post("/depreciacion/empresas/crear", data={"rut": "", "nombre": "OTRA EMPRESA SPA"}, follow_redirects=True)
+    otra_empresa = [e for e in FAKE.table("depreciacion_empresas").select("*").execute().data if e["nombre"] == "OTRA EMPRESA SPA"][0]
+    r = client.get(f"/depreciacion/empresas/{otra_empresa['id']}/grupos-contables")
+    check("GET grupos contables de otra empresa -> 200", r.status_code == 200)
+    check(
+        "otra empresa no ve el grupo 1204-01 de la primera (no es global)",
+        FAKE.table("depreciacion_grupos_contables").select("*").eq("empresa_id", otra_empresa["id"]).execute().data == [],
+    )
+    check(
+        "la primera empresa conserva su propio grupo 1204-01",
+        len(FAKE.table("depreciacion_grupos_contables").select("*").eq("empresa_id", empresa_id).execute().data) == 1,
+    )
 
     r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos?periodo=2018-12")
     check("con el grupo configurado, ya no hay activos sin grupo", "Sin grupo contable" not in r.get_data(as_text=True))

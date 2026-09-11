@@ -33,7 +33,7 @@
 {% if activos_sin_grupo %}
 <div class="alert alert-warn">
   Sin grupo contable asignado (no se van a incluir): {{ activos_sin_grupo | join(', ') }} — asígnales uno desde su
-  ficha o en <a href="{{ url_for('depreciacion.grupos_contables') }}">Grupos Contables</a>.
+  ficha o en <a href="{{ url_for('depreciacion.grupos_contables', empresa_id=empresa.id) }}">Grupos Contables</a>.
 </div>
 {% endif %}
 
