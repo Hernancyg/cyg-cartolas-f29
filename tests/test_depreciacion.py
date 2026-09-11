@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.run_verification import flask_app, FAKE, seed_data  # noqa: E402
-from app.depreciacion.calculo import calcular_fila, calcular_tabla  # noqa: E402
+from app.depreciacion.calculo import calcular_fila, calcular_kardex, calcular_tabla  # noqa: E402
 from app.data import depreciacion_categorias_repo  # noqa: E402
 
 PASSED, FAILED = [], []
@@ -65,6 +65,59 @@ def test_calculo():
         "calcular_tabla descarta los activos que todavía no existían",
         calcular_tabla([activo, {**activo, "id": "a2", "fecha_adquisicion": "2030-01-01"}], 2024, 3) == [calcular_fila(activo, 2024, 3)],
     )
+
+
+def test_kardex():
+    """Valida calcular_kardex contra la planilla real que entregó el
+    usuario (Grúa horquilla, 8.250.000, 10 años/120 meses) — 11-09-2026."""
+    activo = {"valor_adquisicion": 8_250_000, "vida_util_anios": 10}
+    periodos = [
+        {"fecha": "2017-04-01", "meses_utilizados": 8, "adiciones": 0},
+        {"fecha": "2018-12-31", "meses_utilizados": 12, "adiciones": 0},
+        {"fecha": "2019-12-31", "meses_utilizados": 12, "adiciones": 0},
+        {"fecha": "2020-12-31", "meses_utilizados": 12, "adiciones": 0},
+        {"fecha": "2021-12-31", "meses_utilizados": 12, "adiciones": 0},
+        {"fecha": "2022-12-31", "meses_utilizados": 12, "adiciones": 0},
+        {"fecha": "2023-12-31", "meses_utilizados": 12, "adiciones": 0},
+        {"fecha": "2024-12-31", "meses_utilizados": 12, "adiciones": 0},
+        {"fecha": "2025-12-31", "meses_utilizados": 12, "adiciones": 0},
+        {"fecha": "2026-09-30", "meses_utilizados": 9, "adiciones": 0},
+    ]
+    kardex = calcular_kardex(activo, periodos)
+
+    check("kardex: 10 filas calculadas", len(kardex) == 10)
+    f1, f2, f10 = kardex[0], kardex[1], kardex[-1]
+
+    check("fila 1: vida útil antes = 120 (total, nada consumido aún)", f1["vida_util_antes_meses"] == 120)
+    check("fila 1: depreciación del ejercicio = 550.000 (8 meses x 68.750)", f1["depreciacion_ejercicio"] == 550_000)
+    check("fila 1: acumulada de cierre = 550.000", f1["deprec_acum_cierre"] == 550_000)
+    check("fila 1: valor libro = 7.700.000", f1["valor_libro"] == 7_700_000)
+
+    check("fila 2: vida útil antes = 112 (120 - 8)", f2["vida_util_antes_meses"] == 112)
+    check("fila 2: acumulada de apertura = 550.000 (cierre de la fila 1)", f2["deprec_acum_apertura"] == 550_000)
+    check("fila 2: depreciación del ejercicio = 825.000 (12 meses x 68.750)", f2["depreciacion_ejercicio"] == 825_000)
+    check("fila 2: acumulada de cierre = 1.375.000", f2["deprec_acum_cierre"] == 1_375_000)
+    check("fila 2: valor libro = 6.875.000", f2["valor_libro"] == 6_875_000)
+
+    check("última fila: vida útil antes = 16 (120 - 104 meses ya consumidos)", f10["vida_util_antes_meses"] == 16)
+    check("última fila: depreciación del ejercicio = 618.750 (9 meses x 68.750)", f10["depreciacion_ejercicio"] == 618_750)
+    check("última fila: acumulada de cierre = 7.768.750", f10["deprec_acum_cierre"] == 7_768_750)
+    check("última fila: valor libro = 481.250", f10["valor_libro"] == 481_250)
+
+    # Una adición sube el costo (y por lo tanto la depreciación mensual) DESDE esa fila en adelante.
+    periodos_con_adicion = periodos[:2] + [{"fecha": "2019-12-31", "meses_utilizados": 12, "adiciones": 1_200_000}]
+    kardex_adicion = calcular_kardex(activo, periodos_con_adicion)
+    check("una adición sube el costo total desde esa fila", kardex_adicion[2]["costo_total"] == 8_250_000 + 1_200_000)
+    check(
+        "la depreciación del ejercicio de esa fila usa el costo YA con la adición",
+        kardex_adicion[2]["depreciacion_ejercicio"] == round((8_250_000 + 1_200_000) / 120 * 12),
+    )
+
+    # Si la suma de meses supera la vida útil, se capea en $1 (no revienta, no queda negativo).
+    periodos_exceso = [{"fecha": "2017-01-01", "meses_utilizados": 200, "adiciones": 0}]
+    kardex_exceso = calcular_kardex(activo, periodos_exceso)
+    check("meses en exceso: queda completamente depreciado", kardex_exceso[0]["completamente_depreciado"] is True)
+    check("meses en exceso: valor libro en $1, no negativo", kardex_exceso[0]["valor_libro"] == 1)
 
 
 def test_categorias_defaults():
@@ -118,6 +171,43 @@ def test_rutas_flujo_completo():
     r = client.get(f"/depreciacion/empresas/{empresa_id}/descargar?periodo=2024-06")
     check("descargar Excel -> 200 con content-type de xlsx", r.status_code == 200 and "spreadsheetml" in r.headers.get("Content-Type", ""))
 
+    # --- Kardex del activo (períodos editables) ---
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}")
+    check("GET ficha del activo (kardex vacío) -> 200", r.status_code == 200)
+
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/periodos/guardar",
+        data={
+            "p_fecha": ["2024-12-31", "2025-12-31"],
+            "p_meses": ["12", "12"],
+            "p_adiciones": ["0", "0"],
+        },
+        follow_redirects=True,
+    )
+    check("guardar kardex -> ok", r.status_code == 200 and "guardado" in r.get_data(as_text=True).lower())
+
+    periodos_guardados = FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data
+    check("quedaron las 2 filas del kardex guardadas", len(periodos_guardados) == 2)
+
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}")
+    body_kardex = r.get_data(as_text=True)
+    deprec_esperada = round(10_000_000 / 84 * 12)  # vida útil del activo de prueba: 7 años = 84 meses
+    deprec_esperada_fmt = "{:,.0f}".format(deprec_esperada).replace(",", ".")
+    check(
+        "la ficha del activo muestra la depreciación calculada de la 1ª fila (10.000.000/84 meses x 12)",
+        r.status_code == 200 and deprec_esperada_fmt in body_kardex,
+    )
+
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/descargar")
+    check("descargar kardex en Excel -> 200 con content-type de xlsx", r.status_code == 200 and "spreadsheetml" in r.headers.get("Content-Type", ""))
+
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/periodos/guardar",
+        data={"p_fecha": ["2024-12-31"], "p_meses": ["no-es-un-numero"], "p_adiciones": ["0"]},
+        follow_redirects=True,
+    )
+    check("meses inválidos -> avisa el error, no revienta", r.status_code == 200 and "meses utilizados" in r.get_data(as_text=True).lower())
+
     r = client.post(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/baja", follow_redirects=True)
     check("dar de baja el activo -> ok", r.status_code == 200 and "dado de baja" in r.get_data(as_text=True).lower())
 
@@ -167,6 +257,7 @@ def test_trabajador_no_puede_ver_depreciacion():
 def main():
     seed_data()
     test_calculo()
+    test_kardex()
     test_categorias_defaults()
     test_rutas_flujo_completo()
     test_categorias_guardar()

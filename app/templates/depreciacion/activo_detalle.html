@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ activo.nombre_activo }} · Depreciación · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">{{ activo.nombre_activo }}</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  {{ empresa.nombre }} ·
+  <a href="{{ url_for('depreciacion.empresa_detalle', empresa_id=empresa.id) }}">← volver a {{ empresa.nombre }}</a>
+</p>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:10px">{{ icon('info', 16) }} Datos del activo</div>
+  <div class="field-row">
+    <div class="field"><label>Fecha de adquisición</label><div>{{ activo.fecha_adquisicion }}</div></div>
+    <div class="field"><label>Costo de adquisición</label><div>{{ activo.valor_adquisicion | clp }}</div></div>
+    <div class="field"><label>Vida útil</label><div>{{ activo.vida_util_anios }} años ({{ activo.vida_util_anios * 12 }} meses)</div></div>
+    <div class="field"><label>Estado</label><div>{{ 'Activo' if activo.activo else 'Dado de baja' }}</div></div>
+  </div>
+</div>
+
+<div class="card highlight">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('calculator', 18) }}</div>
+    <div class="section-title">Kardex de depreciación</div>
+  </div>
+  <p class="muted" style="margin-top:0">
+    Una fila por período (normalmente un año). Edita <strong>Fecha</strong>, <strong>Meses utilizados</strong> y
+    <strong>Adiciones</strong> a mano — el resto de las columnas se recalcula solo al guardar, encadenando cada fila
+    desde la anterior (igual que tu planilla de referencia).
+  </p>
+
+  <form method="post" action="{{ url_for('depreciacion.periodos_guardar', empresa_id=empresa.id, activo_id=activo.id) }}" id="form-kardex">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table" id="tabla-kardex">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Meses utilizados</th><th>Adiciones</th>
+            <th>Costo total</th><th>Vida útil antes (meses)</th>
+            <th>Deprec. ejercicio</th><th>Deprec. acum. apertura</th><th>Deprec. acum. cierre</th>
+            <th>Valor libro</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p, k in filas %}
+          <tr data-fecha="{{ p.fecha }}">
+            <td><input type="date" name="p_fecha" value="{{ p.fecha }}"></td>
+            <td><input type="number" name="p_meses" min="1" value="{{ p.meses_utilizados }}" style="width:80px"></td>
+            <td><input type="text" name="p_adiciones" value="{{ p.adiciones | numval }}" style="width:100px"></td>
+            <td>{{ k.costo_total | clp }}</td>
+            <td>{{ k.vida_util_antes_meses }}</td>
+            <td>{{ k.depreciacion_ejercicio | clp }}</td>
+            <td>{{ k.deprec_acum_apertura | clp }}</td>
+            <td>{{ k.deprec_acum_cierre | clp }}</td>
+            <td>{{ k.valor_libro | clp }}{% if k.completamente_depreciado %} <span class="muted">(depreciado)</span>{% endif %}</td>
+            <td><button type="button" class="row-remove" title="Quitar fila">{{ icon('trash', 16) }}</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="btn btn-secondary" id="btn-add-periodo">{{ icon('plus', 16) }} Agregar período</button>
+      <button type="submit" class="btn">{{ icon('save', 16) }} Guardar cambios</button>
+      <a href="{{ url_for('depreciacion.kardex_descargar', empresa_id=empresa.id, activo_id=activo.id) }}" class="btn-secondary">{{ icon('download', 16) }} Descargar Excel</a>
+    </div>
+  </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
+<script>
+(function () {
+  var vidaUtilMeses = {{ (activo.vida_util_anios * 12) | tojson }};
+  var costoInicial = {{ activo.valor_adquisicion | tojson }};
+
+  document.getElementById('btn-add-periodo').addEventListener('click', function () {
+    var tbody = document.querySelector('#tabla-kardex tbody');
+    var filas = tbody.querySelectorAll('tr');
+
+    var ultimaFecha = null, mesesConsumidos = 0;
+    filas.forEach(function (tr) {
+      var fechaInput = tr.querySelector('input[name="p_fecha"]');
+      var mesesInput = tr.querySelector('input[name="p_meses"]');
+      if (fechaInput && fechaInput.value) ultimaFecha = fechaInput.value;
+      if (mesesInput && mesesInput.value) mesesConsumidos += parseInt(mesesInput.value, 10) || 0;
+    });
+
+    var proximaFecha, proximosMeses;
+    if (ultimaFecha) {
+      var anioSiguiente = parseInt(ultimaFecha.slice(0, 4), 10) + 1;
+      proximaFecha = anioSiguiente + '-12-31';
+    } else {
+      var hoy = new Date();
+      proximaFecha = hoy.getFullYear() + '-12-31';
+    }
+    var restante = Math.max(vidaUtilMeses - mesesConsumidos, 0);
+    proximosMeses = restante > 0 ? Math.min(12, restante) : 1;
+
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="date" name="p_fecha" value="' + proximaFecha + '"></td>' +
+      '<td><input type="number" name="p_meses" min="1" value="' + proximosMeses + '" style="width:80px"></td>' +
+      '<td><input type="text" name="p_adiciones" value="0" style="width:100px"></td>' +
+      '<td class="muted">se calcula al guardar</td><td class="muted">—</td><td class="muted">—</td>' +
+      '<td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>' +
+      '<td><button type="button" class="row-remove" title="Quitar fila">{{ icon("trash", 16) }}</button></td>';
+    tbody.appendChild(tr);
+  });
+})();
+</script>
+{% endblock %}

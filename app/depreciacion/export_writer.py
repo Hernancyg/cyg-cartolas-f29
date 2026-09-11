@@ -86,3 +86,57 @@ def build_tabla_workbook(empresa_nombre: str, periodo_label: str, filas: list) -
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+KARDEX_HEADERS = [
+    "Fecha", "Costo Inicial", "Adiciones", "Costo Total", "Deprec. Acum. (apertura)",
+    "Valor Libro", "Vida Útil (meses)", "Vida Útil Consumida (meses)",
+    "Depreciación del Ejercicio", "Depreciación Acumulada Total",
+]
+KARDEX_COL_WIDTHS = {"A": 14, "B": 16, "C": 14, "D": 16, "E": 20, "F": 14, "G": 16, "H": 20, "I": 20, "J": 22}
+
+
+def build_kardex_workbook(empresa_nombre: str, activo: dict, filas: list) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Kardex"
+
+    ws["A1"] = f"{empresa_nombre} — {activo['nombre_activo']} — Kardex de depreciación"
+    ws["A1"].font = Font(name="Arial", size=10, bold=True)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(KARDEX_HEADERS))
+
+    header_row = 3
+    for col, width in KARDEX_COL_WIDTHS.items():
+        ws.column_dimensions[col].width = width
+
+    for i, header in enumerate(KARDEX_HEADERS, start=1):
+        cell = ws.cell(row=header_row, column=i, value=header)
+        cell.font = Font(name="Arial", size=8, bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = BORDER
+
+    row = header_row + 1
+    for fila in filas:
+        valores = [
+            fila["fecha"], activo["valor_adquisicion"], fila["adiciones"], fila["costo_total"],
+            fila["deprec_acum_apertura"], fila["valor_libro"], fila["vida_util_antes_meses"],
+            fila["meses_utilizados"], fila["depreciacion_ejercicio"], fila["deprec_acum_cierre"],
+        ]
+        for col_idx, valor in enumerate(valores, start=1):
+            cell = ws.cell(row=row, column=col_idx, value=valor)
+            cell.font = Font(name="Arial", size=8)
+            cell.border = BORDER
+            col_letter = get_column_letter(col_idx)
+            if col_letter == "A":
+                cell.number_format = NUMFMT_FECHA
+                cell.alignment = Alignment(horizontal="center")
+            elif col_letter in ("B", "C", "D", "E", "F", "I", "J"):
+                cell.number_format = NUMFMT_MONTO
+                cell.alignment = Alignment(horizontal="right")
+            else:
+                cell.alignment = Alignment(horizontal="center")
+        row += 1
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

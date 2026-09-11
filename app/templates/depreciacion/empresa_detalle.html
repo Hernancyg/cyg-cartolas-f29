@@ -49,12 +49,13 @@
       <tbody>
         {% for a in activos %}
         <tr>
-          <td>{{ a.nombre_activo }}</td>
+          <td><a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=a.id) }}">{{ a.nombre_activo }}</a></td>
           <td>{{ a.fecha_adquisicion }}</td>
           <td>{{ a.valor_adquisicion | clp }}</td>
           <td>{{ a.vida_util_anios }} años</td>
           <td>{{ 'Activo' if a.activo else 'Dado de baja' }}</td>
           <td style="white-space:nowrap">
+            <a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=a.id) }}" class="btn-secondary">{{ icon('calculator', 16) }} Kardex</a>
             {% if a.activo %}
             <form method="post" action="{{ url_for('depreciacion.activos_baja', empresa_id=empresa.id, activo_id=a.id) }}" style="display:inline" onsubmit="return confirm('¿Dar de baja {{ a.nombre_activo }}?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -7,8 +7,14 @@ repo.py`) de los activos fijos de cada empresa cliente.
     con "Empresas SII" de la pestaña "Consulta SII").
   - Detalle de una empresa: alta/baja de sus activos fijos (persisten en
     Supabase, ver `app/data/depreciacion_activos_repo.py`) y la tabla de
-    depreciación calculada para el período elegido (mes/año), con
-    descarga a Excel.
+    depreciación calculada para el período elegido (mes/año, todos los
+    activos juntos), con descarga a Excel.
+  - Ficha de un activo: su KARDEX de depreciación (una fila por período,
+    normalmente un año, con los meses utilizados editables a mano — ver
+    `app/data/depreciacion_periodos_repo.py` y `calculo.calcular_kardex`),
+    igual a la planilla de referencia que entregó el usuario (11-09-2026):
+    Fecha/Costo/Adiciones/Vida útil restante/Depreciación del ejercicio/
+    Acumulada/Valor libro encadenados fila a fila.
   - "Categorías SII": el catálogo editable de "tipo de bien -> vida útil
     normal" que sugiere la vida útil al agregar un activo nuevo.
 
@@ -22,9 +28,11 @@ from datetime import date
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
 
 from app.auth.decorators import pagina_required
-from app.data import depreciacion_activos_repo, depreciacion_categorias_repo, depreciacion_empresas_repo
-from app.depreciacion.calculo import calcular_tabla
-from app.depreciacion.export_writer import build_tabla_workbook
+from app.data import (
+    depreciacion_activos_repo, depreciacion_categorias_repo, depreciacion_empresas_repo, depreciacion_periodos_repo,
+)
+from app.depreciacion.calculo import calcular_kardex, calcular_tabla
+from app.depreciacion.export_writer import build_kardex_workbook, build_tabla_workbook
 
 depreciacion_bp = Blueprint("depreciacion", __name__, url_prefix="/depreciacion")
 
@@ -189,6 +197,95 @@ def descargar(empresa_id):
 
     contenido = build_tabla_workbook(empresa["nombre"], periodo_label, tabla)
     nombre_archivo = f"depreciacion_{empresa['nombre'].strip().replace(' ', '_')}_{year:04d}-{month:02d}.xlsx"
+    return send_file(
+        io.BytesIO(contenido), as_attachment=True, download_name=nombre_archivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ficha de un activo: kardex de depreciación por período
+# ---------------------------------------------------------------------------
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>", methods=["GET"])
+@pagina_required("depreciacion.empresas")
+def activo_detalle(empresa_id, activo_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    activo = depreciacion_activos_repo.obtener_activo(activo_id)
+    if not empresa or not activo or activo["empresa_id"] != empresa_id:
+        flash("Ese activo ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    periodos = depreciacion_periodos_repo.listar_por_activo(activo_id)
+    kardex = calcular_kardex(activo, periodos)
+
+    return render_template(
+        "depreciacion/activo_detalle.html", empresa=empresa, activo=activo, filas=list(zip(periodos, kardex)),
+    )
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/periodos/guardar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def periodos_guardar(empresa_id, activo_id):
+    activo = depreciacion_activos_repo.obtener_activo(activo_id)
+    if not activo or activo["empresa_id"] != empresa_id:
+        flash("Ese activo ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    fechas = request.form.getlist("p_fecha")
+    meses = request.form.getlist("p_meses")
+    adiciones = request.form.getlist("p_adiciones")
+
+    filas = []
+    errores = []
+    for i in range(len(fechas)):
+        fecha = (fechas[i] or "").strip()
+        meses_raw = (meses[i] if i < len(meses) else "").strip()
+        adiciones_raw = (adiciones[i] if i < len(adiciones) else "0").strip() or "0"
+        if not fecha and not meses_raw:
+            continue  # fila vacía (ej. se agregó y se dejó sin llenar) -> se ignora, no error
+        if not fecha or not meses_raw:
+            errores.append(f"Fila {i + 1}: falta la fecha o los meses utilizados.")
+            continue
+        try:
+            meses_int = int(meses_raw)
+            if meses_int <= 0:
+                raise ValueError
+        except ValueError:
+            errores.append(f"Fila {i + 1}: los meses utilizados deben ser un número entero mayor a 0.")
+            continue
+        try:
+            adiciones_float = float(adiciones_raw.replace(".", "").replace(",", "."))
+        except ValueError:
+            errores.append(f"Fila {i + 1}: el monto de adiciones no es válido.")
+            continue
+        filas.append({"fecha": fecha, "meses_utilizados": meses_int, "adiciones": adiciones_float})
+
+    if errores:
+        for e in errores:
+            flash(e, "error")
+        return redirect(url_for("depreciacion.activo_detalle", empresa_id=empresa_id, activo_id=activo_id))
+
+    filas.sort(key=lambda f: f["fecha"])
+    depreciacion_periodos_repo.guardar_todos(activo_id, filas)
+    flash("Kardex guardado.", "success")
+    return redirect(url_for("depreciacion.activo_detalle", empresa_id=empresa_id, activo_id=activo_id))
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/descargar", methods=["GET"])
+@pagina_required("depreciacion.empresas")
+def kardex_descargar(empresa_id, activo_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    activo = depreciacion_activos_repo.obtener_activo(activo_id)
+    if not empresa or not activo or activo["empresa_id"] != empresa_id:
+        flash("Ese activo ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    periodos = depreciacion_periodos_repo.listar_por_activo(activo_id)
+    kardex = calcular_kardex(activo, periodos)
+
+    contenido = build_kardex_workbook(empresa["nombre"], activo, kardex)
+    nombre_archivo = f"kardex_{activo['nombre_activo'].strip().replace(' ', '_')}.xlsx"
     return send_file(
         io.BytesIO(contenido), as_attachment=True, download_name=nombre_archivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -135,11 +135,22 @@ el SII por tipo de bien.
   sugerida, editable) o ingresando la vida útil a mano. Un activo se
   puede dar de baja (deja de sumarse hacia adelante, pero sigue apareciendo
   en la tabla de los meses ya pasados) o eliminar del todo.
-- La tabla de depreciación se calcula al vuelo para el mes/año elegido
-  (depreciación mensual = valor de adquisición / (vida útil en años × 12),
-  sin valor residual; una vez agotada la vida útil, el valor libro queda
-  en $1 mientras el bien siga en uso, como exige el SII) y se puede
-  descargar en Excel.
+- Dentro de la ficha de un activo: su **kardex de depreciación** — una
+  fila por período (normalmente un año) con los "meses utilizados"
+  editables a mano (botón "Agregar período" para cerrar cada año, con
+  fecha/meses sugeridos que se pueden ajustar libremente). El resto de
+  las columnas (costo total, vida útil restante, depreciación del
+  ejercicio, acumulada de apertura/cierre, valor libro) se recalculan
+  solas al guardar, encadenando cada fila desde la anterior — mismo
+  formato que la planilla de referencia que usa el estudio (ver
+  `app/depreciacion/calculo.calcular_kardex`, validado fila por fila
+  contra un caso real el 11-09-2026). Una "adición" en un período sube el
+  costo del activo (y su depreciación mensual) desde esa fila en
+  adelante. Descargable en Excel.
+- Además, en el detalle de la empresa hay una vista rápida "todos los
+  activos en un mes elegido" (independiente del kardex por activo, para
+  una foto mensual sin entrar a cada ficha) — mismo cálculo lineal normal,
+  sin valor residual, valor libro en $1 una vez agotada la vida útil.
 - **Categorías SII**: catálogo editable de "tipo de bien → años de vida
   útil normal", con una semilla tomada de la
   [tabla oficial del SII](https://www.sii.cl/valores_y_fechas/tabla_vida_util_activo_inmovilizado.html)
@@ -151,8 +162,9 @@ el SII por tipo de bien.
   si algún cliente las llegara a necesitar. Ver
   `app/data/depreciacion_categorias_repo.py` para el detalle completo.
 
-Ejecuta `migration/006_depreciacion.sql` en Supabase (SQL Editor) para
-crear las tablas la primera vez.
+Ejecuta `migration/006_depreciacion.sql` y `migration/007_depreciacion_
+periodos.sql` en Supabase (SQL Editor) para crear las tablas la primera
+vez.
 
 ## Estructura del proyecto
 
