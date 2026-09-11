@@ -13,7 +13,7 @@
 <div class="card">
   <div class="section-title" style="margin-bottom:10px">{{ icon('info', 16) }} Datos del activo</div>
   <div class="field-row">
-    <div class="field"><label>Fecha de adquisición</label><div>{{ activo.fecha_adquisicion }}</div></div>
+    <div class="field"><label>Fecha de adquisición</label><div>{{ activo.fecha_adquisicion | dmy }}</div></div>
     <div class="field"><label>Costo de adquisición</label><div>{{ activo.valor_adquisicion | clp }}</div></div>
     <div class="field"><label>Vida útil</label><div>{{ activo.vida_util_anios }} años ({{ activo.vida_util_anios * 12 }} meses)</div></div>
     <div class="field"><label>Estado</label><div>{{ 'Activo' if activo.activo else 'Dado de baja' }}</div></div>

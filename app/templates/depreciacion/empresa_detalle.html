@@ -50,16 +50,16 @@
         {% for a in activos %}
         <tr>
           <td><a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=a.id) }}">{{ a.nombre_activo }}</a></td>
-          <td>{{ a.fecha_adquisicion }}</td>
+          <td>{{ a.fecha_adquisicion | dmy }}</td>
           <td>{{ a.valor_adquisicion | clp }}</td>
           <td>{{ a.vida_util_anios }} años</td>
           <td>{{ 'Activo' if a.activo else 'Dado de baja' }}</td>
           <td style="white-space:nowrap">
-            <a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=a.id) }}" class="btn-secondary">{{ icon('calculator', 16) }} Kardex</a>
+            <a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=a.id) }}" class="row-action" title="Ver kardex">{{ icon('calculator', 16) }}</a>
             {% if a.activo %}
             <form method="post" action="{{ url_for('depreciacion.activos_baja', empresa_id=empresa.id, activo_id=a.id) }}" style="display:inline" onsubmit="return confirm('¿Dar de baja {{ a.nombre_activo }}?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn-secondary" title="Dar de baja">Dar de baja</button>
+              <button type="submit" class="link-btn" title="Dar de baja">Dar de baja</button>
             </form>
             {% endif %}
             <form method="post" action="{{ url_for('depreciacion.activos_eliminar', empresa_id=empresa.id, activo_id=a.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar {{ a.nombre_activo }} por completo?');">
@@ -105,7 +105,7 @@
         {% for f in tabla %}
         <tr>
           <td>{{ f.nombre_activo }}{% if f.de_baja %} <span class="muted">(dado de baja)</span>{% endif %}</td>
-          <td>{{ f.fecha_adquisicion }}</td>
+          <td>{{ f.fecha_adquisicion | dmy }}</td>
           <td>{{ f.valor_adquisicion | clp }}</td>
           <td>{{ f.vida_util_anios }} años</td>
           <td>{{ f.depreciacion_mensual | clp }}</td>

@@ -63,6 +63,22 @@ def create_app():
 
     app.jinja_env.filters["numval"] = _numval
 
+    def _dmy(fecha):
+        """'YYYY-MM-DD' (o un date/datetime) -> 'DD-MM-YYYY', para mostrar
+        fechas al estilo chileno en vez del ISO que devuelve Supabase.
+        Si no calza con ese formato, se muestra tal cual llegó en vez de
+        romper la página."""
+        if not fecha:
+            return fecha
+        texto = fecha.isoformat() if hasattr(fecha, "isoformat") else str(fecha)
+        partes = texto[:10].split("-")
+        if len(partes) == 3 and all(p.isdigit() for p in partes):
+            anio, mes, dia = partes
+            return f"{dia}-{mes}-{anio}"
+        return fecha
+
+    app.jinja_env.filters["dmy"] = _dmy
+
     from app.auth.routes import auth_bp
     from app.cartolas.routes import cartolas_bp
     from app.f29.routes import f29_bp

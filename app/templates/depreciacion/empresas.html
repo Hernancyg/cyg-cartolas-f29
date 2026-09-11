@@ -23,7 +23,7 @@
         <tr>
           <td>{{ e.rut or '—' }}</td>
           <td>{{ e.nombre }}</td>
-          <td><a href="{{ url_for('depreciacion.empresa_detalle', empresa_id=e.id) }}" class="btn-secondary">{{ icon('calculator', 16) }} Ver activos</a></td>
+          <td><a href="{{ url_for('depreciacion.empresa_detalle', empresa_id=e.id) }}" class="row-action" title="Ver activos">{{ icon('calculator', 16) }}</a></td>
           <td>
             <form method="post" action="{{ url_for('depreciacion.empresas_eliminar', empresa_id=e.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar la empresa {{ e.nombre }} y TODOS sus activos?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

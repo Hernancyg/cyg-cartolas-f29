@@ -481,6 +481,24 @@ table.data-table .row-remove:hover { filter: brightness(1.15); }
 table.data-table .badge-ok { color: var(--emerald); font-weight: 600; }
 table.data-table .badge-warn { color: var(--amber); font-weight: 600; }
 
+/* Ícono de acción dentro de una fila (ej. "Ver activos", "Kardex") — igual
+   de compacto que .row-remove, pero de color neutro en vez de rojo, para
+   acciones que no son destructivas. */
+table.data-table .row-action {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; text-decoration: none;
+}
+table.data-table .row-action:hover { color: var(--indigo); }
+
+/* Botón que se ve como un link (ej. "Dar de baja") — misma familia que
+   .row-remove/.row-action pero con texto en vez de ícono, para una acción
+   secundaria dentro de una fila sin el peso visual de .btn-secondary. */
+table.data-table .link-btn {
+  background: none; border: none; color: var(--indigo); cursor: pointer; padding: 4px 6px;
+  font-size: 0.85rem; font-weight: 600; font-family: var(--font-body);
+}
+table.data-table .link-btn:hover { text-decoration: underline; }
+
 /* ---------------------------------------------------------------------- */
 /* Métricas                                                                */
 /* ---------------------------------------------------------------------- */
