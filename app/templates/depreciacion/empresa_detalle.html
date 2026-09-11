@@ -83,14 +83,18 @@
     <div class="section-title">Tabla de depreciación — {{ periodo_label }}</div>
   </div>
 
-  <form method="get" action="{{ url_for('depreciacion.empresa_detalle', empresa_id=empresa.id) }}" style="display:flex; gap:10px; align-items:end; margin-bottom:14px">
-    <div class="field">
-      <label for="periodo">Período</label>
-      <input type="month" id="periodo" name="periodo" value="{{ periodo }}">
+  <form method="get" action="{{ url_for('depreciacion.empresa_detalle', empresa_id=empresa.id) }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="periodo">Período</label>
+        <input type="month" id="periodo" name="periodo" value="{{ periodo }}">
+      </div>
     </div>
-    <button type="submit" class="btn-secondary">Ver período</button>
+    <div class="actions-row">
+      <button type="submit" class="btn">{{ icon('calculator', 16) }} Ver período</button>
+      <a href="{{ url_for('depreciacion.descargar', empresa_id=empresa.id) }}" class="btn-secondary">{{ icon('download', 16) }} Descargar kardex de todos los activos (Excel)</a>
+    </div>
   </form>
-  <a href="{{ url_for('depreciacion.descargar', empresa_id=empresa.id) }}" class="btn">{{ icon('download', 16) }} Descargar kardex de todos los activos (Excel)</a>
 
   {% if tabla %}
   <div class="table-wrap">
