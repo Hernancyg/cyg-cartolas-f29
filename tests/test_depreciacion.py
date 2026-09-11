@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.run_verification import flask_app, FAKE, seed_data  # noqa: E402
 from app.depreciacion import comprobantes  # noqa: E402
-from app.depreciacion.calculo import calcular_fila, calcular_kardex, calcular_tabla  # noqa: E402
+from app.depreciacion.calculo import calcular_fila, calcular_kardex, calcular_tabla, fusionar_kardex_por_anio  # noqa: E402
 from app.data import depreciacion_categorias_repo  # noqa: E402
 
 PASSED, FAILED = [], []
@@ -148,6 +148,45 @@ def test_kardex():
     kardex_exceso = calcular_kardex(activo, periodos_exceso)
     check("meses en exceso: queda completamente depreciado", kardex_exceso[0]["completamente_depreciado"] is True)
     check("meses en exceso: valor libro en $1, no negativo", kardex_exceso[0]["valor_libro"] == 1)
+
+
+def test_fusionar_kardex_por_anio():
+    """`fusionar_kardex_por_anio` — validado contra un caso real que
+    reportó el usuario (11-09-2026): activo 'Instalaciones', costo
+    55.640.548, 6 años (72 meses), con el kardex quedando en 2 filas
+    separadas de 2026 (jul=7 meses, ago=1 mes) porque julio ya se había
+    asentado antes de generar agosto."""
+    activo = {"valor_adquisicion": 55_640_548, "vida_util_anios": 6}
+    periodos = [
+        {"fecha": "2023-12-31", "meses_utilizados": 12},
+        {"fecha": "2024-12-31", "meses_utilizados": 12},
+        {"fecha": "2025-12-31", "meses_utilizados": 12},
+        {"fecha": "2026-07-31", "meses_utilizados": 7},
+        {"fecha": "2026-08-31", "meses_utilizados": 1},
+    ]
+    kardex = calcular_kardex(activo, periodos)
+
+    # El kardex SIN fusionar (la tabla editable en pantalla) reproduce exactamente los 5 valores reportados.
+    check("sin fusionar: 5 filas (una por período real)", len(kardex) == 5)
+    check("sin fusionar: valor libro de julio = 22.410.776", kardex[3]["valor_libro"] == 22_410_776)
+    check("sin fusionar: valor libro de agosto = 21.637.991", kardex[4]["valor_libro"] == 21_637_991)
+
+    fusionado = fusionar_kardex_por_anio(kardex)
+    check("fusionado: 3 años de 12 meses + 1 fila fusionada de 2026 = 4 filas (no 5)", len(fusionado) == 4)
+
+    fila_2023, fila_2024, fila_2025, fila_2026 = fusionado
+    check("2023, 2024 y 2025 no cambian (eran una sola fila cada uno)", fila_2023 == kardex[0] and fila_2024 == kardex[1] and fila_2025 == kardex[2])
+
+    check("2026 fusionado: fecha = la última (2026-08-31)", fila_2026["fecha"] == "2026-08-31")
+    check("2026 fusionado: meses utilizados = 7 + 1 = 8", fila_2026["meses_utilizados"] == 8)
+    check("2026 fusionado: depreciación del ejercicio = 5.409.498 + 772.785 = 6.182.283", fila_2026["depreciacion_ejercicio"] == 6_182_283)
+    check("2026 fusionado: vida útil antes = la de la PRIMERA fila del año (36)", fila_2026["vida_util_antes_meses"] == 36)
+    check("2026 fusionado: deprec. acum. apertura = la de la PRIMERA fila del año (27.820.274)", fila_2026["deprec_acum_apertura"] == 27_820_274)
+    check("2026 fusionado: deprec. acum. cierre = la de la ÚLTIMA fila del año (34.002.557)", fila_2026["deprec_acum_cierre"] == 34_002_557)
+    check("2026 fusionado: valor libro = el de la ÚLTIMA fila del año (21.637.991)", fila_2026["valor_libro"] == 21_637_991)
+    check("2026 fusionado: factor CCMM efectivo = 1,0 (ninguna fila del grupo tenía corrección)", fila_2026["factor_ccmm"] == 1.0)
+
+    check("fusionar una lista vacía no revienta", fusionar_kardex_por_anio([]) == [])
 
 
 def test_comprobantes():
@@ -504,6 +543,7 @@ def main():
     seed_data()
     test_calculo()
     test_kardex()
+    test_fusionar_kardex_por_anio()
     test_comprobantes()
     test_categorias_defaults()
     test_rutas_flujo_completo()

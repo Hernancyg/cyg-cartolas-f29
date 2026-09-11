@@ -52,7 +52,9 @@ from app.data import (
     depreciacion_empresas_repo, depreciacion_grupos_contables_repo, depreciacion_periodos_repo,
 )
 from app.depreciacion import comprobantes
-from app.depreciacion.calculo import calcular_kardex, calcular_tabla, meses_faltantes, parse_fecha, ultimo_dia_mes
+from app.depreciacion.calculo import (
+    calcular_kardex, calcular_tabla, fusionar_kardex_por_anio, meses_faltantes, parse_fecha, ultimo_dia_mes,
+)
 from app.depreciacion.export_writer import build_comprobantes_workbook, build_empresa_kardex_workbook, build_kardex_workbook
 
 depreciacion_bp = Blueprint("depreciacion", __name__, url_prefix="/depreciacion")
@@ -232,7 +234,7 @@ def descargar(empresa_id):
 
     activos = depreciacion_activos_repo.listar_por_empresa(empresa_id)
     activos_con_kardex = [
-        (activo, calcular_kardex(activo, depreciacion_periodos_repo.listar_por_activo(activo["id"])))
+        (activo, fusionar_kardex_por_anio(calcular_kardex(activo, depreciacion_periodos_repo.listar_por_activo(activo["id"]))))
         for activo in activos
     ]
 
@@ -346,7 +348,7 @@ def kardex_descargar(empresa_id, activo_id):
         return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
 
     periodos = depreciacion_periodos_repo.listar_por_activo(activo_id)
-    kardex = calcular_kardex(activo, periodos)
+    kardex = fusionar_kardex_por_anio(calcular_kardex(activo, periodos))
 
     contenido = build_kardex_workbook(empresa["nombre"], activo, kardex)
     nombre_archivo = f"kardex_{activo['nombre_activo'].strip().replace(' ', '_')}.xlsx"

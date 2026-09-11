@@ -145,7 +145,12 @@ el SII por tipo de bien.
   la fila siguiente, así la corrección se va acumulando año a año. El
   resto de las columnas se recalculan solas al guardar (ver
   `app/depreciacion/calculo.calcular_kardex`, validado fila por fila
-  contra casos reales el 11-09-2026). Descargable en Excel.
+  contra casos reales el 11-09-2026). Descargable en Excel — el archivo
+  de salida (a diferencia de la tabla editable en pantalla) fusiona en
+  una sola fila todos los períodos consecutivos del MISMO año calendario
+  (normal que el kardex real quede con varias filas de un año si se fue
+  generando el asiento mes a mes, ver "Generar asiento" más abajo); ver
+  `app/depreciacion/calculo.fusionar_kardex_por_anio`.
 - Además, en el detalle de la empresa hay una vista rápida "todos los
   activos en un mes elegido" (independiente del kardex por activo, para
   una foto mensual sin entrar a cada ficha) — mismo cálculo lineal normal,

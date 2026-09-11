@@ -174,6 +174,71 @@ def parse_fecha(fecha):
     return _parse_fecha(fecha)
 
 
+def fusionar_kardex_por_anio(filas: list) -> list:
+    """SOLO para el archivo de salida del kardex (Descargar Excel) — NO
+    para la tabla editable en pantalla, que tiene que seguir mostrando
+    cada fila real de `depreciacion_periodos` para poder editarlas o
+    deshacer un asiento puntual. Junta en una sola fila todos los
+    períodos CONSECUTIVOS del mismo año calendario: si el kardex real
+    quedó con varias filas de un mismo año (normal cuando se fue
+    generando el asiento mes a mes — ver `app/depreciacion/routes.py:
+    _extender_periodos`, que no fusiona una fila ya asentada), el Excel
+    de salida las muestra como una sola fila de ese año, sea cual sea la
+    cantidad de meses con la que se fue procesando.
+
+    Cada fila fusionada:
+      - meses_utilizados / depreciacion_ejercicio: suma de las filas del
+        grupo (la depreciación del ejercicio de cada fila ya refleja
+        cualquier corrección aplicada hasta esa fila, así que sumarlas es
+        siempre válido).
+      - costo_total / vida_util_antes_meses / deprec_acum_apertura: los
+        de la PRIMERA fila del grupo (el estado ANTES de que empezara a
+        consumirse ese año).
+      - factor_ccmm: el factor EFECTIVO combinado del grupo
+        (valor_actualizado de la última fila / costo_total de la
+        primera) — para que, aplicado sobre el costo/la apertura de la
+        primera fila, siga dando el mismo valor actualizado/acumulada
+        actualizada que la última fila calculó de verdad.
+      - valor_actualizado / deprec_acum_cierre / valor_libro /
+        completamente_depreciado: los de la ÚLTIMA fila del grupo (el
+        estado de cierre real, ya con todas las correcciones del año
+        aplicadas)."""
+    if not filas:
+        return []
+
+    def _cerrar_grupo(grupo):
+        primera, ultima = grupo[0], grupo[-1]
+        costo_total = primera["costo_total"]
+        factor_ccmm = round(ultima["valor_actualizado"] / costo_total, 4) if costo_total else 1.0
+        return {
+            "id": ultima["id"],
+            "fecha": ultima["fecha"],
+            "meses_utilizados": sum(f["meses_utilizados"] for f in grupo),
+            "costo_total": costo_total,
+            "factor_ccmm": factor_ccmm,
+            "valor_actualizado": ultima["valor_actualizado"],
+            "vida_util_antes_meses": primera["vida_util_antes_meses"],
+            "depreciacion_ejercicio": sum(f["depreciacion_ejercicio"] for f in grupo),
+            "deprec_acum_apertura": primera["deprec_acum_apertura"],
+            "deprec_acum_actualizado": round(primera["deprec_acum_apertura"] * factor_ccmm),
+            "deprec_acum_cierre": ultima["deprec_acum_cierre"],
+            "valor_libro": ultima["valor_libro"],
+            "completamente_depreciado": ultima["completamente_depreciado"],
+            "correccion_monetaria": sum(f["correccion_monetaria"] for f in grupo),
+        }
+
+    fusionadas = []
+    grupo = [filas[0]]
+    for fila in filas[1:]:
+        if _parse_fecha(fila["fecha"]).year == _parse_fecha(grupo[-1]["fecha"]).year:
+            grupo.append(fila)
+        else:
+            fusionadas.append(_cerrar_grupo(grupo))
+            grupo = [fila]
+    fusionadas.append(_cerrar_grupo(grupo))
+    return fusionadas
+
+
 def meses_faltantes(fecha_ultima_fila, fecha_adquisicion, anio_objetivo: int, mes_objetivo: int) -> int:
     """Cuántos meses hay que agregar como una fila NUEVA del kardex para
     que llegue hasta el cierre de `anio_objetivo`-`mes_objetivo` — lo usa
