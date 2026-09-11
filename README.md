@@ -133,8 +133,18 @@ el SII por tipo de bien.
   Supabase — quedan disponibles mes a mes, no hay que volver a cargarlos),
   eligiendo una categoría del catálogo SII (autocompleta la vida útil
   sugerida, editable) o ingresando la vida útil a mano. Un activo se
-  puede dar de baja (deja de sumarse hacia adelante, pero sigue apareciendo
-  en la tabla de los meses ya pasados) o eliminar del todo.
+  puede eliminar del todo, o **dar de baja** (pérdida total o venta):
+  elige un mes/año (mismo mecanismo de extender el kardex que "Generar
+  asiento"), calcula el valor libro a esa fecha y — si es venta, con el
+  monto que ingreses (con factura o por contrato de compraventa) — la
+  utilidad o pérdida resultante. Al confirmar, arma y descarga el
+  comprobante de la baja (limpia Activo Fijo y Depreciación Acumulada del
+  Grupo Contable del activo, reconoce la utilidad/pérdida) y el activo
+  deja de depreciar hacia adelante (sigue apareciendo en la tabla de los
+  meses ya pasados). Las 3 cuentas de resultado que hacen falta (Caja/
+  Cliente, Pérdida en Baja, Utilidad en Venta) se configuran una vez por
+  empresa en "Grupos Contables" — ver `app/depreciacion/comprobantes_
+  baja.py` y `app/data/depreciacion_bajas_repo.py`.
 - Dentro de la ficha de un activo: su **kardex de depreciación** — una
   fila por período (normalmente un año) con los "meses utilizados"
   editables a mano (botón "Agregar período" para cerrar cada año, con
@@ -203,8 +213,9 @@ el SII por tipo de bien.
 Ejecuta `migration/006_depreciacion.sql`, `migration/007_depreciacion_
 periodos.sql`, `migration/008_depreciacion_ccmm.sql`, `migration/009_
 depreciacion_asientos.sql`, `migration/010_depreciacion_grupos_
-contables.sql` y `migration/011_depreciacion_grupos_por_empresa.sql` en
-Supabase (SQL Editor) para crear las tablas la primera
+contables.sql`, `migration/011_depreciacion_grupos_por_empresa.sql` y
+`migration/012_depreciacion_bajas.sql` en Supabase (SQL Editor) para
+crear las tablas la primera
 vez.
 
 ## Estructura del proyecto

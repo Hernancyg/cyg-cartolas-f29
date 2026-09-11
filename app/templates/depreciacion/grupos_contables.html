@@ -74,6 +74,32 @@
   </form>
 </div>
 
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('cash', 16) }} Cuentas para dar de baja</div>
+  <p class="muted" style="margin-top:0">
+    Se usan al dar de baja CUALQUIER activo de {{ empresa.nombre }} (venta o pérdida total) — las cuentas de Activo
+    Fijo y Depreciación Acumulada se sacan del Grupo Contable del activo mismo, no hace falta repetirlas acá.
+  </p>
+  <form method="post" action="{{ url_for('depreciacion.config_baja_guardar', empresa_id=empresa.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field">
+        <label>Caja / Cliente (por el monto de la venta)</label>
+        {{ cuenta_search("cb_caja", "cuenta_caja_cliente_codigo", "cuenta_caja_cliente_descripcion", config_baja.cuenta_caja_cliente_codigo, config_baja_desc.cuenta_caja_cliente_codigo, "Buscar cuenta…") }}
+      </div>
+      <div class="field">
+        <label>Pérdida en Baja de Activo Fijo</label>
+        {{ cuenta_search("cb_perdida", "cuenta_perdida_codigo", "cuenta_perdida_descripcion", config_baja.cuenta_perdida_codigo, config_baja_desc.cuenta_perdida_codigo, "Buscar cuenta…") }}
+      </div>
+      <div class="field">
+        <label>Utilidad en Venta de Activo Fijo</label>
+        {{ cuenta_search("cb_utilidad", "cuenta_utilidad_codigo", "cuenta_utilidad_descripcion", config_baja.cuenta_utilidad_codigo, config_baja_desc.cuenta_utilidad_codigo, "Buscar cuenta…") }}
+      </div>
+    </div>
+    <button type="submit" class="btn">{{ icon('save', 16) }} Guardar cuentas de baja</button>
+  </form>
+</div>
+
 <script>window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};</script>
 <script src="{{ url_for('static', filename='js/cuenta_search.js') }}"></script>
 {% endblock %}

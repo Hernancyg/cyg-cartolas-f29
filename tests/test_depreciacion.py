@@ -17,10 +17,10 @@ import xlrd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.run_verification import flask_app, FAKE, seed_data  # noqa: E402
-from app.depreciacion import comprobantes  # noqa: E402
+from app.depreciacion import comprobantes, comprobantes_baja  # noqa: E402
 from app.depreciacion.calculo import calcular_fila, calcular_kardex, calcular_tabla, fusionar_kardex_por_anio  # noqa: E402
 from app.depreciacion.export_writer import build_comprobantes_workbook  # noqa: E402
-from app.data import depreciacion_categorias_repo  # noqa: E402
+from app.data import depreciacion_activos_repo, depreciacion_categorias_repo  # noqa: E402
 
 PASSED, FAILED = [], []
 
@@ -297,6 +297,68 @@ def test_comprobante_fecha_queda_escrita():
     )
 
 
+def test_comprobantes_baja():
+    """`app/depreciacion/comprobantes_baja.py`: resultado (utilidad/
+    pérdida) y armado del comprobante de dar de baja un activo, para los
+    3 casos — pérdida total, venta con utilidad, venta con pérdida —
+    verificando que el comprobante siempre queda balanceado (Debe==Haber)."""
+    activo = {"nombre_activo": "Camion 1", "grupo_contable_codigo": "1204-01"}
+    grupo_contable = {"cuenta_acumulada_codigo": "1207-25"}
+    config_baja = {"cuenta_caja_cliente_codigo": "1101-01", "cuenta_perdida_codigo": "5501-05", "cuenta_utilidad_codigo": "4501-14"}
+
+    # --- Pérdida total: resultado = -valor_libro ---
+    resultado_pt = comprobantes_baja.calcular_resultado("perdida_total", 0, 4_000_000)
+    check("pérdida total: resultado = -valor libro completo", resultado_pt == -4_000_000)
+    comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, "perdida_total", resultado_pt)  # no debería lanzar
+    filas_pt = comprobantes_baja.construir_filas(activo, grupo_contable, config_baja, "perdida_total", None, 0, 10_000_000, 6_000_000, resultado_pt, "2026-08-31")
+    check("pérdida total: 3 líneas (deprec. acum. + pérdida + activo fijo)", len(filas_pt) == 3)
+    check("pérdida total: balanceado", sum(f[8] for f in filas_pt if f[8]) == sum(f[9] for f in filas_pt if f[9]) == 10_000_000)
+    check("pérdida total: NO lleva línea de Caja/Cliente (no hubo venta)", not any(f[4] == "1101-01" for f in filas_pt))
+    check("pérdida total: la glosa dice PÉRDIDA TOTAL, en mayúsculas", "PÉRDIDA TOTAL" in filas_pt[0][3] and filas_pt[0][3] == filas_pt[0][3].upper())
+
+    # --- Venta con utilidad: monto_venta > valor_libro ---
+    resultado_ut = comprobantes_baja.calcular_resultado("venta", 7_000_000, 6_000_000)
+    check("venta con utilidad: resultado positivo = 1.000.000", resultado_ut == 1_000_000)
+    filas_ut = comprobantes_baja.construir_filas(activo, grupo_contable, config_baja, "venta", "factura", 7_000_000, 10_000_000, 4_000_000, resultado_ut, "2026-08-31")
+    check("venta con utilidad: 4 líneas (deprec. acum. + caja + utilidad + activo fijo)", len(filas_ut) == 4)
+    total_debe_ut = sum(f[8] for f in filas_ut if f[8])
+    total_haber_ut = sum(f[9] for f in filas_ut if f[9])
+    check("venta con utilidad: balanceado", total_debe_ut == total_haber_ut == 11_000_000)
+    check("venta con utilidad: la utilidad va al Haber de la cuenta de utilidad", any(f[4] == "4501-14" and f[9] == 1_000_000 for f in filas_ut))
+    check("venta con utilidad: la glosa dice VENTA CON FACTURA", "VENTA CON FACTURA" in filas_ut[0][3])
+
+    # --- Venta con pérdida: monto_venta < valor_libro ---
+    resultado_pe = comprobantes_baja.calcular_resultado("venta", 3_000_000, 6_000_000)
+    check("venta con pérdida: resultado negativo = -3.000.000", resultado_pe == -3_000_000)
+    filas_pe = comprobantes_baja.construir_filas(activo, grupo_contable, config_baja, "venta", "contrato", 3_000_000, 10_000_000, 4_000_000, resultado_pe, "2026-08-31")
+    check("venta con pérdida: 4 líneas (deprec. acum. + caja + pérdida + activo fijo)", len(filas_pe) == 4)
+    total_debe_pe = sum(f[8] for f in filas_pe if f[8])
+    total_haber_pe = sum(f[9] for f in filas_pe if f[9])
+    check("venta con pérdida: balanceado", total_debe_pe == total_haber_pe == 10_000_000)
+    check("venta con pérdida: la pérdida va al Debe de la cuenta de pérdida", any(f[4] == "5501-05" and f[8] == 3_000_000 for f in filas_pe))
+    check("venta con pérdida: la glosa dice VENTA POR CONTRATO DE COMPRAVENTA", "VENTA POR CONTRATO DE COMPRAVENTA" in filas_pe[0][3])
+
+    # --- validar_cuentas: sin grupo contable asignado ---
+    try:
+        comprobantes_baja.validar_cuentas({"grupo_contable_codigo": None}, None, config_baja, "perdida_total", -1)
+        check("sin grupo contable -> debería haber lanzado CuentaBajaFaltante", False)
+    except comprobantes_baja.CuentaBajaFaltante as exc:
+        check("sin grupo contable: avisa que falta asignarlo", "Grupo contable" in str(exc))
+
+    # --- validar_cuentas: venta sin cuenta de Caja/Cliente configurada ---
+    try:
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, {}, "venta", 500_000)
+        check("venta sin cuenta Caja/Cliente -> debería haber lanzado CuentaBajaFaltante", False)
+    except comprobantes_baja.CuentaBajaFaltante as exc:
+        check("venta sin Caja/Cliente: avisa qué falta", "Caja/Cliente" in str(exc))
+
+    # --- validar_cuentas: pérdida total no exige Caja/Cliente (no hay venta) ---
+    check(
+        "pérdida total no exige cuenta de Caja/Cliente",
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, {"cuenta_perdida_codigo": "5501-05"}, "perdida_total", -1) is None,
+    )
+
+
 def test_categorias_defaults():
     categorias = depreciacion_categorias_repo.DEFAULTS
     check("hay categorías por defecto cargadas", len(categorias) > 50)
@@ -398,8 +460,11 @@ def test_rutas_flujo_completo():
     )
     check("factor CCMM en 0 -> avisa el error, no revienta", r.status_code == 200 and "factor ccmm" in r.get_data(as_text=True).lower())
 
-    r = client.post(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/baja", follow_redirects=True)
-    check("dar de baja el activo -> ok", r.status_code == 200 and "dado de baja" in r.get_data(as_text=True).lower())
+    # El flujo completo de "dar de baja" (formulario, venta/pérdida total, asiento) tiene su propio test
+    # (`test_activo_baja_flujo`) — acá solo se verifica que el repo lo marca bien antes de eliminarlo.
+    depreciacion_activos_repo.dar_de_baja(activo_id)
+    r = client.get(f"/depreciacion/empresas/{empresa_id}", follow_redirects=True)
+    check("dar de baja el activo -> queda marcado 'Dado de baja' en la lista", r.status_code == 200 and "Dado de baja" in r.get_data(as_text=True))
 
     r = client.post(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/eliminar", follow_redirects=True)
     check("eliminar activo -> ok", r.status_code == 200)
@@ -545,6 +610,83 @@ def test_asientos_flujo():
     )
 
 
+def test_activo_baja_flujo():
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+    client.post("/depreciacion/empresas/crear", data={"rut": "", "nombre": "BAJA TEST SPA"}, follow_redirects=True)
+    empresa = [e for e in FAKE.table("depreciacion_empresas").select("*").execute().data if e["nombre"] == "BAJA TEST SPA"][0]
+    empresa_id = empresa["id"]
+
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/crear",
+        data={"nombre_activo": "Camioneta Baja", "fecha_adquisicion": "2020-01-01", "valor_adquisicion": "10000000", "vida_util_anios": "7", "categoria_id": "", "grupo_contable_codigo": ""},
+        follow_redirects=True,
+    )
+    activo = [a for a in FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data if a["nombre_activo"] == "Camioneta Baja"][0]
+    activo_id = activo["id"]
+
+    # Sin grupo contable asignado: calcular igual muestra el resultado, pero avisa que falta la cuenta para poder confirmar.
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/dar_de_baja/calcular",
+        data={"periodo": "2026-01", "tipo_baja": "perdida_total"},
+    )
+    check("calcular sin grupo -> 200, muestra qué falta", r.status_code == 200 and "Grupo contable" in r.get_data(as_text=True))
+
+    # Configura el grupo contable del activo y sus cuentas.
+    client.post(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/grupo/guardar", data={"grupo_contable_codigo": "1204-01"}, follow_redirects=True)
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/grupos-contables/guardar",
+        data={"grupo_codigo": "1204-01", "cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25", "cuenta_correccion_codigo": ""},
+        follow_redirects=True,
+    )
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/config-baja/guardar",
+        data={"cuenta_caja_cliente_codigo": "1101-01", "cuenta_perdida_codigo": "5501-05", "cuenta_utilidad_codigo": "4501-14"},
+        follow_redirects=True,
+    )
+
+    # Calcula una VENTA con factura: 2026-08, monto 6.000.000.
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/dar_de_baja/calcular",
+        data={"periodo": "2026-08", "tipo_baja": "venta", "modalidad_venta": "factura", "monto_venta": "6000000"},
+    )
+    body = r.get_data(as_text=True)
+    check("calcular con cuentas completas -> 200, sin aviso de cuentas faltantes", r.status_code == 200 and "Faltan cuentas" not in body)
+
+    # 10.000.000 / 7 años (84 meses), adquirido 2020-01-01 -> a agosto 2026 lleva 80 meses depreciados.
+    deprec_mensual = 10_000_000 / 84
+    meses_esperados = (2026 * 12 + 8) - (2020 * 12 + 1) + 1
+    valor_libro_esperado = round(10_000_000 - deprec_mensual * meses_esperados)
+    resultado_esperado = 6_000_000 - valor_libro_esperado
+    check(f"meses depreciados esperados = {meses_esperados} (80)", meses_esperados == 80)
+    check("la vista previa muestra el valor libro calculado correctamente", str(valor_libro_esperado).replace(",", ".") in body.replace(".", "") or "{:,.0f}".format(valor_libro_esperado).replace(",", ".") in body)
+
+    # Confirma: descarga el comprobante, da de baja el activo, guarda el registro.
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/dar_de_baja/confirmar",
+        data={"periodo": "2026-08", "tipo_baja": "venta", "modalidad_venta": "factura", "monto_venta": "6000000"},
+    )
+    check("confirmar -> 200, descarga un .xls", r.status_code == 200 and r.headers.get("Content-Type") == "application/vnd.ms-excel")
+
+    activo_actualizado = FAKE.table("depreciacion_activos").select("*").eq("id", activo_id).execute().data[0]
+    check("el activo quedó marcado como dado de baja (activo=False)", activo_actualizado["activo"] is False)
+
+    bajas = FAKE.table("depreciacion_bajas").select("*").eq("activo_id", activo_id).execute().data
+    check("quedó UN registro en depreciacion_bajas", len(bajas) == 1)
+    check("el registro trae tipo_baja='venta' y modalidad_venta='factura'", bajas[0]["tipo_baja"] == "venta" and bajas[0]["modalidad_venta"] == "factura")
+    check("el resultado guardado calza con el esperado (monto venta - valor libro)", bajas[0]["resultado"] == resultado_esperado)
+    check("la fecha de baja quedó en el último día del mes procesado (2026-08-31)", bajas[0]["fecha_baja"] == "2026-08-31")
+
+    # El activo ya no aparece en los pendientes de "Generar asiento" hacia adelante (dejó de depreciar).
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos?periodo=2026-12")
+    check("el activo dado de baja no aparece más en 'Generar asiento'", "Camioneta Baja" not in r.get_data(as_text=True))
+
+    # Intentar dar de baja el mismo activo de nuevo -> avisa que ya está dado de baja, no revienta.
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/dar_de_baja", follow_redirects=True)
+    check("volver a intentar dar de baja un activo ya dado de baja -> avisa, no revienta", r.status_code == 200 and "ya está dado de baja" in r.get_data(as_text=True).lower())
+
+
 def test_categorias_guardar():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
@@ -586,9 +728,11 @@ def main():
     test_fusionar_kardex_por_anio()
     test_comprobantes()
     test_comprobante_fecha_queda_escrita()
+    test_comprobantes_baja()
     test_categorias_defaults()
     test_rutas_flujo_completo()
     test_asientos_flujo()
+    test_activo_baja_flujo()
     test_categorias_guardar()
     test_trabajador_no_puede_ver_depreciacion()
 

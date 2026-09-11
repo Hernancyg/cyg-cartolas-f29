@@ -69,10 +69,7 @@
           <td style="white-space:nowrap">
             <a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=a.id) }}" class="row-action" title="Ver kardex">{{ icon('calculator', 16) }}</a>
             {% if a.activo %}
-            <form method="post" action="{{ url_for('depreciacion.activos_baja', empresa_id=empresa.id, activo_id=a.id) }}" style="display:inline" onsubmit="return confirm('¿Dar de baja {{ a.nombre_activo }}?');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="link-btn" title="Dar de baja">Dar de baja</button>
-            </form>
+            <a href="{{ url_for('depreciacion.activo_baja_form', empresa_id=empresa.id, activo_id=a.id) }}" class="link-btn" title="Dar de baja">Dar de baja</a>
             {% endif %}
             <form method="post" action="{{ url_for('depreciacion.activos_eliminar', empresa_id=empresa.id, activo_id=a.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar {{ a.nombre_activo }} por completo?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

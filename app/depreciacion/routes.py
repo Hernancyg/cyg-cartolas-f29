@@ -35,6 +35,16 @@ repo.py`) de los activos fijos de cada empresa cliente.
     (factor CCMM 1, editable después a mano en su kardex si hace falta
     corregirlo) — así no hay que ir período por período a cada activo
     antes de poder generar.
+  - "Dar de baja" un activo (pérdida total o venta, ver `app/
+    depreciacion/comprobantes_baja.py`): elige un mes/año (mismo
+    mecanismo de extender el kardex que "Generar asiento"), calcula el
+    valor libro a esa fecha y arma un comprobante aparte (no se
+    consolida con nada) que limpia la cuenta de Activo Fijo (el código
+    del Grupo Contable del activo mismo) y la Depreciación Acumulada del
+    grupo, reconociendo la utilidad o pérdida contra las 3 cuentas que se
+    configuran una vez por empresa (Caja/Cliente, Pérdida en Baja,
+    Utilidad en Venta — ver `app/data/depreciacion_config_baja_repo.py`,
+    en la misma pantalla de Grupos Contables).
 
 El cálculo en sí (`app/depreciacion/calculo.py`) no toca Supabase — así se
 puede testear con datos en memoria.
@@ -48,10 +58,11 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from app.auth.decorators import pagina_required
 from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO, PLAN_CUENTAS
 from app.data import (
-    depreciacion_activos_repo, depreciacion_asientos_repo, depreciacion_categorias_repo,
-    depreciacion_empresas_repo, depreciacion_grupos_contables_repo, depreciacion_periodos_repo,
+    depreciacion_activos_repo, depreciacion_asientos_repo, depreciacion_bajas_repo, depreciacion_categorias_repo,
+    depreciacion_config_baja_repo, depreciacion_empresas_repo, depreciacion_grupos_contables_repo,
+    depreciacion_periodos_repo,
 )
-from app.depreciacion import comprobantes
+from app.depreciacion import comprobantes, comprobantes_baja
 from app.depreciacion.calculo import (
     calcular_kardex, calcular_tabla, fusionar_kardex_por_anio, meses_faltantes, parse_fecha, ultimo_dia_mes,
 )
@@ -203,12 +214,139 @@ def activos_crear(empresa_id):
     return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
 
 
-@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/baja", methods=["POST"])
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/dar_de_baja", methods=["GET"])
 @pagina_required("depreciacion.empresas")
-def activos_baja(empresa_id, activo_id):
+def activo_baja_form(empresa_id, activo_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    activo = depreciacion_activos_repo.obtener_activo(activo_id)
+    if not empresa or not activo or activo["empresa_id"] != empresa_id:
+        flash("Ese activo ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+    if not activo.get("activo", True):
+        flash("Ese activo ya está dado de baja.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    hoy = date.today()
+    return render_template(
+        "depreciacion/activo_baja.html", empresa=empresa, activo=activo,
+        MESES_OPCIONES=MESES_OPCIONES, anios_disponibles=_anios_disponibles(),
+        periodo=f"{hoy.year:04d}-{hoy.month:02d}",
+    )
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/dar_de_baja/calcular", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def activo_baja_calcular(empresa_id, activo_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    activo = depreciacion_activos_repo.obtener_activo(activo_id)
+    if not empresa or not activo or activo["empresa_id"] != empresa_id:
+        flash("Ese activo ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    anio, mes = _parsear_mes_anio(request.form.get("periodo"))
+    tipo_baja = request.form.get("tipo_baja") or ""
+    modalidad_venta = request.form.get("modalidad_venta") or None
+    monto_venta_raw = (request.form.get("monto_venta") or "0").strip().replace(".", "").replace(",", ".")
+
+    errores = []
+    if tipo_baja not in ("perdida_total", "venta"):
+        errores.append("Elige el tipo de baja: pérdida total o venta.")
+    if tipo_baja == "venta" and modalidad_venta not in ("factura", "contrato"):
+        errores.append("Elige la modalidad de venta: con factura o por contrato de compraventa.")
+    monto_venta = 0.0
+    if tipo_baja == "venta":
+        try:
+            monto_venta = float(monto_venta_raw or 0)
+            if monto_venta <= 0:
+                errores.append("Ingresa el monto de la venta.")
+        except ValueError:
+            errores.append("El monto de venta no es un número válido.")
+
+    if errores:
+        for e in errores:
+            flash(e, "error")
+        return redirect(url_for("depreciacion.activo_baja_form", empresa_id=empresa_id, activo_id=activo_id))
+
+    fila = _valor_libro_en(activo, anio, mes, persistir=False)
+    valor_actualizado = fila["valor_actualizado"] if fila else round(float(activo["valor_adquisicion"]))
+    deprec_acumulada = fila["deprec_acum_cierre"] if fila else 0
+    valor_libro = fila["valor_libro"] if fila else valor_actualizado
+    resultado = comprobantes_baja.calcular_resultado(tipo_baja, monto_venta, valor_libro)
+
+    grupo_contable = None
+    if activo.get("grupo_contable_codigo"):
+        grupo_contable = depreciacion_grupos_contables_repo.obtener(empresa_id, activo["grupo_contable_codigo"])
+    config_baja = depreciacion_config_baja_repo.obtener(empresa_id)
+
+    error_cuentas = None
+    try:
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, tipo_baja, resultado)
+    except comprobantes_baja.CuentaBajaFaltante as exc:
+        error_cuentas = str(exc)
+
+    return render_template(
+        "depreciacion/activo_baja_confirmar.html", empresa=empresa, activo=activo,
+        periodo=f"{anio:04d}-{mes:02d}", periodo_label=f"{MESES_LABEL[mes - 1]} {anio}",
+        tipo_baja=tipo_baja, modalidad_venta=modalidad_venta, monto_venta=monto_venta,
+        valor_actualizado=valor_actualizado, deprec_acumulada=deprec_acumulada,
+        valor_libro=valor_libro, resultado=resultado, error_cuentas=error_cuentas,
+    )
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/dar_de_baja/confirmar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def activo_baja_confirmar(empresa_id, activo_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    activo = depreciacion_activos_repo.obtener_activo(activo_id)
+    if not empresa or not activo or activo["empresa_id"] != empresa_id:
+        flash("Ese activo ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+    if not activo.get("activo", True):
+        flash("Ese activo ya está dado de baja.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    anio, mes = _parsear_mes_anio(request.form.get("periodo"))
+    tipo_baja = request.form.get("tipo_baja") or ""
+    modalidad_venta = request.form.get("modalidad_venta") or None
+    try:
+        monto_venta = float(request.form.get("monto_venta") or 0)
+    except ValueError:
+        monto_venta = 0.0
+
+    fila = _valor_libro_en(activo, anio, mes, persistir=True)
+    valor_actualizado = fila["valor_actualizado"] if fila else round(float(activo["valor_adquisicion"]))
+    deprec_acumulada = fila["deprec_acum_cierre"] if fila else 0
+    valor_libro = fila["valor_libro"] if fila else valor_actualizado
+    resultado = comprobantes_baja.calcular_resultado(tipo_baja, monto_venta, valor_libro)
+
+    grupo_contable = depreciacion_grupos_contables_repo.obtener(empresa_id, activo.get("grupo_contable_codigo") or "")
+    config_baja = depreciacion_config_baja_repo.obtener(empresa_id)
+
+    try:
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, tipo_baja, resultado)
+    except comprobantes_baja.CuentaBajaFaltante as exc:
+        flash(f"No se pudo generar el asiento de baja: {exc}", "error")
+        return redirect(url_for("depreciacion.activo_baja_form", empresa_id=empresa_id, activo_id=activo_id))
+
+    fecha_baja = ultimo_dia_mes(anio, mes)
+    fecha_dt = datetime.combine(fecha_baja, datetime.min.time())
+    filas_comprobante = comprobantes_baja.construir_filas(
+        activo, grupo_contable, config_baja, tipo_baja, modalidad_venta,
+        monto_venta, valor_actualizado, deprec_acumulada, resultado, fecha_dt,
+    )
+
+    depreciacion_bajas_repo.crear(
+        activo_id, fecha_baja.isoformat(), tipo_baja, modalidad_venta,
+        monto_venta, valor_actualizado, deprec_acumulada, valor_libro, resultado,
+    )
     depreciacion_activos_repo.dar_de_baja(activo_id)
-    flash("Activo dado de baja (sigue apareciendo en los períodos ya pasados).", "success")
-    return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    contenido = build_comprobantes_workbook(filas_comprobante)
+    nombre_archivo = f"baja_{activo['nombre_activo'].strip().replace(' ', '_')}.xls"
+    return send_file(
+        io.BytesIO(contenido), as_attachment=True, download_name=nombre_archivo,
+        mimetype="application/vnd.ms-excel",
+    )
 
 
 @depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/eliminar", methods=["POST"])
@@ -431,10 +569,14 @@ def _ordinal(fecha) -> int:
 
 def _pendientes_por_activo(empresa_id, anio, mes, persistir=False):
     """[(activo, [filas de calcular_kardex sin asiento todavía, hasta
-    anio-mes inclusive])] para cada activo de la empresa."""
+    anio-mes inclusive])] para cada activo ACTIVO de la empresa — un
+    activo ya dado de baja (ver `activo_baja_confirmar`) no vuelve a
+    depreciar hacia adelante, así que no entra a "Generar asiento"."""
     objetivo_ordinal = anio * 12 + mes
     resultado = []
     for activo in depreciacion_activos_repo.listar_por_empresa(empresa_id):
+        if not activo.get("activo", True):
+            continue
         asentadas = depreciacion_asientos_repo.fechas_ya_generadas(activo["id"])
         periodos = depreciacion_periodos_repo.listar_por_activo(activo["id"])
         periodos = [p for p in periodos if _ordinal(parse_fecha(p["fecha"])) <= objetivo_ordinal]
@@ -443,6 +585,24 @@ def _pendientes_por_activo(empresa_id, anio, mes, persistir=False):
         pendientes = [k for k in kardex if k["fecha"] not in asentadas]
         resultado.append((activo, pendientes))
     return resultado
+
+
+def _valor_libro_en(activo, anio, mes, persistir):
+    """Extiende el kardex de `activo` (mismo mecanismo que "Generar
+    asiento" — ver `_extender_periodos`) hasta el cierre de anio-mes y
+    devuelve la última fila de `calcular_kardex` a esa fecha (con
+    valor_actualizado/deprec_acum_cierre/valor_libro) — lo usa "Dar de
+    baja" para saber cuánto vale el activo en libros al momento de
+    venderlo o perderlo. `None` si el activo no tiene ninguna fila
+    (nunca se cargó ningún período ni se pudo extender, ej. fecha de
+    baja anterior a la de adquisición)."""
+    objetivo_ordinal = anio * 12 + mes
+    asentadas = depreciacion_asientos_repo.fechas_ya_generadas(activo["id"])
+    periodos = depreciacion_periodos_repo.listar_por_activo(activo["id"])
+    periodos = [p for p in periodos if _ordinal(parse_fecha(p["fecha"])) <= objetivo_ordinal]
+    periodos = _extender_periodos(activo, periodos, anio, mes, persistir, asentadas)
+    kardex = calcular_kardex(activo, periodos)
+    return kardex[-1] if kardex else None
 
 
 @depreciacion_bp.route("/empresas/<empresa_id>/asientos", methods=["GET"])
@@ -558,7 +718,32 @@ def grupos_contables(empresa_id):
     grupos = depreciacion_grupos_contables_repo.listar_por_empresa(empresa_id)
     for g in grupos:
         g["descripcion"] = CUENTAS_POR_CODIGO.get(g["codigo"], {}).get("descripcion", "")
-    return render_template("depreciacion/grupos_contables.html", empresa=empresa, grupos=grupos, cuentas=PLAN_CUENTAS)
+    config_baja = depreciacion_config_baja_repo.obtener(empresa_id) or {}
+    config_baja_desc = {
+        campo: CUENTAS_POR_CODIGO.get(config_baja.get(campo) or "", {}).get("descripcion", "")
+        for campo in ("cuenta_caja_cliente_codigo", "cuenta_perdida_codigo", "cuenta_utilidad_codigo")
+    }
+    return render_template(
+        "depreciacion/grupos_contables.html", empresa=empresa, grupos=grupos, cuentas=PLAN_CUENTAS,
+        config_baja=config_baja, config_baja_desc=config_baja_desc,
+    )
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/config-baja/guardar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def config_baja_guardar(empresa_id):
+    cuenta_caja = request.form.get("cuenta_caja_cliente_codigo") or None
+    cuenta_perdida = request.form.get("cuenta_perdida_codigo") or None
+    cuenta_utilidad = request.form.get("cuenta_utilidad_codigo") or None
+
+    for codigo in (cuenta_caja, cuenta_perdida, cuenta_utilidad):
+        if codigo and codigo not in CUENTAS_POR_CODIGO:
+            flash("Una de las cuentas elegidas no existe en el plan de cuentas — vuelve a buscarla.", "error")
+            return redirect(url_for("depreciacion.grupos_contables", empresa_id=empresa_id))
+
+    depreciacion_config_baja_repo.guardar(empresa_id, cuenta_caja, cuenta_perdida, cuenta_utilidad)
+    flash("Cuentas para dar de baja guardadas.", "success")
+    return redirect(url_for("depreciacion.grupos_contables", empresa_id=empresa_id))
 
 
 @depreciacion_bp.route("/empresas/<empresa_id>/grupos-contables/guardar", methods=["POST"])

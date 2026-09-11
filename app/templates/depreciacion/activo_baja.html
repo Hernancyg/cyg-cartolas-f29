@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Dar de baja {{ activo.nombre_activo }} · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Dar de baja: {{ activo.nombre_activo }}</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  {{ empresa.nombre }} ·
+  <a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=activo.id) }}">← volver al activo</a>
+</p>
+
+<div class="alert alert-info">
+  Calcula el valor libro del activo al mes elegido (extendiendo el kardex si todavía no llega hasta ahí, igual que
+  "Generar asiento") y arma el comprobante de la baja — con la utilidad o pérdida resultante. En el siguiente paso
+  puedes revisar todo antes de confirmar.
+</div>
+
+<div class="card">
+  <form method="post" action="{{ url_for('depreciacion.activo_baja_calcular', empresa_id=empresa.id, activo_id=activo.id) }}" id="form-baja">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="section-title" style="margin-bottom:10px">{{ icon('calendar', 16) }} Mes de la baja</div>
+    <div class="field-row">
+      <div class="field">
+        <label for="b_periodo_mes">Mes</label>
+        <select id="b_periodo_mes" name="__mes">
+          {% for num, nombre in MESES_OPCIONES %}
+          <option value="{{ num }}" {{ 'selected' if periodo[5:7] == num else '' }}>{{ nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="b_periodo_anio">Año</label>
+        <select id="b_periodo_anio" name="__anio">
+          {% for a in anios_disponibles %}
+          <option value="{{ a }}" {{ 'selected' if periodo[:4] == a|string else '' }}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <input type="hidden" id="b_periodo" name="periodo" value="{{ periodo }}">
+
+    <div class="section-title" style="margin-bottom:10px; margin-top:18px">{{ icon('info', 16) }} Motivo de la baja</div>
+    <div class="field-row">
+      <div class="field">
+        <label><input type="radio" name="tipo_baja" value="perdida_total" checked onchange="bajaActualizarVista()"> Pérdida total</label>
+      </div>
+      <div class="field">
+        <label><input type="radio" name="tipo_baja" value="venta" onchange="bajaActualizarVista()"> Venta</label>
+      </div>
+    </div>
+
+    <div id="b_venta_campos" hidden>
+      <div class="field-row">
+        <div class="field">
+          <label><input type="radio" name="modalidad_venta" value="factura" checked> Venta con factura</label>
+        </div>
+        <div class="field">
+          <label><input type="radio" name="modalidad_venta" value="contrato"> Contrato de compraventa</label>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="b_monto_venta">Monto de la venta (neto)</label>
+          <input type="text" id="b_monto_venta" name="monto_venta" placeholder="1.500.000">
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn" style="margin-top:14px">{{ icon('calculator', 16) }} Calcular</button>
+  </form>
+</div>
+
+<script>
+function bajaSincronizarPeriodo() {
+  var mes = document.getElementById('b_periodo_mes').value;
+  var anio = document.getElementById('b_periodo_anio').value;
+  document.getElementById('b_periodo').value = anio + '-' + mes;
+}
+function bajaActualizarVista() {
+  var esVenta = document.querySelector('input[name="tipo_baja"]:checked').value === 'venta';
+  document.getElementById('b_venta_campos').hidden = !esVenta;
+}
+document.getElementById('b_periodo_mes').addEventListener('change', bajaSincronizarPeriodo);
+document.getElementById('b_periodo_anio').addEventListener('change', bajaSincronizarPeriodo);
+bajaActualizarVista();
+</script>
+{% endblock %}
