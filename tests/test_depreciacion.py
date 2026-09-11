@@ -300,62 +300,97 @@ def test_comprobante_fecha_queda_escrita():
 def test_comprobantes_baja():
     """`app/depreciacion/comprobantes_baja.py`: resultado (utilidad/
     pérdida) y armado del comprobante de dar de baja un activo, para los
-    3 casos — pérdida total, venta con utilidad, venta con pérdida —
-    verificando que el comprobante siempre queda balanceado (Debe==Haber)."""
+    3 casos — pérdida total, venta con factura, venta por contrato de
+    compraventa — verificando que el comprobante siempre queda
+    balanceado (Debe==Haber) y que factura y contrato producen asientos
+    DISTINTOS (confirmado contra un ejemplo real del usuario)."""
     activo = {"nombre_activo": "Camion 1", "grupo_contable_codigo": "1204-01"}
     grupo_contable = {"cuenta_acumulada_codigo": "1207-25"}
-    config_baja = {"cuenta_caja_cliente_codigo": "1101-01", "cuenta_perdida_codigo": "5501-05", "cuenta_utilidad_codigo": "4501-14"}
+    config_baja = {
+        "cuenta_caja_cliente_codigo": "1101-01", "cuenta_perdida_codigo": "5501-05",
+        "cuenta_utilidad_codigo": "4501-14", "cuenta_costo_venta_codigo": "4101-26",
+    }
 
     # --- Pérdida total: resultado = -valor_libro ---
     resultado_pt = comprobantes_baja.calcular_resultado("perdida_total", 0, 4_000_000)
     check("pérdida total: resultado = -valor libro completo", resultado_pt == -4_000_000)
-    comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, "perdida_total", resultado_pt)  # no debería lanzar
+    comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, "perdida_total", None, resultado_pt)  # no debería lanzar
     filas_pt = comprobantes_baja.construir_filas(activo, grupo_contable, config_baja, "perdida_total", None, 0, 10_000_000, 6_000_000, resultado_pt, "2026-08-31")
     check("pérdida total: 3 líneas (deprec. acum. + pérdida + activo fijo)", len(filas_pt) == 3)
     check("pérdida total: balanceado", sum(f[8] for f in filas_pt if f[8]) == sum(f[9] for f in filas_pt if f[9]) == 10_000_000)
     check("pérdida total: NO lleva línea de Caja/Cliente (no hubo venta)", not any(f[4] == "1101-01" for f in filas_pt))
     check("pérdida total: la glosa dice PÉRDIDA TOTAL, en mayúsculas", "PÉRDIDA TOTAL" in filas_pt[0][3] and filas_pt[0][3] == filas_pt[0][3].upper())
 
-    # --- Venta con utilidad: monto_venta > valor_libro ---
+    # --- Venta CON FACTURA: solo reconoce el valor libro como Costo Venta,
+    # SIN Caja/Cliente ni Utilidad/Pérdida (esas quedan en el asiento de la
+    # factura de venta en sí, aparte) ---
+    resultado_fa = comprobantes_baja.calcular_resultado("venta", 7_000_000, 6_000_000)
+    check("venta con factura: resultado sigue siendo monto_venta - valor_libro = 1.000.000 (se guarda, aunque no se asiente entero)", resultado_fa == 1_000_000)
+    comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, "venta", "factura", resultado_fa)  # no debería lanzar
+    filas_fa = comprobantes_baja.construir_filas(activo, grupo_contable, config_baja, "venta", "factura", 7_000_000, 10_000_000, 4_000_000, resultado_fa, "2026-08-31")
+    check("venta con factura: 3 líneas (deprec. acum. + costo venta + activo fijo)", len(filas_fa) == 3)
+    total_debe_fa = sum(f[8] for f in filas_fa if f[8])
+    total_haber_fa = sum(f[9] for f in filas_fa if f[9])
+    check("venta con factura: balanceado", total_debe_fa == total_haber_fa == 10_000_000)
+    check("venta con factura: el valor libro (6.000.000) va al Debe de Costo Venta Activo Fijo", any(f[4] == "4101-26" and f[8] == 6_000_000 for f in filas_fa))
+    check("venta con factura: NO lleva línea de Caja/Cliente", not any(f[4] == "1101-01" for f in filas_fa))
+    check("venta con factura: NO lleva línea de Utilidad/Pérdida", not any(f[4] in ("4501-14", "5501-05") for f in filas_fa))
+    check("venta con factura: la glosa dice VENTA CON FACTURA", "VENTA CON FACTURA" in filas_fa[0][3])
+
+    # --- Venta POR CONTRATO DE COMPRAVENTA con utilidad: monto_venta > valor_libro ---
     resultado_ut = comprobantes_baja.calcular_resultado("venta", 7_000_000, 6_000_000)
-    check("venta con utilidad: resultado positivo = 1.000.000", resultado_ut == 1_000_000)
-    filas_ut = comprobantes_baja.construir_filas(activo, grupo_contable, config_baja, "venta", "factura", 7_000_000, 10_000_000, 4_000_000, resultado_ut, "2026-08-31")
-    check("venta con utilidad: 4 líneas (deprec. acum. + caja + utilidad + activo fijo)", len(filas_ut) == 4)
+    check("venta por contrato con utilidad: resultado positivo = 1.000.000", resultado_ut == 1_000_000)
+    filas_ut = comprobantes_baja.construir_filas(activo, grupo_contable, config_baja, "venta", "contrato", 7_000_000, 10_000_000, 4_000_000, resultado_ut, "2026-08-31")
+    check("venta por contrato con utilidad: 4 líneas (deprec. acum. + caja + utilidad + activo fijo)", len(filas_ut) == 4)
     total_debe_ut = sum(f[8] for f in filas_ut if f[8])
     total_haber_ut = sum(f[9] for f in filas_ut if f[9])
-    check("venta con utilidad: balanceado", total_debe_ut == total_haber_ut == 11_000_000)
-    check("venta con utilidad: la utilidad va al Haber de la cuenta de utilidad", any(f[4] == "4501-14" and f[9] == 1_000_000 for f in filas_ut))
-    check("venta con utilidad: la glosa dice VENTA CON FACTURA", "VENTA CON FACTURA" in filas_ut[0][3])
+    check("venta por contrato con utilidad: balanceado", total_debe_ut == total_haber_ut == 11_000_000)
+    check("venta por contrato con utilidad: la caja va por el monto de la venta completo", any(f[4] == "1101-01" and f[8] == 7_000_000 for f in filas_ut))
+    check("venta por contrato con utilidad: la utilidad va al Haber de la cuenta de utilidad", any(f[4] == "4501-14" and f[9] == 1_000_000 for f in filas_ut))
+    check("venta por contrato con utilidad: la glosa dice VENTA POR CONTRATO DE COMPRAVENTA", "VENTA POR CONTRATO DE COMPRAVENTA" in filas_ut[0][3])
 
-    # --- Venta con pérdida: monto_venta < valor_libro ---
+    # --- Venta POR CONTRATO DE COMPRAVENTA con pérdida: monto_venta < valor_libro ---
     resultado_pe = comprobantes_baja.calcular_resultado("venta", 3_000_000, 6_000_000)
-    check("venta con pérdida: resultado negativo = -3.000.000", resultado_pe == -3_000_000)
+    check("venta por contrato con pérdida: resultado negativo = -3.000.000", resultado_pe == -3_000_000)
     filas_pe = comprobantes_baja.construir_filas(activo, grupo_contable, config_baja, "venta", "contrato", 3_000_000, 10_000_000, 4_000_000, resultado_pe, "2026-08-31")
-    check("venta con pérdida: 4 líneas (deprec. acum. + caja + pérdida + activo fijo)", len(filas_pe) == 4)
+    check("venta por contrato con pérdida: 4 líneas (deprec. acum. + caja + pérdida + activo fijo)", len(filas_pe) == 4)
     total_debe_pe = sum(f[8] for f in filas_pe if f[8])
     total_haber_pe = sum(f[9] for f in filas_pe if f[9])
-    check("venta con pérdida: balanceado", total_debe_pe == total_haber_pe == 10_000_000)
-    check("venta con pérdida: la pérdida va al Debe de la cuenta de pérdida", any(f[4] == "5501-05" and f[8] == 3_000_000 for f in filas_pe))
-    check("venta con pérdida: la glosa dice VENTA POR CONTRATO DE COMPRAVENTA", "VENTA POR CONTRATO DE COMPRAVENTA" in filas_pe[0][3])
+    check("venta por contrato con pérdida: balanceado", total_debe_pe == total_haber_pe == 10_000_000)
+    check("venta por contrato con pérdida: la pérdida va al Debe de la cuenta de pérdida", any(f[4] == "5501-05" and f[8] == 3_000_000 for f in filas_pe))
+    check("venta por contrato con pérdida: la glosa dice VENTA POR CONTRATO DE COMPRAVENTA", "VENTA POR CONTRATO DE COMPRAVENTA" in filas_pe[0][3])
 
     # --- validar_cuentas: sin grupo contable asignado ---
     try:
-        comprobantes_baja.validar_cuentas({"grupo_contable_codigo": None}, None, config_baja, "perdida_total", -1)
+        comprobantes_baja.validar_cuentas({"grupo_contable_codigo": None}, None, config_baja, "perdida_total", None, -1)
         check("sin grupo contable -> debería haber lanzado CuentaBajaFaltante", False)
     except comprobantes_baja.CuentaBajaFaltante as exc:
         check("sin grupo contable: avisa que falta asignarlo", "Grupo contable" in str(exc))
 
-    # --- validar_cuentas: venta sin cuenta de Caja/Cliente configurada ---
+    # --- validar_cuentas: venta por contrato sin cuenta de Caja/Cliente configurada ---
     try:
-        comprobantes_baja.validar_cuentas(activo, grupo_contable, {}, "venta", 500_000)
-        check("venta sin cuenta Caja/Cliente -> debería haber lanzado CuentaBajaFaltante", False)
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, {}, "venta", "contrato", 500_000)
+        check("venta por contrato sin cuenta Caja/Cliente -> debería haber lanzado CuentaBajaFaltante", False)
     except comprobantes_baja.CuentaBajaFaltante as exc:
-        check("venta sin Caja/Cliente: avisa qué falta", "Caja/Cliente" in str(exc))
+        check("venta por contrato sin Caja/Cliente: avisa qué falta", "Caja/Cuentas por Cobrar" in str(exc))
+
+    # --- validar_cuentas: venta con factura sin cuenta de Costo Venta configurada ---
+    try:
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, {}, "venta", "factura", 500_000)
+        check("venta con factura sin cuenta Costo Venta -> debería haber lanzado CuentaBajaFaltante", False)
+    except comprobantes_baja.CuentaBajaFaltante as exc:
+        check("venta con factura sin Costo Venta: avisa qué falta", "Costo Venta" in str(exc))
+
+    # --- validar_cuentas: venta con factura NO exige Caja/Cliente ni Utilidad/Pérdida ---
+    check(
+        "venta con factura no exige cuenta de Caja/Cliente ni Utilidad/Pérdida",
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, {"cuenta_costo_venta_codigo": "4101-26"}, "venta", "factura", 500_000) is None,
+    )
 
     # --- validar_cuentas: pérdida total no exige Caja/Cliente (no hay venta) ---
     check(
         "pérdida total no exige cuenta de Caja/Cliente",
-        comprobantes_baja.validar_cuentas(activo, grupo_contable, {"cuenta_perdida_codigo": "5501-05"}, "perdida_total", -1) is None,
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, {"cuenta_perdida_codigo": "5501-05"}, "perdida_total", None, -1) is None,
     )
 
 
@@ -642,7 +677,10 @@ def test_activo_baja_flujo():
     )
     client.post(
         f"/depreciacion/empresas/{empresa_id}/config-baja/guardar",
-        data={"cuenta_caja_cliente_codigo": "1101-01", "cuenta_perdida_codigo": "5501-05", "cuenta_utilidad_codigo": "4501-14"},
+        data={
+            "cuenta_caja_cliente_codigo": "1101-01", "cuenta_perdida_codigo": "5501-05",
+            "cuenta_utilidad_codigo": "4501-14", "cuenta_costo_venta_codigo": "4101-26",
+        },
         follow_redirects=True,
     )
 

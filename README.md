@@ -139,10 +139,21 @@ el SII por tipo de bien.
   monto que ingreses (con factura o por contrato de compraventa) — la
   utilidad o pérdida resultante. Al confirmar, arma y descarga el
   comprobante de la baja (limpia Activo Fijo y Depreciación Acumulada del
-  Grupo Contable del activo, reconoce la utilidad/pérdida) y el activo
-  deja de depreciar hacia adelante (sigue apareciendo en la tabla de los
-  meses ya pasados). Las 3 cuentas de resultado que hacen falta (Caja/
-  Cliente, Pérdida en Baja, Utilidad en Venta) se configuran una vez por
+  Grupo Contable del activo) y el activo deja de depreciar hacia adelante
+  (sigue apareciendo en la tabla de los meses ya pasados). El asiento de
+  la baja **no es el mismo** según la modalidad (confirmado con el
+  usuario contra un ejemplo real, 11-09-2026): en **venta por contrato de
+  compraventa** (y en **pérdida total**) el comprobante reconoce todo de
+  una — Caja/Cuentas por Cobrar por el monto de la venta y la
+  utilidad/pérdida contra Pérdida en Baja o Utilidad en Venta; en **venta
+  con factura**, en cambio, el comprobante de la baja SOLO reconoce el
+  valor libro como "Costo Venta Activo Fijo" — sin línea de Cuentas por
+  Cobrar ni de Utilidad/Pérdida, porque esas quedan en el asiento de la
+  factura de venta en sí (un documento aparte que esta app no genera),
+  mismo criterio que separar "Costo de venta" de "Ingreso por venta" en
+  una venta normal de mercadería. Las 4 cuentas de resultado que hacen
+  falta (Caja/Cliente, Pérdida en Baja, Utilidad en Venta, Costo Venta
+  Activo Fijo — esta última solo para factura) se configuran una vez por
   empresa en "Grupos Contables" — ver `app/depreciacion/comprobantes_
   baja.py` y `app/data/depreciacion_bajas_repo.py`.
 - Dentro de la ficha de un activo: su **kardex de depreciación** — una
@@ -213,9 +224,9 @@ el SII por tipo de bien.
 Ejecuta `migration/006_depreciacion.sql`, `migration/007_depreciacion_
 periodos.sql`, `migration/008_depreciacion_ccmm.sql`, `migration/009_
 depreciacion_asientos.sql`, `migration/010_depreciacion_grupos_
-contables.sql`, `migration/011_depreciacion_grupos_por_empresa.sql` y
-`migration/012_depreciacion_bajas.sql` en Supabase (SQL Editor) para
-crear las tablas la primera
+contables.sql`, `migration/011_depreciacion_grupos_por_empresa.sql`,
+`migration/012_depreciacion_bajas.sql` y `migration/013_depreciacion_
+costo_venta.sql` en Supabase (SQL Editor) para crear las tablas la primera
 vez.
 
 ## Estructura del proyecto

@@ -79,6 +79,9 @@
   <p class="muted" style="margin-top:0">
     Se usan al dar de baja CUALQUIER activo de {{ empresa.nombre }} (venta o pérdida total) — las cuentas de Activo
     Fijo y Depreciación Acumulada se sacan del Grupo Contable del activo mismo, no hace falta repetirlas acá.
+    "Costo Venta Activo Fijo" solo se usa en ventas <strong>con factura</strong> (la utilidad/pérdida y la cuenta por
+    cobrar quedan en el asiento de la factura, no en el de la baja); "Caja/Cliente" y "Pérdida"/"Utilidad" solo se
+    usan en ventas <strong>por contrato de compraventa</strong> y en pérdida total.
   </p>
   <form method="post" action="{{ url_for('depreciacion.config_baja_guardar', empresa_id=empresa.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -94,6 +97,10 @@
       <div class="field">
         <label>Utilidad en Venta de Activo Fijo</label>
         {{ cuenta_search("cb_utilidad", "cuenta_utilidad_codigo", "cuenta_utilidad_descripcion", config_baja.cuenta_utilidad_codigo, config_baja_desc.cuenta_utilidad_codigo, "Buscar cuenta…") }}
+      </div>
+      <div class="field">
+        <label>Costo Venta Activo Fijo (solo venta con factura)</label>
+        {{ cuenta_search("cb_costo_venta", "cuenta_costo_venta_codigo", "cuenta_costo_venta_descripcion", config_baja.cuenta_costo_venta_codigo, config_baja_desc.cuenta_costo_venta_codigo, "Buscar cuenta…") }}
       </div>
     </div>
     <button type="submit" class="btn">{{ icon('save', 16) }} Guardar cuentas de baja</button>

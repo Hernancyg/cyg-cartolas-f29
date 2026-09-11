@@ -280,7 +280,7 @@ def activo_baja_calcular(empresa_id, activo_id):
 
     error_cuentas = None
     try:
-        comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, tipo_baja, resultado)
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, tipo_baja, modalidad_venta, resultado)
     except comprobantes_baja.CuentaBajaFaltante as exc:
         error_cuentas = str(exc)
 
@@ -323,7 +323,7 @@ def activo_baja_confirmar(empresa_id, activo_id):
     config_baja = depreciacion_config_baja_repo.obtener(empresa_id)
 
     try:
-        comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, tipo_baja, resultado)
+        comprobantes_baja.validar_cuentas(activo, grupo_contable, config_baja, tipo_baja, modalidad_venta, resultado)
     except comprobantes_baja.CuentaBajaFaltante as exc:
         flash(f"No se pudo generar el asiento de baja: {exc}", "error")
         return redirect(url_for("depreciacion.activo_baja_form", empresa_id=empresa_id, activo_id=activo_id))
@@ -721,7 +721,10 @@ def grupos_contables(empresa_id):
     config_baja = depreciacion_config_baja_repo.obtener(empresa_id) or {}
     config_baja_desc = {
         campo: CUENTAS_POR_CODIGO.get(config_baja.get(campo) or "", {}).get("descripcion", "")
-        for campo in ("cuenta_caja_cliente_codigo", "cuenta_perdida_codigo", "cuenta_utilidad_codigo")
+        for campo in (
+            "cuenta_caja_cliente_codigo", "cuenta_perdida_codigo", "cuenta_utilidad_codigo",
+            "cuenta_costo_venta_codigo",
+        )
     }
     return render_template(
         "depreciacion/grupos_contables.html", empresa=empresa, grupos=grupos, cuentas=PLAN_CUENTAS,
@@ -735,13 +738,14 @@ def config_baja_guardar(empresa_id):
     cuenta_caja = request.form.get("cuenta_caja_cliente_codigo") or None
     cuenta_perdida = request.form.get("cuenta_perdida_codigo") or None
     cuenta_utilidad = request.form.get("cuenta_utilidad_codigo") or None
+    cuenta_costo_venta = request.form.get("cuenta_costo_venta_codigo") or None
 
-    for codigo in (cuenta_caja, cuenta_perdida, cuenta_utilidad):
+    for codigo in (cuenta_caja, cuenta_perdida, cuenta_utilidad, cuenta_costo_venta):
         if codigo and codigo not in CUENTAS_POR_CODIGO:
             flash("Una de las cuentas elegidas no existe en el plan de cuentas — vuelve a buscarla.", "error")
             return redirect(url_for("depreciacion.grupos_contables", empresa_id=empresa_id))
 
-    depreciacion_config_baja_repo.guardar(empresa_id, cuenta_caja, cuenta_perdida, cuenta_utilidad)
+    depreciacion_config_baja_repo.guardar(empresa_id, cuenta_caja, cuenta_perdida, cuenta_utilidad, cuenta_costo_venta)
     flash("Cuentas para dar de baja guardadas.", "success")
     return redirect(url_for("depreciacion.grupos_contables", empresa_id=empresa_id))
 

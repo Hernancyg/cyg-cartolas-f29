@@ -37,6 +37,13 @@
   Faltan cuentas para armar el asiento: {{ error_cuentas }} — configúralas en
   <a href="{{ url_for('depreciacion.grupos_contables', empresa_id=empresa.id) }}">Grupos Contables</a> y vuelve a calcular.
 </div>
+{% elif modalidad_venta == 'factura' %}
+<div class="alert alert-info">
+  Al confirmar: el activo queda dado de baja (deja de depreciar hacia adelante), se guarda este resultado y se
+  descarga el comprobante contable de la baja — que solo reconoce el valor libro como "Costo Venta Activo Fijo".
+  La utilidad/pérdida y la cuenta por cobrar de arriba son informativas: se contabilizan aparte, en el asiento de la
+  factura de venta.
+</div>
 {% else %}
 <div class="alert alert-info">
   Al confirmar: el activo queda dado de baja (deja de depreciar hacia adelante), se guarda este resultado y se
