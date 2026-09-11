@@ -69,7 +69,7 @@
     <div class="actions-row">
       <button type="button" class="btn btn-secondary" id="btn-add-periodo">{{ icon('plus', 16) }} Agregar período</button>
       <button type="submit" class="btn">{{ icon('save', 16) }} Guardar cambios</button>
-      <a href="{{ url_for('depreciacion.kardex_descargar', empresa_id=empresa.id, activo_id=activo.id) }}" class="btn-secondary">{{ icon('download', 16) }} Descargar Excel</a>
+      <a href="{{ url_for('depreciacion.kardex_descargar', empresa_id=empresa.id, activo_id=activo.id) }}" class="btn">{{ icon('download', 16) }} Descargar Excel</a>
     </div>
   </form>
 </div>
