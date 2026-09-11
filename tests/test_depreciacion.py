@@ -197,7 +197,9 @@ def test_comprobantes():
     check("Gasto por Depreciación = suma de AMBOS activos del grupo", filas[0][8] == 1_375_000 and filas[0][4] == "4205-05")
     check("Corrección Monetaria = suma del grupo", filas[1][8] == 50_000 and filas[1][4] == "5501-05")
     check("Depreciación Acumulada = total consolidado", filas[2][9] == 1_425_000 and filas[2][4] == "1207-25")
-    check("la glosa incluye la descripción del grupo y el período", "VEHICULOS" in filas[0][3] and "Diciembre 2018" in filas[0][3])
+    check("la glosa incluye la descripción del grupo y el período, TODO EN MAYÚSCULAS", "VEHICULOS" in filas[0][3] and "DICIEMBRE 2018" in filas[0][3])
+    check("la glosa es exactamente igual en mayúsculas y minúsculas (o sea, ya viene en mayúsculas)", filas[0][3] == filas[0][3].upper())
+    check("Tipo = 'T' en la primera línea, vacío en las siguientes", filas[0][1] == "T" and filas[1][1] == "" and filas[2][1] == "")
     check("Centro Costo se llena en las cuentas que lo requieren (4205-05 y 5501-05)", filas[0][6] == 100 and filas[1][6] == 100)
     check("Centro Costo vacío en la cuenta que no lo requiere (1207-25)", filas[2][6] == "")
 
@@ -442,6 +444,26 @@ def test_asientos_flujo():
     r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos?periodo=2019-06")
     body = r.get_data(as_text=True)
     check("ambos activos del grupo aparecen listados en la misma fila del grupo", "Grua horquilla" in body and "Camion 2" in body)
+
+    # Pide julio 2019 para el primer activo: la fila de junio (2019-06-30, 6 meses) es del MISMO año y todavía
+    # NO está asentada -> se le suman los meses en vez de crear una fila aparte.
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", data={"periodo": "2019-07"})
+    check("generar julio 2019 -> 200", r.status_code == 200)
+    periodos_2019 = [p for p in FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data if p["fecha"].startswith("2019")]
+    check("se fusionó en UNA sola fila 2019 (no quedaron 2 filas separadas)", len(periodos_2019) == 1)
+    check("la fila fusionada quedó con fecha 2019-07-31 y 7 meses (6 de junio + 1 de julio)", periodos_2019[0]["fecha"] == "2019-07-31" and periodos_2019[0]["meses_utilizados"] == 7)
+
+    # Pide agosto 2019: la fila de julio YA está asentada (se generó recién) -> esta vez SÍ se crea una fila aparte.
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", data={"periodo": "2019-08"})
+    check("generar agosto 2019 -> 200", r.status_code == 200)
+    periodos_2019_v2 = sorted(
+        (p for p in FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data if p["fecha"].startswith("2019")),
+        key=lambda p: p["fecha"],
+    )
+    check(
+        "esta vez NO se fusionó (la fila de julio ya estaba asentada) -> quedan 2 filas de 2019",
+        len(periodos_2019_v2) == 2 and periodos_2019_v2[0]["fecha"] == "2019-07-31" and periodos_2019_v2[1]["fecha"] == "2019-08-31" and periodos_2019_v2[1]["meses_utilizados"] == 1,
+    )
 
 
 def test_categorias_guardar():

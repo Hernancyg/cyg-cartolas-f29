@@ -19,9 +19,10 @@ Por cada grupo con algo pendiente:
 
 Mismo formato de 17 columnas ("Comprobantes") que
 `app/conciliacion/export_writer.py` — duplicado a propósito, mismo
-criterio de ese módulo. El campo "Tipo" queda vacío (a diferencia de F29/
-Conciliación/Caja Empresas, que usan "I"/"E" porque SIEMPRE hay una
-cuenta de caja/banco de por medio) — la depreciación no mueve caja.
+criterio de ese módulo. El campo "Tipo" siempre es "T" (traspaso, a
+diferencia de F29/Conciliación/Caja Empresas, que usan "I"/"E" porque
+SIEMPRE hay una cuenta de caja/banco de por medio — la depreciación no
+mueve caja) y la glosa siempre queda en MAYÚSCULAS.
 """
 
 from datetime import datetime
@@ -107,7 +108,7 @@ def construir_filas(grupos: dict, grupos_contables: dict, fecha, periodo_label: 
         cuenta_correccion = CUENTAS_POR_CODIGO.get(gc.get("cuenta_correccion_codigo") or "")
 
         descripcion = CUENTAS_POR_CODIGO.get(codigo, {}).get("descripcion", codigo)
-        glosa = f"DEPRECIACIÓN {descripcion} — {periodo_label}"
+        glosa = f"DEPRECIACIÓN {descripcion} — {periodo_label}".upper()
         ejercicio = datos["ejercicio"]
         correccion = datos["correccion"]
 
@@ -117,7 +118,7 @@ def construir_filas(grupos: dict, grupos_contables: dict, fecha, periodo_label: 
             cc = 100 if cuenta["requiere_centro_costo"] else ""
             if not primera["usada"]:
                 primera["usada"] = True
-                return [0, "", fecha, glosa, cuenta["codigo"], glosa, cc, "", debe or "", haber or "", "", "", "", "", "", "", ""]
+                return [0, "T", fecha, glosa, cuenta["codigo"], glosa, cc, "", debe or "", haber or "", "", "", "", "", "", "", ""]
             return ["", "", "", "", cuenta["codigo"], glosa, cc, "", debe or "", haber or "", "", "", "", "", "", "", ""]
 
         filas.append(_linea(cuenta_gasto, ejercicio, 0))

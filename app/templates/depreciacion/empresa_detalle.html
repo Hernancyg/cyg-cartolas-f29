@@ -13,7 +13,7 @@
 
 <div class="actions-row" style="margin-bottom:20px">
   <a href="{{ url_for('depreciacion.asientos', empresa_id=empresa.id) }}" class="btn">{{ icon('calculator', 16) }} Generar asiento contable</a>
-  <a href="{{ url_for('depreciacion.grupos_contables', empresa_id=empresa.id) }}" class="btn-secondary">{{ icon('key', 16) }} Grupos Contables</a>
+  <a href="{{ url_for('depreciacion.grupos_contables', empresa_id=empresa.id) }}" class="btn-secondary">{{ icon('gear', 16) }} Grupos Contables</a>
 </div>
 
 <div class="card">
@@ -98,10 +98,23 @@
   <form method="get" action="{{ url_for('depreciacion.empresa_detalle', empresa_id=empresa.id) }}">
     <div class="field-row">
       <div class="field">
-        <label for="periodo">Período</label>
-        <input type="month" id="periodo" name="periodo" value="{{ periodo }}">
+        <label for="td_periodo_mes">Mes</label>
+        <select id="td_periodo_mes" onchange="depSincronizarPeriodo('td')">
+          {% for num, nombre in MESES_OPCIONES %}
+          <option value="{{ num }}" {{ 'selected' if periodo[5:7] == num else '' }}>{{ nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="td_periodo_anio">Año</label>
+        <select id="td_periodo_anio" onchange="depSincronizarPeriodo('td')">
+          {% for a in anios_disponibles %}
+          <option value="{{ a }}" {{ 'selected' if periodo[:4] == a|string else '' }}>{{ a }}</option>
+          {% endfor %}
+        </select>
       </div>
     </div>
+    <input type="hidden" id="td_periodo" name="periodo" value="{{ periodo }}">
     <div class="actions-row">
       <button type="submit" class="btn">{{ icon('calculator', 16) }} Ver período</button>
       <a href="{{ url_for('depreciacion.descargar', empresa_id=empresa.id) }}" class="btn">{{ icon('download', 16) }} Descargar Excel</a>
@@ -146,6 +159,11 @@ function depreciacionAutocompletarVidaUtil(select) {
   var vidaUtil = opt.getAttribute('data-vida-util');
   var input = document.getElementById('na_vida_util');
   if (vidaUtil) { input.value = vidaUtil; }
+}
+function depSincronizarPeriodo(prefijo) {
+  var mes = document.getElementById(prefijo + '_periodo_mes').value;
+  var anio = document.getElementById(prefijo + '_periodo_anio').value;
+  document.getElementById(prefijo + '_periodo').value = anio + '-' + mes;
 }
 </script>
 {% endblock %}

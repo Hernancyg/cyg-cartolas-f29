@@ -172,14 +172,18 @@ el SII por tipo de bien.
   kardex de un activo no llega todavía hasta ese mes, se le agrega
   automáticamente (solo al generar, nunca al solo previsualizar) una fila
   nueva que cubre los meses que faltan, con Factor CCMM 1 — editable
-  después a mano en su kardex si hace falta corregirla. "Deshacer" (en la
-  ficha del activo, junto a la fecha) vuelve a dejar un período como
-  pendiente. Ver `app/depreciacion/comprobantes.py` y `app/data/
-  depreciacion_asientos_repo.py` para el detalle. El campo "Tipo" del
-  comprobante queda vacío (a diferencia de F29/Conciliación/Caja Empresas,
-  que usan "I"/"E" según el movimiento de caja) — la depreciación no
-  mueve caja, así que no hay un ingreso/egreso que clasificar ahí; avisa
-  si tu sistema contable necesita algún valor específico en esa columna.
+  después a mano en su kardex si hace falta corregirla. Si la última fila
+  del kardex cae en el MISMO año que se está gestionando y todavía no se
+  asentó, esos meses se le suman a ESA fila (avanzando su fecha) en vez
+  de crear una fila aparte — así el kardex agrupa un año por fila en vez
+  de acumular muchas filas de 1 mes. "Deshacer" (en la ficha del activo,
+  junto a la fecha) vuelve a dejar un período como pendiente. Ver
+  `app/depreciacion/comprobantes.py` y `app/data/depreciacion_asientos_
+  repo.py` para el detalle. El campo "Tipo" del comprobante siempre es
+  "T" (traspaso — a diferencia de F29/Conciliación/Caja Empresas, que
+  usan "I"/"E" según el movimiento de caja; la depreciación no mueve
+  caja) y la glosa (ej. "DEPRECIACIÓN VEHICULOS — AGOSTO 2026") siempre
+  queda en MAYÚSCULAS.
 - **Categorías SII**: catálogo editable de "tipo de bien → años de vida
   útil normal", con una semilla tomada de la
   [tabla oficial del SII](https://www.sii.cl/valores_y_fechas/tabla_vida_util_activo_inmovilizado.html)

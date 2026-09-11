@@ -48,3 +48,14 @@ def agregar_periodo(activo_id: str, fecha: str, meses_utilizados: int, factor_cc
     row = {"activo_id": activo_id, "fecha": fecha, "meses_utilizados": int(meses_utilizados), "factor_ccmm": float(factor_ccmm)}
     resp = get_supabase().table(TABLE).insert(row).execute()
     return resp.data[0]
+
+
+def actualizar_periodo(periodo_id: str, fecha: str, meses_utilizados: int) -> dict:
+    """Cambia la fecha y los meses de UNA fila ya existente, sin tocar su
+    factor_ccmm — lo usa "Generar asiento" para sumarle meses a la última
+    fila del kardex cuando cae en el mismo año y todavía no se asentó, en
+    vez de crear una fila nueva (`app/depreciacion/routes.py:
+    _extender_periodos`)."""
+    row = {"fecha": fecha, "meses_utilizados": int(meses_utilizados)}
+    resp = get_supabase().table(TABLE).update(row).eq("id", periodo_id).execute()
+    return resp.data[0]

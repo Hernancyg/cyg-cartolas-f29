@@ -61,6 +61,17 @@ MESES_LABEL = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
+# [("01", "Enero"), ..., ("12", "Diciembre")] — para los <select> de mes de
+# "Tabla de depreciación" y "Generar asiento" (el <input type="month">
+# nativo no se puede re-estilar; ver esos templates).
+MESES_OPCIONES = [(f"{i + 1:02d}", nombre) for i, nombre in enumerate(MESES_LABEL)]
+
+
+def _anios_disponibles():
+    """Rango razonable para el <select> de año: 15 años atrás (activos
+    antiguos) hasta el año que viene."""
+    hoy = date.today()
+    return list(range(hoy.year - 15, hoy.year + 2))
 
 
 def _parsear_periodo(valor):
@@ -138,6 +149,7 @@ def empresa_detalle(empresa_id):
         "depreciacion/empresa_detalle.html",
         empresa=empresa, activos=activos, categorias=categorias, tabla=tabla, cuentas=PLAN_CUENTAS,
         periodo=f"{year:04d}-{month:02d}", periodo_label=f"{MESES_LABEL[month - 1]} {year}",
+        MESES_OPCIONES=MESES_OPCIONES, anios_disponibles=_anios_disponibles(),
     )
 
 
@@ -364,21 +376,46 @@ def _parsear_mes_anio(valor):
     return hoy.year, hoy.month
 
 
-def _extender_periodos(activo, periodos, anio, mes, persistir):
+def _extender_periodos(activo, periodos, anio, mes, persistir, asentadas):
     """Si el kardex de `activo` (ya filtrado a los períodos <= anio-mes)
-    no llega todavía hasta el cierre de anio-mes, agrega una fila que
-    cubra los meses que faltan (factor CCMM 1, editable después a mano).
-    Con `persistir=False` la fila se arma solo en memoria (para la
+    no llega todavía hasta el cierre de anio-mes, agrega los meses que
+    faltan (factor CCMM 1, editable después a mano):
+
+      - Si la última fila cae en el MISMO año calendario que `anio` y
+        todavía no tiene un asiento generado, se le SUMAN los meses que
+        faltan a esa misma fila (y su fecha avanza hasta el cierre de
+        anio-mes) en vez de crear una fila aparte — así el kardex agrupa
+        naturalmente un año por fila, en vez de ir quedando con muchas
+        filas de 1 mes cada vez que se gestiona un mes nuevo.
+      - Si la última fila YA tiene un asiento generado (fusionarla
+        correría el riesgo de contar de nuevo lo que ya se asentó, porque
+        la "memoria" de lo asentado se guarda por fecha — ver
+        `app/data/depreciacion_asientos_repo.py` — y cambiarle la fecha a
+        una fila ya asentada la dejaría fuera de esa memoria) o cae en un
+        año distinto, se agrega una fila nueva en vez de tocar la
+        anterior.
+
+    Con `persistir=False` los cambios se arman solo en memoria (para la
     vista previa de "Generar asiento", que es un GET y no debería
-    escribir nada); con `persistir=True` (al generar de verdad) queda
-    guardada en Supabase, así el kardex del activo la sigue mostrando
-    después."""
+    escribir nada); con `persistir=True` (al generar de verdad) quedan
+    guardados en Supabase."""
     fecha_ultima = parse_fecha(periodos[-1]["fecha"]) if periodos else None
     fecha_adq = parse_fecha(activo["fecha_adquisicion"])
     faltan = meses_faltantes(fecha_ultima, fecha_adq, anio, mes)
     if faltan <= 0:
         return periodos
+
     fecha_nueva = ultimo_dia_mes(anio, mes).isoformat()
+    ultima_fila = periodos[-1] if periodos else None
+    puede_fusionar = ultima_fila is not None and fecha_ultima.year == anio and ultima_fila["fecha"] not in asentadas
+
+    if puede_fusionar:
+        meses_nuevos = int(ultima_fila["meses_utilizados"]) + faltan
+        if persistir:
+            depreciacion_periodos_repo.actualizar_periodo(ultima_fila["id"], fecha_nueva, meses_nuevos)
+        fila_actualizada = {**ultima_fila, "fecha": fecha_nueva, "meses_utilizados": meses_nuevos}
+        return periodos[:-1] + [fila_actualizada]
+
     if persistir:
         nueva = depreciacion_periodos_repo.agregar_periodo(activo["id"], fecha_nueva, faltan, 1.0)
     else:
@@ -396,11 +433,11 @@ def _pendientes_por_activo(empresa_id, anio, mes, persistir=False):
     objetivo_ordinal = anio * 12 + mes
     resultado = []
     for activo in depreciacion_activos_repo.listar_por_empresa(empresa_id):
+        asentadas = depreciacion_asientos_repo.fechas_ya_generadas(activo["id"])
         periodos = depreciacion_periodos_repo.listar_por_activo(activo["id"])
         periodos = [p for p in periodos if _ordinal(parse_fecha(p["fecha"])) <= objetivo_ordinal]
-        periodos = _extender_periodos(activo, periodos, anio, mes, persistir)
+        periodos = _extender_periodos(activo, periodos, anio, mes, persistir, asentadas)
         kardex = calcular_kardex(activo, periodos)
-        asentadas = depreciacion_asientos_repo.fechas_ya_generadas(activo["id"])
         pendientes = [k for k in kardex if k["fecha"] not in asentadas]
         resultado.append((activo, pendientes))
     return resultado
@@ -434,6 +471,7 @@ def asientos(empresa_id):
     return render_template(
         "depreciacion/asientos.html", empresa=empresa, filas=filas, activos_sin_grupo=activos_sin_grupo,
         periodo=f"{anio:04d}-{mes:02d}", periodo_label=f"{MESES_LABEL[mes - 1]} {anio}",
+        MESES_OPCIONES=MESES_OPCIONES, anios_disponibles=_anios_disponibles(),
     )
 
 

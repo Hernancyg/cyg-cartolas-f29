@@ -15,10 +15,23 @@
   <form method="get" action="{{ url_for('depreciacion.asientos', empresa_id=empresa.id) }}">
     <div class="field-row">
       <div class="field">
-        <label for="periodo">Período</label>
-        <input type="month" id="periodo" name="periodo" value="{{ periodo }}">
+        <label for="as_periodo_mes">Mes</label>
+        <select id="as_periodo_mes" onchange="depSincronizarPeriodo('as')">
+          {% for num, nombre in MESES_OPCIONES %}
+          <option value="{{ num }}" {{ 'selected' if periodo[5:7] == num else '' }}>{{ nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="as_periodo_anio">Año</label>
+        <select id="as_periodo_anio" onchange="depSincronizarPeriodo('as')">
+          {% for a in anios_disponibles %}
+          <option value="{{ a }}" {{ 'selected' if periodo[:4] == a|string else '' }}>{{ a }}</option>
+          {% endfor %}
+        </select>
       </div>
     </div>
+    <input type="hidden" id="as_periodo" name="periodo" value="{{ periodo }}">
     <button type="submit" class="btn-secondary">Ver {{ periodo_label }}</button>
   </form>
 </div>
@@ -73,4 +86,12 @@
   <input type="hidden" name="periodo" value="{{ periodo }}">
   <button type="submit" class="btn">{{ icon('download', 16) }} Generar asiento de {{ periodo_label }} y descargar</button>
 </form>
+
+<script>
+function depSincronizarPeriodo(prefijo) {
+  var mes = document.getElementById(prefijo + '_periodo_mes').value;
+  var anio = document.getElementById(prefijo + '_periodo_anio').value;
+  document.getElementById(prefijo + '_periodo').value = anio + '-' + mes;
+}
+</script>
 {% endblock %}
