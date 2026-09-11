@@ -213,13 +213,34 @@ def parsear_f29(path_or_file, configs=None) -> F29Data:
     # --- Remanente de Crédito Fiscal para el período SIGUIENTE (código 77) ---
     # Usado solo por la carga masiva de varios períodos, para encadenar el
     # remanente_anterior del período que sigue a este en el mismo lote.
+    #
+    # 11-09-2026: se detectó (con F29 reales del usuario, no los de prueba
+    # usados para armar el anchor original) que `page.extract_text()` NO
+    # siempre entrega esta etiqueta con las letras entrelazadas — en la
+    # mayoría de los F29 reales el texto sale limpio: "Remanente de crédito
+    # fiscal para el\n51 77 288.511 756 Postergación pago del IVA ...". El
+    # anchor entrelazado (`TEXTO_ANCLA_REMANENTE_SIGUIENTE`) no matcheaba
+    # nunca contra ese texto limpio, así que la carga masiva jamás
+    # encontraba el código 77 y nunca podía encadenar el remanente
+    # automáticamente. Ahora se prueba primero el anchor "limpio" (la
+    # etiqueta tal como la mayoría de los PDF la entregan) y, si no
+    # aparece, se cae al anchor entrelazado de antes (por si algún PDF
+    # todavía se extrae así) — nunca se pierde una detección que antes
+    # funcionaba.
     match_77 = re.search(
-        re.escape(TEXTO_ANCLA_REMANENTE_SIGUIENTE)
-        + r"[\s\S]{0,200}?\b"
+        r"Remanente de cr[eé]dito fiscal para el[\s\S]{0,80}?\b"
         + re.escape(CODIGO_REMANENTE_SIGUIENTE)
         + r"\b\s+([\d.,]+)?",
         texto,
     )
+    if not match_77:
+        match_77 = re.search(
+            re.escape(TEXTO_ANCLA_REMANENTE_SIGUIENTE)
+            + r"[\s\S]{0,200}?\b"
+            + re.escape(CODIGO_REMANENTE_SIGUIENTE)
+            + r"\b\s+([\d.,]+)?",
+            texto,
+        )
     if match_77:
         data.remanente_periodo_siguiente = _clean_monto(match_77.group(1))
         data.remanente_periodo_siguiente_encontrado = True
