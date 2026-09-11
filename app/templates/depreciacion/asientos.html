@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ empresa.nombre }} · Generar asiento · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Generar asiento contable</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  {{ empresa.nombre }} ·
+  <a href="{{ url_for('depreciacion.empresa_detalle', empresa_id=empresa.id) }}">← volver a {{ empresa.nombre }}</a>
+</p>
+
+<div class="alert alert-info">
+  Solo se incluyen los períodos del kardex de cada activo que TODAVÍA no se hayan asentado antes — la próxima vez
+  que generes, solo se van a incluir los períodos nuevos. "Deshacer" en la ficha de un activo (junto a la fecha)
+  vuelve a dejar un período como pendiente, por si hay que corregirlo.
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:10px">{{ icon('calculator', 16) }} Activos</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Activo</th><th>Períodos pendientes</th><th>Monto a asentar</th><th>Cuentas</th></tr></thead>
+      <tbody>
+        {% for f in filas %}
+        <tr>
+          <td><a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=f.activo.id) }}">{{ f.activo.nombre_activo }}</a></td>
+          {% if f.pendientes %}
+          <td>{{ f.pendientes | length }}</td>
+          <td>{{ ((f.pendientes | sum(attribute='depreciacion_ejercicio')) + (f.pendientes | sum(attribute='correccion_monetaria'))) | clp }}</td>
+          <td>
+            {% if f.cuentas_faltantes %}
+            <span class="muted">Faltan: {{ f.cuentas_faltantes | join(', ') }}</span>
+            {% else %}
+            <span class="muted">Completas ✓</span>
+            {% endif %}
+          </td>
+          {% else %}
+          <td colspan="3"><span class="muted">Al día — nada pendiente</span></td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('depreciacion.asientos_generar', empresa_id=empresa.id) }}" onsubmit="return confirm('¿Generar el asiento? Los períodos incluidos quedarán marcados como asentados.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn">{{ icon('download', 16) }} Generar asiento y descargar</button>
+</form>
+{% endblock %}

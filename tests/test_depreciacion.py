@@ -14,6 +14,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.run_verification import flask_app, FAKE, seed_data  # noqa: E402
+from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO  # noqa: E402
+from app.depreciacion import comprobantes  # noqa: E402
 from app.depreciacion.calculo import calcular_fila, calcular_kardex, calcular_tabla  # noqa: E402
 from app.data import depreciacion_categorias_repo  # noqa: E402
 
@@ -149,6 +151,59 @@ def test_kardex():
     check("meses en exceso: valor libro en $1, no negativo", kardex_exceso[0]["valor_libro"] == 1)
 
 
+def test_comprobantes():
+    """`app/depreciacion/comprobantes.py`: validación de cuentas y armado
+    de las líneas del comprobante (con y sin corrección monetaria)."""
+    activo = {"nombre_activo": "Grua horquilla", "vida_util_anios": 10, "valor_adquisicion": 8_250_000}
+    pendientes_sin_ccmm = [{"fecha": "2017-12-31", "depreciacion_ejercicio": 550_000, "correccion_monetaria": 0}]
+
+    # Sin ninguna cuenta configurada.
+    try:
+        comprobantes.validar_cuentas(activo, pendientes_sin_ccmm)
+        check("sin cuentas y con pendientes -> debería haber lanzado CuentaFaltante", False)
+    except comprobantes.CuentaFaltante as exc:
+        check("sin cuentas: exige Gasto por Depreciación", "Gasto por Depreciación" in exc.cuentas_faltantes)
+        check("sin cuentas: exige Depreciación Acumulada", "Depreciación Acumulada" in exc.cuentas_faltantes)
+        check("sin cuentas: NO exige Corrección Monetaria (ningún pendiente la usa)", "Corrección Monetaria" not in exc.cuentas_faltantes)
+
+    check("sin pendientes, no exige nada aunque no haya cuentas", comprobantes.validar_cuentas(activo, []) is None)
+
+    # Con las 2 cuentas básicas, pero un pendiente CON corrección monetaria -> también exige la 3ª.
+    activo_2cuentas = {**activo, "cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25"}
+    pendiente_con_ccmm = [{"fecha": "2018-12-31", "depreciacion_ejercicio": 825_000, "correccion_monetaria": 50_000}]
+    try:
+        comprobantes.validar_cuentas(activo_2cuentas, pendiente_con_ccmm)
+        check("con corrección y sin cuenta CCMM -> debería haber lanzado CuentaFaltante", False)
+    except comprobantes.CuentaFaltante as exc:
+        check("con corrección monetaria != 0, exige esa 3ª cuenta", exc.cuentas_faltantes == ["Corrección Monetaria"])
+
+    # Con las 3 cuentas: arma las filas del comprobante.
+    activo_3cuentas = {**activo_2cuentas, "cuenta_correccion_codigo": "5501-05"}
+    comprobantes.validar_cuentas(activo_3cuentas, pendiente_con_ccmm)  # no debería lanzar
+    filas = comprobantes.construir_filas(activo_3cuentas, pendiente_con_ccmm, CUENTAS_POR_CODIGO)
+    check("3 líneas cuando hay corrección monetaria positiva (gasto + corrección + acumulada)", len(filas) == 3)
+    total_debe = sum(f[8] for f in filas if f[8])
+    total_haber = sum(f[9] for f in filas if f[9])
+    check("el comprobante queda balanceado (Debe == Haber)", total_debe == total_haber == 875_000)
+    check("la línea de Depreciación Acumulada va al Haber por el total (ejercicio + corrección)", filas[2][9] == 875_000 and filas[2][4] == "1207-25")
+    check("la línea de Gasto por Depreciación va al Debe por el ejercicio solo", filas[0][8] == 825_000 and filas[0][4] == "4205-05")
+    check("la línea de Corrección Monetaria va al Debe (factor > 1)", filas[1][8] == 50_000 and filas[1][4] == "5501-05")
+    check("Centro Costo se llena en las cuentas que lo requieren (4205-05 y 5501-05)", filas[0][6] == 100 and filas[1][6] == 100)
+    check("Centro Costo vacío en la cuenta que no lo requiere (1207-25)", filas[2][6] == "")
+
+    # Sin corrección monetaria: solo 2 líneas.
+    filas_sin_ccmm = comprobantes.construir_filas(activo_3cuentas, pendientes_sin_ccmm, CUENTAS_POR_CODIGO)
+    check("2 líneas cuando no hay corrección monetaria", len(filas_sin_ccmm) == 2)
+
+    # Corrección monetaria negativa (factor < 1, caso raro): va al Haber en vez del Debe, y sigue balanceado.
+    pendiente_ccmm_negativa = [{"fecha": "2019-12-31", "depreciacion_ejercicio": 825_000, "correccion_monetaria": -30_000}]
+    filas_negativas = comprobantes.construir_filas(activo_3cuentas, pendiente_ccmm_negativa, CUENTAS_POR_CODIGO)
+    total_debe_neg = sum(f[8] for f in filas_negativas if f[8])
+    total_haber_neg = sum(f[9] for f in filas_negativas if f[9])
+    check("corrección negativa: sigue balanceado", total_debe_neg == total_haber_neg == 825_000)
+    check("corrección negativa: la línea de Corrección Monetaria va al Haber", filas_negativas[1][9] == 30_000 and filas_negativas[1][4] == "5501-05")
+
+
 def test_categorias_defaults():
     categorias = depreciacion_categorias_repo.DEFAULTS
     check("hay categorías por defecto cargadas", len(categorias) > 50)
@@ -262,6 +317,84 @@ def test_rutas_flujo_completo():
     check("la empresa ya no está en la 'base de datos'", FAKE.table("depreciacion_empresas").select("*").execute().data == [])
 
 
+def test_asientos_flujo():
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+    client.post("/depreciacion/empresas/crear", data={"rut": "", "nombre": "TRANSPORTES CPK LTDA"}, follow_redirects=True)
+    empresa = [e for e in FAKE.table("depreciacion_empresas").select("*").execute().data if e["nombre"] == "TRANSPORTES CPK LTDA"][0]
+    empresa_id = empresa["id"]
+
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/crear",
+        data={"nombre_activo": "Grua horquilla", "fecha_adquisicion": "2017-04-01", "valor_adquisicion": "8250000", "vida_util_anios": "10", "categoria_id": ""},
+        follow_redirects=True,
+    )
+    activo = FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data[0]
+    activo_id = activo["id"]
+
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/periodos/guardar",
+        data={"p_fecha": ["2017-12-31", "2018-12-31"], "p_meses": ["8", "12"], "p_factor_ccmm": ["1", "1.05"]},
+        follow_redirects=True,
+    )
+
+    # Sin cuentas configuradas: el listado de pendientes avisa qué falta.
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos")
+    body = r.get_data(as_text=True)
+    check("GET /asientos -> 200", r.status_code == 200)
+    check("sin cuentas: avisa qué falta", "Faltan" in body and "Gasto por Depreciación" in body)
+
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", follow_redirects=True)
+    check("generar sin cuentas -> no descarga, avisa el motivo", r.status_code == 200 and "faltan cuentas" in r.get_data(as_text=True).lower())
+    check("no se creó ningún asiento todavía", FAKE.table("depreciacion_asientos").select("*").execute().data == [])
+
+    # Configura las 3 cuentas (la 2ª fila trae Factor CCMM 1.05 -> sí hay corrección).
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/cuentas/guardar",
+        data={"cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25", "cuenta_correccion_codigo": "5501-05"},
+        follow_redirects=True,
+    )
+    check("guardar cuentas -> ok", r.status_code == 200 and "guardadas" in r.get_data(as_text=True).lower())
+
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos")
+    check("con las 3 cuentas, ya no avisa que faltan", "Faltan" not in r.get_data(as_text=True))
+
+    # Generar: descarga el .xls y marca las 2 fechas como asentadas.
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar")
+    check("generar con cuentas completas -> 200, descarga un .xls", r.status_code == 200 and r.headers.get("Content-Type") == "application/vnd.ms-excel")
+
+    asentados = FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data
+    check("quedaron 2 asientos generados (uno por período)", len(asentados) == 2)
+    fechas_asentadas = {a["fecha"] for a in asentados}
+    check("las fechas asentadas son las 2 del kardex", fechas_asentadas == {"2017-12-31", "2018-12-31"})
+    fila_2018 = [a for a in asentados if a["fecha"] == "2018-12-31"][0]
+    check("el monto de corrección quedó guardado (Factor CCMM 1.05 sobre apertura 550.000)", fila_2018["monto_correccion"] == round(550_000 * 0.05))
+
+    # Generar de nuevo, sin agregar períodos nuevos: no hay nada pendiente.
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", follow_redirects=True)
+    check("generar de nuevo sin períodos nuevos -> avisa que no hay nada pendiente, no duplica", "no había ningún período pendiente" in r.get_data(as_text=True).lower())
+    check("sigue habiendo solo 2 asientos (no se duplicó)", len(FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data) == 2)
+
+    # Agrega un 3er período: solo ESE queda pendiente.
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/periodos/guardar",
+        data={"p_fecha": ["2017-12-31", "2018-12-31", "2019-12-31"], "p_meses": ["8", "12", "12"], "p_factor_ccmm": ["1", "1.05", "1"]},
+        follow_redirects=True,
+    )
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos")
+    check("con un 3er período nuevo, aparece 1 pendiente (no 3)", "<td>1</td>" in r.get_data(as_text=True))
+
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar")
+    check("generar el 3er período -> 200, descarga de nuevo", r.status_code == 200)
+    check("ahora hay 3 asientos en total", len(FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data) == 3)
+
+    # Deshacer el asiento de 2019 -> vuelve a quedar pendiente.
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/asientos/2019-12-31/deshacer", follow_redirects=True)
+    check("deshacer asiento -> ok", r.status_code == 200 and "deshecho" in r.get_data(as_text=True).lower())
+    check("vuelve a haber 2 asientos (se deshizo el de 2019)", len(FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data) == 2)
+
+
 def test_categorias_guardar():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
@@ -300,8 +433,10 @@ def main():
     seed_data()
     test_calculo()
     test_kardex()
+    test_comprobantes()
     test_categorias_defaults()
     test_rutas_flujo_completo()
+    test_asientos_flujo()
     test_categorias_guardar()
     test_trabajador_no_puede_ver_depreciacion()
 

@@ -138,19 +138,36 @@ el SII por tipo de bien.
 - Dentro de la ficha de un activo: su **kardex de depreciación** — una
   fila por período (normalmente un año) con los "meses utilizados"
   editables a mano (botón "Agregar período" para cerrar cada año, con
-  fecha/meses sugeridos que se pueden ajustar libremente). El resto de
-  las columnas (costo total, vida útil restante, depreciación del
-  ejercicio, acumulada de apertura/cierre, valor libro) se recalculan
-  solas al guardar, encadenando cada fila desde la anterior — mismo
-  formato que la planilla de referencia que usa el estudio (ver
+  fecha/meses sugeridos que se pueden ajustar libremente), más un
+  **Factor CCMM** (corrección monetaria; 1 = sin corrección) que
+  actualiza el costo y la depreciación acumulada de apertura de esa
+  misma fila — el "Valor Actualizado" resultante pasa a ser la base de
+  la fila siguiente, así la corrección se va acumulando año a año. El
+  resto de las columnas se recalculan solas al guardar (ver
   `app/depreciacion/calculo.calcular_kardex`, validado fila por fila
-  contra un caso real el 11-09-2026). Una "adición" en un período sube el
-  costo del activo (y su depreciación mensual) desde esa fila en
-  adelante. Descargable en Excel.
+  contra casos reales el 11-09-2026). Descargable en Excel.
 - Además, en el detalle de la empresa hay una vista rápida "todos los
   activos en un mes elegido" (independiente del kardex por activo, para
   una foto mensual sin entrar a cada ficha) — mismo cálculo lineal normal,
   sin valor residual, valor libro en $1 una vez agotada la vida útil.
+- **Generar asiento contable**: por empresa, arma el comprobante (mismo
+  formato de 17 columnas "Comprobantes" que F29/Conciliación/Caja
+  Empresas) de la depreciación del ejercicio + corrección monetaria de
+  cada activo — 2 o 3 líneas por período (Debe: Gasto por Depreciación;
+  Debe/Haber según el signo: Corrección Monetaria, solo si el período
+  trae Factor CCMM distinto de 1; Haber: Depreciación Acumulada). Cada
+  activo elige sus 3 cuentas una vez, en su ficha ("Cuentas contables"),
+  buscándolas del plan de cuentas (mismo buscador que Conciliación/
+  Empresas Caja). Solo se incluyen los períodos del kardex que
+  TODAVÍA no se hayan asentado antes — la próxima vez que se genere, solo
+  entran los períodos nuevos (o los que se "deshagan" a mano para
+  corregirlos), nunca se duplica uno ya asentado. Ver
+  `app/depreciacion/comprobantes.py` y `app/data/depreciacion_asientos_
+  repo.py` para el detalle. El campo "Tipo" del comprobante queda vacío
+  (a diferencia de F29/Conciliación/Caja Empresas, que usan "I"/"E" según
+  el movimiento de caja) — la depreciación no mueve caja, así que no
+  hay un ingreso/egreso que clasificar ahí; avisa si tu sistema contable
+  necesita algún valor específico en esa columna.
 - **Categorías SII**: catálogo editable de "tipo de bien → años de vida
   útil normal", con una semilla tomada de la
   [tabla oficial del SII](https://www.sii.cl/valores_y_fechas/tabla_vida_util_activo_inmovilizado.html)
@@ -162,9 +179,10 @@ el SII por tipo de bien.
   si algún cliente las llegara a necesitar. Ver
   `app/data/depreciacion_categorias_repo.py` para el detalle completo.
 
-Ejecuta `migration/006_depreciacion.sql` y `migration/007_depreciacion_
-periodos.sql` en Supabase (SQL Editor) para crear las tablas la primera
-vez.
+Ejecuta `migration/006_depreciacion.sql`, `migration/007_depreciacion_
+periodos.sql`, `migration/008_depreciacion_ccmm.sql` y `migration/009_
+depreciacion_asientos.sql` en Supabase (SQL Editor) para crear las tablas
+la primera vez.
 
 ## Estructura del proyecto
 

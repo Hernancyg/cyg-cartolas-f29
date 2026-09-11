@@ -54,3 +54,17 @@ def dar_de_baja(activo_id: str) -> None:
 
 def eliminar_activo(activo_id: str) -> None:
     get_supabase().table(TABLE).delete().eq("id", activo_id).execute()
+
+
+def actualizar_cuentas(
+    activo_id: str, cuenta_gasto_codigo: Optional[str],
+    cuenta_acumulada_codigo: Optional[str], cuenta_correccion_codigo: Optional[str],
+) -> None:
+    """Las 3 cuentas contables del activo (ver 'Generar asiento') — código
+    del plan de cuentas (`app/conciliacion/plan_cuentas.py`) o None si
+    todavía no se eligió."""
+    get_supabase().table(TABLE).update({
+        "cuenta_gasto_codigo": cuenta_gasto_codigo,
+        "cuenta_acumulada_codigo": cuenta_acumulada_codigo,
+        "cuenta_correccion_codigo": cuenta_correccion_codigo,
+    }).eq("id", activo_id).execute()

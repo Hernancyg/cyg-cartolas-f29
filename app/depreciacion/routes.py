@@ -17,6 +17,13 @@ repo.py`) de los activos fijos de cada empresa cliente.
     Acumulada/Valor libro encadenados fila a fila.
   - "Categorías SII": el catálogo editable de "tipo de bien -> vida útil
     normal" que sugiere la vida útil al agregar un activo nuevo.
+  - "Generar asiento": arma el comprobante contable (mismo formato de 17
+    columnas que F29/Conciliación/Caja Empresas) de la depreciación del
+    ejercicio + corrección monetaria de cada activo — solo de los
+    períodos del kardex que todavía no se hayan asentado antes (ver
+    `app/data/depreciacion_asientos_repo.py`, la "memoria" de lo ya
+    generado, y `app/depreciacion/comprobantes.py` para el armado de cada
+    línea).
 
 El cálculo en sí (`app/depreciacion/calculo.py`) no toca Supabase — así se
 puede testear con datos en memoria.
@@ -28,11 +35,14 @@ from datetime import date
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
 
 from app.auth.decorators import pagina_required
+from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO, PLAN_CUENTAS
 from app.data import (
-    depreciacion_activos_repo, depreciacion_categorias_repo, depreciacion_empresas_repo, depreciacion_periodos_repo,
+    depreciacion_activos_repo, depreciacion_asientos_repo, depreciacion_categorias_repo,
+    depreciacion_empresas_repo, depreciacion_periodos_repo,
 )
+from app.depreciacion import comprobantes
 from app.depreciacion.calculo import calcular_kardex, calcular_tabla
-from app.depreciacion.export_writer import build_empresa_kardex_workbook, build_kardex_workbook
+from app.depreciacion.export_writer import build_comprobantes_workbook, build_empresa_kardex_workbook, build_kardex_workbook
 
 depreciacion_bp = Blueprint("depreciacion", __name__, url_prefix="/depreciacion")
 
@@ -224,10 +234,36 @@ def activo_detalle(empresa_id, activo_id):
 
     periodos = depreciacion_periodos_repo.listar_por_activo(activo_id)
     kardex = calcular_kardex(activo, periodos)
+    fechas_asentadas = depreciacion_asientos_repo.fechas_ya_generadas(activo_id)
 
     return render_template(
         "depreciacion/activo_detalle.html", empresa=empresa, activo=activo, filas=list(zip(periodos, kardex)),
+        cuentas=PLAN_CUENTAS, cuentas_por_codigo=CUENTAS_POR_CODIGO, fechas_asentadas=fechas_asentadas,
     )
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/cuentas/guardar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def activo_cuentas_guardar(empresa_id, activo_id):
+    activo = depreciacion_activos_repo.obtener_activo(activo_id)
+    if not activo or activo["empresa_id"] != empresa_id:
+        flash("Ese activo ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    for campo in ("cuenta_gasto_codigo", "cuenta_acumulada_codigo", "cuenta_correccion_codigo"):
+        codigo = request.form.get(campo) or None
+        if codigo and codigo not in CUENTAS_POR_CODIGO:
+            flash("Una de las cuentas elegidas no existe en el plan de cuentas — vuelve a buscarla.", "error")
+            return redirect(url_for("depreciacion.activo_detalle", empresa_id=empresa_id, activo_id=activo_id))
+
+    depreciacion_activos_repo.actualizar_cuentas(
+        activo_id,
+        request.form.get("cuenta_gasto_codigo") or None,
+        request.form.get("cuenta_acumulada_codigo") or None,
+        request.form.get("cuenta_correccion_codigo") or None,
+    )
+    flash("Cuentas contables guardadas.", "success")
+    return redirect(url_for("depreciacion.activo_detalle", empresa_id=empresa_id, activo_id=activo_id))
 
 
 @depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/periodos/guardar", methods=["POST"])
@@ -298,6 +334,97 @@ def kardex_descargar(empresa_id, activo_id):
         io.BytesIO(contenido), as_attachment=True, download_name=nombre_archivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+# ---------------------------------------------------------------------------
+# Generar asiento contable (comprobante) de todos los activos de la empresa
+# ---------------------------------------------------------------------------
+
+def _pendientes_por_activo(empresa_id):
+    """{activo_id: (activo, [filas de calcular_kardex sin asiento todavía])}
+    para cada activo de la empresa, en el mismo orden de
+    `depreciacion_activos_repo.listar_por_empresa`."""
+    resultado = []
+    for activo in depreciacion_activos_repo.listar_por_empresa(empresa_id):
+        periodos = depreciacion_periodos_repo.listar_por_activo(activo["id"])
+        kardex = calcular_kardex(activo, periodos)
+        asentadas = depreciacion_asientos_repo.fechas_ya_generadas(activo["id"])
+        pendientes = [k for k in kardex if k["fecha"] not in asentadas]
+        resultado.append((activo, pendientes))
+    return resultado
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/asientos", methods=["GET"])
+@pagina_required("depreciacion.empresas")
+def asientos(empresa_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    if not empresa:
+        flash("Esa empresa ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresas"))
+
+    filas = []
+    for activo, pendientes in _pendientes_por_activo(empresa_id):
+        try:
+            comprobantes.validar_cuentas(activo, pendientes)
+            cuentas_faltantes = []
+        except comprobantes.CuentaFaltante as exc:
+            cuentas_faltantes = exc.cuentas_faltantes
+        filas.append({"activo": activo, "pendientes": pendientes, "cuentas_faltantes": cuentas_faltantes})
+
+    return render_template("depreciacion/asientos.html", empresa=empresa, filas=filas)
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/asientos/generar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def asientos_generar(empresa_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    if not empresa:
+        flash("Esa empresa ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresas"))
+
+    todas_las_filas = []
+    nuevos_asientos = []
+    activos_omitidos = []
+
+    for activo, pendientes in _pendientes_por_activo(empresa_id):
+        if not pendientes:
+            continue
+        try:
+            comprobantes.validar_cuentas(activo, pendientes)
+        except comprobantes.CuentaFaltante as exc:
+            activos_omitidos.append(str(exc))
+            continue
+
+        todas_las_filas.extend(comprobantes.construir_filas(activo, pendientes, CUENTAS_POR_CODIGO))
+        for p in pendientes:
+            nuevos_asientos.append({
+                "activo_id": activo["id"], "fecha": p["fecha"],
+                "monto_ejercicio": p["depreciacion_ejercicio"], "monto_correccion": p["correccion_monetaria"],
+            })
+
+    if activos_omitidos:
+        flash("No se incluyeron (faltan cuentas contables): " + "; ".join(activos_omitidos), "error")
+
+    if not todas_las_filas:
+        flash("No había ningún período pendiente de asentar.", "info" if not activos_omitidos else "error")
+        return redirect(url_for("depreciacion.asientos", empresa_id=empresa_id))
+
+    depreciacion_asientos_repo.crear_muchos(nuevos_asientos)
+
+    contenido = build_comprobantes_workbook(todas_las_filas)
+    nombre_archivo = f"asiento_depreciacion_{empresa['nombre'].strip().replace(' ', '_')}.xls"
+    return send_file(
+        io.BytesIO(contenido), as_attachment=True, download_name=nombre_archivo,
+        mimetype="application/vnd.ms-excel",
+    )
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/asientos/<fecha>/deshacer", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def asiento_deshacer(empresa_id, activo_id, fecha):
+    depreciacion_asientos_repo.eliminar_por_activo_y_fecha(activo_id, fecha)
+    flash("Asiento deshecho — ese período vuelve a quedar pendiente.", "success")
+    return redirect(url_for("depreciacion.asientos", empresa_id=empresa_id))
 
 
 # ---------------------------------------------------------------------------

@@ -154,6 +154,11 @@ def calcular_kardex(activo: dict, periodos: list) -> list:
             "deprec_acum_cierre": round(deprec_acum_cierre),
             "valor_libro": round(valor_libro),
             "completamente_depreciado": completamente_depreciado,
+            # Cuánto de esta fila se debe a la corrección monetaria (subir
+            # la deprec. acum. de apertura por el factor) en vez de al
+            # gasto normal del período — lo usa "Generar asiento" para la
+            # línea contra la cuenta de Corrección Monetaria.
+            "correccion_monetaria": round(deprec_acum_actualizado - deprec_acum_apertura),
         })
 
         costo_total = valor_actualizado

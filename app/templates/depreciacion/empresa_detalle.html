@@ -7,7 +7,8 @@
 <div class="page-title-underline"></div>
 <p class="page-subtitle">
   {{ empresa.rut or 'Sin RUT' }} ·
-  <a href="{{ url_for('depreciacion.empresas') }}">← volver a Empresas</a>
+  <a href="{{ url_for('depreciacion.empresas') }}">← volver a Empresas</a> ·
+  <a href="{{ url_for('depreciacion.asientos', empresa_id=empresa.id) }}">Generar asiento contable</a>
 </p>
 
 <div class="card">

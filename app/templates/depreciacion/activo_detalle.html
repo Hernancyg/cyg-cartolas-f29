@@ -2,6 +2,7 @@
 {% block title %}{{ activo.nombre_activo }} · Depreciación · C&amp;G Group{% endblock %}
 {% block content %}
 {% from "_icons.html" import icon %}
+{% from "caja_empresas/_macros.html" import cuenta_search %}
 
 <div class="page-title">{{ activo.nombre_activo }}</div>
 <div class="page-title-underline"></div>
@@ -18,6 +19,32 @@
     <div class="field"><label>Vida útil</label><div>{{ activo.vida_util_anios }} años ({{ activo.vida_util_anios * 12 }} meses)</div></div>
     <div class="field"><label>Estado</label><div>{{ 'Activo' if activo.activo else 'Dado de baja' }}</div></div>
   </div>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('key', 16) }} Cuentas contables</div>
+  <p class="muted" style="margin-top:0">
+    Las usa "Generar asiento contable" para armar el comprobante de este activo — Depreciación Acumulada solo
+    necesita una cuenta de Corrección Monetaria si algún período trae Factor CCMM distinto de 1.
+  </p>
+  <form method="post" action="{{ url_for('depreciacion.activo_cuentas_guardar', empresa_id=empresa.id, activo_id=activo.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field">
+        <label>Gasto por Depreciación (Debe)</label>
+        {{ cuenta_search("cc_gasto", "cuenta_gasto_codigo", "cuenta_gasto_descripcion", activo.cuenta_gasto_codigo, (cuentas_por_codigo.get(activo.cuenta_gasto_codigo) or {}).get("descripcion", ""), "Buscar cuenta…") }}
+      </div>
+      <div class="field">
+        <label>Depreciación Acumulada (Haber)</label>
+        {{ cuenta_search("cc_acumulada", "cuenta_acumulada_codigo", "cuenta_acumulada_descripcion", activo.cuenta_acumulada_codigo, (cuentas_por_codigo.get(activo.cuenta_acumulada_codigo) or {}).get("descripcion", ""), "Buscar cuenta…") }}
+      </div>
+      <div class="field">
+        <label>Corrección Monetaria</label>
+        {{ cuenta_search("cc_correccion", "cuenta_correccion_codigo", "cuenta_correccion_descripcion", activo.cuenta_correccion_codigo, (cuentas_por_codigo.get(activo.cuenta_correccion_codigo) or {}).get("descripcion", ""), "Buscar cuenta…") }}
+      </div>
+    </div>
+    <button type="submit" class="btn-secondary">{{ icon('save', 16) }} Guardar cuentas</button>
+  </form>
 </div>
 
 <div class="card highlight">
@@ -48,7 +75,15 @@
         <tbody>
           {% for p, k in filas %}
           <tr data-fecha="{{ p.fecha }}">
-            <td><input type="date" name="p_fecha" value="{{ p.fecha }}"></td>
+            <td>
+              <input type="date" name="p_fecha" value="{{ p.fecha }}">
+              {% if p.fecha in fechas_asentadas %}
+              <form method="post" action="{{ url_for('depreciacion.asiento_deshacer', empresa_id=empresa.id, activo_id=activo.id, fecha=p.fecha) }}" style="display:inline" onsubmit="return confirm('¿Deshacer el asiento de este período? Vuelve a quedar pendiente.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="link-btn" title="Deshacer asiento" style="font-size:0.75rem">✓ asentado</button>
+              </form>
+              {% endif %}
+            </td>
             <td><input type="number" name="p_meses" min="1" value="{{ p.meses_utilizados }}" style="width:80px"></td>
             <td>{{ k.costo_total | clp }}</td>
             <td><input type="text" name="p_factor_ccmm" value="{{ p.factor_ccmm }}" style="width:70px"></td>
@@ -74,6 +109,8 @@
   </form>
 </div>
 
+<script>window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};</script>
+<script src="{{ url_for('static', filename='js/cuenta_search.js') }}"></script>
 <script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
 <script>
 (function () {
