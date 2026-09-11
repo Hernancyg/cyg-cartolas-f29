@@ -90,14 +90,16 @@ def calcular_kardex(activo: dict, periodos: list) -> list:
         corrección). valor_actualizado = costo_total * factor_ccmm, y ESE
         valor (no el costo_total sin corregir) es la base de la fila
         siguiente — así la corrección se va acumulando año a año, como en
-        la contabilidad financiera chilena tradicional (confirmado por el
-        usuario, 11-09-2026).
+        la contabilidad financiera chilena tradicional.
       - vida_util_antes_meses: meses de vida útil que quedaban ANTES de
         consumir los de esta fila (en MESES, no se corrige monetariamente).
-      - depreciacion_ejercicio: se calcula con el costo_total SIN corregir
-        de esta fila (costo_total / vida_util_meses_total) * meses de esta
-        fila — la corrección de este período se aplica DESPUÉS, para la
-        fila siguiente, no afecta el gasto del ejercicio ya en curso.
+      - depreciacion_ejercicio: se calcula con el costo YA corregido de
+        esta fila (valor_actualizado / vida_util_meses_total) * meses de
+        esta fila — la corrección monetaria se aplica primero, y la
+        depreciación del ejercicio se calcula sobre esa base actualizada
+        (corregido 11-09-2026 contra un caso real: con costo 40.991.368,
+        factor 1,0670 y 12 meses, la depreciación del ejercicio debe dar
+        4.373.779 = 43.737.790/120*12, no 4.099.137 = 40.991.368/120*12).
       - deprec_acum_apertura/deprec_acum_actualizado: la acumulada de
         apertura (heredada de la fila anterior) corregida por el mismo
         factor_ccmm de esta fila.
@@ -124,11 +126,11 @@ def calcular_kardex(activo: dict, periodos: list) -> list:
         vida_util_antes = max(vida_util_meses_total - meses_consumidos_antes, 0)
         meses_efectivos = max(min(meses_utilizados, vida_util_antes), 0)
 
-        mensual = costo_total / vida_util_meses_total
-        deprec_ejercicio = mensual * meses_efectivos
-
         valor_actualizado = costo_total * factor_ccmm
         deprec_acum_actualizado = deprec_acum_apertura * factor_ccmm
+
+        mensual = valor_actualizado / vida_util_meses_total
+        deprec_ejercicio = mensual * meses_efectivos
         completamente_depreciado = (meses_consumidos_antes + meses_efectivos) >= vida_util_meses_total
 
         if completamente_depreciado:

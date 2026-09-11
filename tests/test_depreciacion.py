@@ -106,20 +106,20 @@ def test_kardex():
     check("última fila: acumulada de cierre = 7.768.750", f10["deprec_acum_cierre"] == 7_768_750)
     check("última fila: valor libro = 481.250", f10["valor_libro"] == 481_250)
 
-    # Factor CCMM: corrige el costo y la deprec. acum. de APERTURA de esta
-    # fila, y ese valor actualizado pasa a ser la base de la fila siguiente
-    # (no afecta la depreciación del ejercicio de la fila donde se aplica).
+    # Factor CCMM: corrige el costo (y la deprec. acum. de apertura) de
+    # ESTA MISMA fila antes de calcular su depreciación del ejercicio — la
+    # corrección se aplica primero, no queda solo para la fila siguiente.
     periodos_ccmm = [
-        {"fecha": "2017-04-01", "meses_utilizados": 8, "factor_ccmm": 1.10},  # corrige 10% al cierre de esta fila
+        {"fecha": "2017-04-01", "meses_utilizados": 8, "factor_ccmm": 1.10},
         {"fecha": "2018-12-31", "meses_utilizados": 12, "factor_ccmm": 1},
     ]
     kardex_ccmm = calcular_kardex(activo, periodos_ccmm)
     f1c, f2c = kardex_ccmm[0], kardex_ccmm[1]
-    check(
-        "factor CCMM: depreciación del ejercicio de la fila 1 NO cambia por su propio factor",
-        f1c["depreciacion_ejercicio"] == 550_000,
-    )
     check("factor CCMM: valor actualizado = costo total x factor", f1c["valor_actualizado"] == round(8_250_000 * 1.10))
+    check(
+        "factor CCMM: la depreciación del ejercicio de la fila 1 SÍ usa el costo YA corregido por su propio factor",
+        f1c["depreciacion_ejercicio"] == round(f1c["valor_actualizado"] / 120 * 8),
+    )
     check(
         "factor CCMM: el costo total de la fila 2 es el valor actualizado de la fila 1",
         f2c["costo_total"] == f1c["valor_actualizado"],
@@ -129,9 +129,18 @@ def test_kardex():
         f2c["depreciacion_ejercicio"] == round(f1c["valor_actualizado"] / 120 * 12),
     )
     check(
-        "factor CCMM: la deprec. acum. de apertura de la fila 2 es la 'actualizado' (cierre) de la fila 1",
+        "factor CCMM: la deprec. acum. de apertura de la fila 2 es la 'cierre' de la fila 1",
         f2c["deprec_acum_apertura"] == f1c["deprec_acum_cierre"],
     )
+
+    # Caso real reportado por el usuario (11-09-2026): costo 40.991.368,
+    # factor 1,0670, 12 meses -> depreciación del ejercicio 4.373.779 (NO
+    # 4.099.137, que es lo que daba con el costo SIN corregir).
+    activo_real = {"valor_adquisicion": 40_991_368, "vida_util_anios": 10}
+    fila_real = calcular_kardex(activo_real, [{"fecha": "2021-12-31", "meses_utilizados": 12, "factor_ccmm": 1.0670}])[0]
+    check("caso real: valor actualizado = 43.737.790", fila_real["valor_actualizado"] == 43_737_790)
+    check("caso real: depreciación del ejercicio = 4.373.779 (con el costo YA corregido)", fila_real["depreciacion_ejercicio"] == 4_373_779)
+    check("caso real: deprec. acum. cierre = 4.373.779 (primera fila, apertura en 0)", fila_real["deprec_acum_cierre"] == 4_373_779)
 
     # Si la suma de meses supera la vida útil, se capea en $1 (no revienta, no queda negativo).
     periodos_exceso = [{"fecha": "2017-01-01", "meses_utilizados": 200}]
