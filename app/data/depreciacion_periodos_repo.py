@@ -22,7 +22,7 @@ def listar_por_activo(activo_id: str) -> List[dict]:
 
 def guardar_todos(activo_id: str, filas: List[dict]) -> None:
     """Reemplaza todas las filas del kardex de `activo_id`. Cada fila de
-    `filas`: {"fecha": "YYYY-MM-DD", "meses_utilizados": int, "adiciones": float}."""
+    `filas`: {"fecha": "YYYY-MM-DD", "meses_utilizados": int, "factor_ccmm": float}."""
     sb = get_supabase()
     sb.table(TABLE).delete().eq("activo_id", activo_id).execute()
     payload = [
@@ -30,7 +30,7 @@ def guardar_todos(activo_id: str, filas: List[dict]) -> None:
             "activo_id": activo_id,
             "fecha": f["fecha"],
             "meses_utilizados": int(f["meses_utilizados"]),
-            "adiciones": float(f.get("adiciones") or 0),
+            "factor_ccmm": float(f.get("factor_ccmm") or 1),
         }
         for f in filas
         if f.get("fecha") and f.get("meses_utilizados")

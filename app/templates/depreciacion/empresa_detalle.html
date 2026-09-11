@@ -89,8 +89,8 @@
       <input type="month" id="periodo" name="periodo" value="{{ periodo }}">
     </div>
     <button type="submit" class="btn-secondary">Ver período</button>
-    <a href="{{ url_for('depreciacion.descargar', empresa_id=empresa.id, periodo=periodo) }}" class="btn">{{ icon('download', 16) }} Descargar Excel</a>
   </form>
+  <a href="{{ url_for('depreciacion.descargar', empresa_id=empresa.id) }}" class="btn">{{ icon('download', 16) }} Descargar kardex de todos los activos (Excel)</a>
 
   {% if tabla %}
   <div class="table-wrap">

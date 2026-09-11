@@ -72,17 +72,19 @@ def test_kardex():
     usuario (Grúa horquilla, 8.250.000, 10 años/120 meses) — 11-09-2026."""
     activo = {"valor_adquisicion": 8_250_000, "vida_util_anios": 10}
     periodos = [
-        {"fecha": "2017-04-01", "meses_utilizados": 8, "adiciones": 0},
-        {"fecha": "2018-12-31", "meses_utilizados": 12, "adiciones": 0},
-        {"fecha": "2019-12-31", "meses_utilizados": 12, "adiciones": 0},
-        {"fecha": "2020-12-31", "meses_utilizados": 12, "adiciones": 0},
-        {"fecha": "2021-12-31", "meses_utilizados": 12, "adiciones": 0},
-        {"fecha": "2022-12-31", "meses_utilizados": 12, "adiciones": 0},
-        {"fecha": "2023-12-31", "meses_utilizados": 12, "adiciones": 0},
-        {"fecha": "2024-12-31", "meses_utilizados": 12, "adiciones": 0},
-        {"fecha": "2025-12-31", "meses_utilizados": 12, "adiciones": 0},
-        {"fecha": "2026-09-30", "meses_utilizados": 9, "adiciones": 0},
+        {"fecha": "2017-04-01", "meses_utilizados": 8},
+        {"fecha": "2018-12-31", "meses_utilizados": 12},
+        {"fecha": "2019-12-31", "meses_utilizados": 12},
+        {"fecha": "2020-12-31", "meses_utilizados": 12},
+        {"fecha": "2021-12-31", "meses_utilizados": 12},
+        {"fecha": "2022-12-31", "meses_utilizados": 12},
+        {"fecha": "2023-12-31", "meses_utilizados": 12},
+        {"fecha": "2024-12-31", "meses_utilizados": 12},
+        {"fecha": "2025-12-31", "meses_utilizados": 12},
+        {"fecha": "2026-09-30", "meses_utilizados": 9},
     ]
+    # Sin factor_ccmm explícito -> se asume 1 (sin corrección), debe dar
+    # exactamente los mismos números que la planilla de referencia.
     kardex = calcular_kardex(activo, periodos)
 
     check("kardex: 10 filas calculadas", len(kardex) == 10)
@@ -104,17 +106,35 @@ def test_kardex():
     check("última fila: acumulada de cierre = 7.768.750", f10["deprec_acum_cierre"] == 7_768_750)
     check("última fila: valor libro = 481.250", f10["valor_libro"] == 481_250)
 
-    # Una adición sube el costo (y por lo tanto la depreciación mensual) DESDE esa fila en adelante.
-    periodos_con_adicion = periodos[:2] + [{"fecha": "2019-12-31", "meses_utilizados": 12, "adiciones": 1_200_000}]
-    kardex_adicion = calcular_kardex(activo, periodos_con_adicion)
-    check("una adición sube el costo total desde esa fila", kardex_adicion[2]["costo_total"] == 8_250_000 + 1_200_000)
+    # Factor CCMM: corrige el costo y la deprec. acum. de APERTURA de esta
+    # fila, y ese valor actualizado pasa a ser la base de la fila siguiente
+    # (no afecta la depreciación del ejercicio de la fila donde se aplica).
+    periodos_ccmm = [
+        {"fecha": "2017-04-01", "meses_utilizados": 8, "factor_ccmm": 1.10},  # corrige 10% al cierre de esta fila
+        {"fecha": "2018-12-31", "meses_utilizados": 12, "factor_ccmm": 1},
+    ]
+    kardex_ccmm = calcular_kardex(activo, periodos_ccmm)
+    f1c, f2c = kardex_ccmm[0], kardex_ccmm[1]
     check(
-        "la depreciación del ejercicio de esa fila usa el costo YA con la adición",
-        kardex_adicion[2]["depreciacion_ejercicio"] == round((8_250_000 + 1_200_000) / 120 * 12),
+        "factor CCMM: depreciación del ejercicio de la fila 1 NO cambia por su propio factor",
+        f1c["depreciacion_ejercicio"] == 550_000,
+    )
+    check("factor CCMM: valor actualizado = costo total x factor", f1c["valor_actualizado"] == round(8_250_000 * 1.10))
+    check(
+        "factor CCMM: el costo total de la fila 2 es el valor actualizado de la fila 1",
+        f2c["costo_total"] == f1c["valor_actualizado"],
+    )
+    check(
+        "factor CCMM: la depreciación del ejercicio de la fila 2 ya usa el costo corregido",
+        f2c["depreciacion_ejercicio"] == round(f1c["valor_actualizado"] / 120 * 12),
+    )
+    check(
+        "factor CCMM: la deprec. acum. de apertura de la fila 2 es la 'actualizado' (cierre) de la fila 1",
+        f2c["deprec_acum_apertura"] == f1c["deprec_acum_cierre"],
     )
 
     # Si la suma de meses supera la vida útil, se capea en $1 (no revienta, no queda negativo).
-    periodos_exceso = [{"fecha": "2017-01-01", "meses_utilizados": 200, "adiciones": 0}]
+    periodos_exceso = [{"fecha": "2017-01-01", "meses_utilizados": 200}]
     kardex_exceso = calcular_kardex(activo, periodos_exceso)
     check("meses en exceso: queda completamente depreciado", kardex_exceso[0]["completamente_depreciado"] is True)
     check("meses en exceso: valor libro en $1, no negativo", kardex_exceso[0]["valor_libro"] == 1)
@@ -180,7 +200,7 @@ def test_rutas_flujo_completo():
         data={
             "p_fecha": ["2024-12-31", "2025-12-31"],
             "p_meses": ["12", "12"],
-            "p_adiciones": ["0", "0"],
+            "p_factor_ccmm": ["1", "1"],
         },
         follow_redirects=True,
     )
@@ -201,12 +221,25 @@ def test_rutas_flujo_completo():
     r = client.get(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/descargar")
     check("descargar kardex en Excel -> 200 con content-type de xlsx", r.status_code == 200 and "spreadsheetml" in r.headers.get("Content-Type", ""))
 
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/descargar")
+    check(
+        "descargar kardex de TODOS los activos de la empresa -> 200 con content-type de xlsx",
+        r.status_code == 200 and "spreadsheetml" in r.headers.get("Content-Type", ""),
+    )
+
     r = client.post(
         f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/periodos/guardar",
-        data={"p_fecha": ["2024-12-31"], "p_meses": ["no-es-un-numero"], "p_adiciones": ["0"]},
+        data={"p_fecha": ["2024-12-31"], "p_meses": ["no-es-un-numero"], "p_factor_ccmm": ["1"]},
         follow_redirects=True,
     )
     check("meses inválidos -> avisa el error, no revienta", r.status_code == 200 and "meses utilizados" in r.get_data(as_text=True).lower())
+
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/periodos/guardar",
+        data={"p_fecha": ["2024-12-31"], "p_meses": ["12"], "p_factor_ccmm": ["0"]},
+        follow_redirects=True,
+    )
+    check("factor CCMM en 0 -> avisa el error, no revienta", r.status_code == 200 and "factor ccmm" in r.get_data(as_text=True).lower())
 
     r = client.post(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/baja", follow_redirects=True)
     check("dar de baja el activo -> ok", r.status_code == 200 and "dado de baja" in r.get_data(as_text=True).lower())

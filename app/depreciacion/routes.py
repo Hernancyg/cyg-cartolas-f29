@@ -32,7 +32,7 @@ from app.data import (
     depreciacion_activos_repo, depreciacion_categorias_repo, depreciacion_empresas_repo, depreciacion_periodos_repo,
 )
 from app.depreciacion.calculo import calcular_kardex, calcular_tabla
-from app.depreciacion.export_writer import build_kardex_workbook, build_tabla_workbook
+from app.depreciacion.export_writer import build_empresa_kardex_workbook, build_kardex_workbook
 
 depreciacion_bp = Blueprint("depreciacion", __name__, url_prefix="/depreciacion")
 
@@ -185,18 +185,24 @@ def activos_eliminar(empresa_id, activo_id):
 @depreciacion_bp.route("/empresas/<empresa_id>/descargar", methods=["GET"])
 @pagina_required("depreciacion.empresas")
 def descargar(empresa_id):
+    """Descarga el kardex COMPLETO (todos los períodos cargados) de CADA
+    activo de la empresa, una hoja por activo — mismo formato que
+    "Kardex" de la ficha de un activo (el usuario pidió que la descarga
+    de "Tabla de depreciación" muestre lo mismo que el kardex pero con
+    todos los activos juntos, 11-09-2026), no la foto de un solo mes."""
     empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
     if not empresa:
         flash("Esa empresa ya no existe.", "error")
         return redirect(url_for("depreciacion.empresas"))
 
-    year, month = _parsear_periodo(request.args.get("periodo"))
     activos = depreciacion_activos_repo.listar_por_empresa(empresa_id)
-    tabla = calcular_tabla(activos, year, month)
-    periodo_label = f"{MESES_LABEL[month - 1]} {year}"
+    activos_con_kardex = [
+        (activo, calcular_kardex(activo, depreciacion_periodos_repo.listar_por_activo(activo["id"])))
+        for activo in activos
+    ]
 
-    contenido = build_tabla_workbook(empresa["nombre"], periodo_label, tabla)
-    nombre_archivo = f"depreciacion_{empresa['nombre'].strip().replace(' ', '_')}_{year:04d}-{month:02d}.xlsx"
+    contenido = build_empresa_kardex_workbook(empresa["nombre"], activos_con_kardex)
+    nombre_archivo = f"depreciacion_{empresa['nombre'].strip().replace(' ', '_')}.xlsx"
     return send_file(
         io.BytesIO(contenido), as_attachment=True, download_name=nombre_archivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -234,14 +240,14 @@ def periodos_guardar(empresa_id, activo_id):
 
     fechas = request.form.getlist("p_fecha")
     meses = request.form.getlist("p_meses")
-    adiciones = request.form.getlist("p_adiciones")
+    factores = request.form.getlist("p_factor_ccmm")
 
     filas = []
     errores = []
     for i in range(len(fechas)):
         fecha = (fechas[i] or "").strip()
         meses_raw = (meses[i] if i < len(meses) else "").strip()
-        adiciones_raw = (adiciones[i] if i < len(adiciones) else "0").strip() or "0"
+        factor_raw = (factores[i] if i < len(factores) else "1").strip() or "1"
         if not fecha and not meses_raw:
             continue  # fila vacía (ej. se agregó y se dejó sin llenar) -> se ignora, no error
         if not fecha or not meses_raw:
@@ -255,11 +261,13 @@ def periodos_guardar(empresa_id, activo_id):
             errores.append(f"Fila {i + 1}: los meses utilizados deben ser un número entero mayor a 0.")
             continue
         try:
-            adiciones_float = float(adiciones_raw.replace(".", "").replace(",", "."))
+            factor_float = float(factor_raw.replace(",", "."))
+            if factor_float <= 0:
+                raise ValueError
         except ValueError:
-            errores.append(f"Fila {i + 1}: el monto de adiciones no es válido.")
+            errores.append(f"Fila {i + 1}: el Factor CCMM debe ser un número mayor a 0 (1 = sin corrección).")
             continue
-        filas.append({"fecha": fecha, "meses_utilizados": meses_int, "adiciones": adiciones_float})
+        filas.append({"fecha": fecha, "meses_utilizados": meses_int, "factor_ccmm": factor_float})
 
     if errores:
         for e in errores:

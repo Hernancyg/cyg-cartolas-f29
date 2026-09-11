@@ -80,67 +80,82 @@ def calcular_tabla(activos: list, periodo_year: int, periodo_month: int) -> list
 def calcular_kardex(activo: dict, periodos: list) -> list:
     """Historial de depreciación de UN activo, encadenando sus períodos
     editables (`periodos`, ya ordenados por fecha — ver
-    `depreciacion_periodos_repo.listar_por_activo`). Cada fila calculada
-    agrega, sin modificar lo editable (fecha/meses_utilizados/adiciones):
+    `depreciacion_periodos_repo.listar_por_activo`). Cada fila trae lo
+    editable (fecha, meses_utilizados, factor_ccmm) sin tocar, más lo
+    calculado:
 
-      - costo_total: costo de adquisición + adiciones acumuladas hasta
-        esa fila (una adición sube la base de depreciación DESDE esa fila
-        en adelante, no retroactivamente).
+      - costo_total: la base de este período — el "valor_actualizado" de
+        la fila ANTERIOR (o el costo de adquisición, en la primera fila).
+      - factor_ccmm: corrección monetaria de este período (1 = sin
+        corrección). valor_actualizado = costo_total * factor_ccmm, y ESE
+        valor (no el costo_total sin corregir) es la base de la fila
+        siguiente — así la corrección se va acumulando año a año, como en
+        la contabilidad financiera chilena tradicional (confirmado por el
+        usuario, 11-09-2026).
       - vida_util_antes_meses: meses de vida útil que quedaban ANTES de
-        consumir los de esta fila (para que se vea igual que la columna
-        "Vida útil" de la planilla de referencia del usuario).
-      - depreciacion_ejercicio: (costo_total / vida_util_meses_total) *
-        meses_utilizados de esta fila.
-      - deprec_acum_apertura/deprec_acum_cierre: acumulada ANTES/DESPUÉS
-        de esta fila (para mostrar ambas, como la planilla de referencia).
-      - valor_libro: costo_total - deprec_acum_cierre, salvo que ya se
-        haya agotado la vida útil — ahí queda en $1 (misma convención SII
-        que `calcular_fila`), nunca en $0 ni negativo.
+        consumir los de esta fila (en MESES, no se corrige monetariamente).
+      - depreciacion_ejercicio: se calcula con el costo_total SIN corregir
+        de esta fila (costo_total / vida_util_meses_total) * meses de esta
+        fila — la corrección de este período se aplica DESPUÉS, para la
+        fila siguiente, no afecta el gasto del ejercicio ya en curso.
+      - deprec_acum_apertura/deprec_acum_actualizado: la acumulada de
+        apertura (heredada de la fila anterior) corregida por el mismo
+        factor_ccmm de esta fila.
+      - deprec_acum_cierre: deprec_acum_actualizado + depreciacion del
+        ejercicio — es la que hereda la fila siguiente como su apertura.
+      - valor_libro: valor_actualizado - deprec_acum_cierre, salvo que ya
+        se haya agotado la vida útil — ahí queda en $1 (misma convención
+        SII que `calcular_fila`), nunca en $0 ni negativo.
 
     Si la suma de meses_utilizados de las filas supera la vida útil total
-    del activo, el exceso simplemente no depreciación más (se capea) —
-    no revienta ni deja valores negativos, solo dejaría de sumar.
+    del activo, el exceso simplemente no depreciación más (se capea) — no
+    revienta ni deja valores negativos, solo dejaría de sumar.
     """
     vida_util_meses_total = max(int(activo["vida_util_anios"]) * 12, 1)
-    costo_corrido = float(activo["valor_adquisicion"])
+    costo_total = float(activo["valor_adquisicion"])
+    deprec_acum_apertura = 0.0
     meses_consumidos_antes = 0
-    deprec_acum_cierre = 0.0
 
     filas = []
     for p in periodos:
-        adiciones = float(p.get("adiciones") or 0)
-        costo_corrido += adiciones
         meses_utilizados = int(p["meses_utilizados"])
+        factor_ccmm = float(p.get("factor_ccmm") or 1)
 
         vida_util_antes = max(vida_util_meses_total - meses_consumidos_antes, 0)
         meses_efectivos = max(min(meses_utilizados, vida_util_antes), 0)
 
-        mensual = costo_corrido / vida_util_meses_total
+        mensual = costo_total / vida_util_meses_total
         deprec_ejercicio = mensual * meses_efectivos
-        deprec_acum_apertura = deprec_acum_cierre
+
+        valor_actualizado = costo_total * factor_ccmm
+        deprec_acum_actualizado = deprec_acum_apertura * factor_ccmm
         completamente_depreciado = (meses_consumidos_antes + meses_efectivos) >= vida_util_meses_total
 
         if completamente_depreciado:
-            deprec_acum_cierre = costo_corrido - 1
+            deprec_acum_cierre = valor_actualizado - 1
             valor_libro = 1
         else:
-            deprec_acum_cierre = deprec_acum_apertura + deprec_ejercicio
-            valor_libro = costo_corrido - deprec_acum_cierre
+            deprec_acum_cierre = deprec_acum_actualizado + deprec_ejercicio
+            valor_libro = valor_actualizado - deprec_acum_cierre
 
         filas.append({
             "id": p.get("id"),
             "fecha": p["fecha"] if isinstance(p["fecha"], str) else p["fecha"].isoformat(),
-            "adiciones": round(adiciones),
-            "costo_total": round(costo_corrido),
-            "vida_util_antes_meses": vida_util_antes,
             "meses_utilizados": meses_utilizados,
-            "deprec_acum_apertura": round(deprec_acum_apertura),
+            "costo_total": round(costo_total),
+            "factor_ccmm": factor_ccmm,
+            "valor_actualizado": round(valor_actualizado),
+            "vida_util_antes_meses": vida_util_antes,
             "depreciacion_ejercicio": round(deprec_ejercicio),
+            "deprec_acum_apertura": round(deprec_acum_apertura),
+            "deprec_acum_actualizado": round(deprec_acum_actualizado),
             "deprec_acum_cierre": round(deprec_acum_cierre),
             "valor_libro": round(valor_libro),
             "completamente_depreciado": completamente_depreciado,
         })
 
+        costo_total = valor_actualizado
+        deprec_acum_apertura = deprec_acum_cierre
         meses_consumidos_antes += meses_efectivos
 
     return filas
