@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Consulta SII · Contribuyente · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Consulta SII</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Situación tributaria de un RUT (razón social, actividades, documentos timbrados y observaciones), vía API Gateway.</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('sii.contribuyente') }}" class="nav-item active">Contribuyente</a>
+  <a href="{{ url_for('sii.rcv') }}" class="nav-item">RCV</a>
+  <a href="{{ url_for('sii.empresas') }}" class="nav-item">Empresas SII</a>
+</div>
+
+{% if config_pendiente %}
+<div class="alert alert-info">
+  <strong>Falta conectar API Gateway.</strong> Crea una cuenta en
+  <a href="https://www.apigateway.cl/" target="_blank" rel="noopener">apigateway.cl</a>, copia tu token y
+  configúralo en Render (o en tu <code>.env</code> local) como <code>SII_APIGATEWAY_TOKEN</code>.
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:14px">{{ icon('shield', 16) }} Consultar contribuyente</div>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="rut">RUT</label>
+        <input type="text" id="rut" name="rut" placeholder="76192083-9" value="{{ rut_consultado }}" {{ 'disabled' if config_pendiente else '' }}>
+      </div>
+    </div>
+    <button type="submit" class="btn" {{ 'disabled' if config_pendiente else '' }}>{{ icon('shield', 16) }} Consultar</button>
+  </form>
+</div>
+
+{% if error %}
+<div class="alert alert-warn">{{ error }}</div>
+{% endif %}
+
+{% if resultado %}
+<div class="card highlight">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('shield', 18) }}</div>
+    <div class="section-title">{{ resultado.razon_social or ('RUT ' ~ rut_consultado) }}</div>
+  </div>
+
+  <div class="field-row">
+    <div class="field"><label>RUT</label><div>{{ resultado.rut }}-{{ resultado.dv }}</div></div>
+    <div class="field"><label>Inicio de actividades</label><div>{{ resultado.fecha_inicio_actividades or '—' }}</div></div>
+    <div class="field"><label>Pro-Pyme</label><div>{{ 'Sí' if resultado.pro_pyme else 'No' }}</div></div>
+    <div class="field"><label>Obligado a emitir DTE</label><div>{{ 'Sí' if resultado.obligacion_dte else 'No' }}</div></div>
+  </div>
+
+  {% if resultado.actividades %}
+  <div class="section-title" style="margin-top:18px; margin-bottom:6px">Actividades económicas</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Código</th><th>Glosa</th><th>Afecta a IVA</th></tr></thead>
+      <tbody>
+        {% for a in resultado.actividades %}
+        <tr><td>{{ a.codigo }}</td><td>{{ a.glosa }}</td><td>{{ 'Sí' if a.afecta else 'No' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if resultado.documentos_timbrados %}
+  <div class="section-title" style="margin-top:18px; margin-bottom:6px">Documentos timbrados</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Documento</th><th>Último timbraje</th></tr></thead>
+      <tbody>
+        {% for d in resultado.documentos_timbrados %}
+        <tr><td>{{ d.documento }}</td><td>{{ d.ultimo_timbraje }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if resultado.observaciones %}
+  {% set observaciones_activas = resultado.observaciones.items() | selectattr('1') | list %}
+  {% if observaciones_activas %}
+  <div class="alert alert-warn" style="margin-top:18px">
+    <strong>Observaciones:</strong>
+    {{ observaciones_activas | map(attribute='0') | join(', ') }}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

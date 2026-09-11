@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Depreciación · Empresas · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Depreciación</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Tabla de depreciación lineal normal (según vida útil del SII) de los activos fijos de cada empresa cliente.</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('depreciacion.empresas') }}" class="nav-item active">Empresas</a>
+  <a href="{{ url_for('depreciacion.categorias') }}" class="nav-item">Categorías SII</a>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('cash', 16) }} Empresas</div>
+  {% if empresas %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>RUT</th><th>Nombre</th><th></th><th></th></tr></thead>
+      <tbody>
+        {% for e in empresas %}
+        <tr>
+          <td>{{ e.rut or '—' }}</td>
+          <td>{{ e.nombre }}</td>
+          <td><a href="{{ url_for('depreciacion.empresa_detalle', empresa_id=e.id) }}" class="btn-secondary">{{ icon('calculator', 16) }} Ver activos</a></td>
+          <td>
+            <form method="post" action="{{ url_for('depreciacion.empresas_eliminar', empresa_id=e.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar la empresa {{ e.nombre }} y TODOS sus activos?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="row-remove" title="Eliminar empresa">{{ icon('trash', 16) }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Todavía no has agregado ninguna empresa.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:14px">Agregar empresa</div>
+  <form method="post" action="{{ url_for('depreciacion.empresas_crear') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field"><label for="ne_rut">RUT (opcional)</label><input type="text" id="ne_rut" name="rut" placeholder="76192083-9"></div>
+      <div class="field"><label for="ne_nombre">Nombre</label><input type="text" id="ne_nombre" name="nombre"></div>
+    </div>
+    <button type="submit" class="btn">{{ icon('plus', 16) }} Agregar empresa</button>
+  </form>
+</div>
+{% endblock %}

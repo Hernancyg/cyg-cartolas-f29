@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Depreciación · Categorías SII · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Depreciación</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Catálogo de "tipo de bien → vida útil normal" (tabla oficial del SII) que sugiere la vida útil al agregar un activo nuevo.</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('depreciacion.empresas') }}" class="nav-item">Empresas</a>
+  <a href="{{ url_for('depreciacion.categorias') }}" class="nav-item active">Categorías SII</a>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:10px">Categorías configuradas</div>
+  <p class="muted" style="margin-top:0">
+    Deja <strong>"Vida útil (años)"</strong> vacía para categorías sin un número fijo (ej. viñedos, bienes no depreciables) —
+    usa <strong>"Nota"</strong> para explicar el caso; al agregar un activo con esa categoría, la vida útil se ingresa a mano.
+  </p>
+
+  <form method="post" action="{{ url_for('depreciacion.categorias_guardar') }}" id="form-categorias">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table" id="tabla-categorias">
+        <thead>
+          <tr><th>Sección</th><th>Descripción</th><th>Vida útil (años)</th><th>Nota</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for c in categorias %}
+          <tr>
+            <td><input type="text" name="c_seccion" value="{{ c.seccion }}"></td>
+            <td><input type="text" name="c_descripcion" value="{{ c.descripcion }}" style="min-width:320px"></td>
+            <td><input type="number" name="c_vida_util" min="1" value="{{ c.vida_util_anios or '' }}" style="width:90px"></td>
+            <td><input type="text" name="c_nota" value="{{ c.nota or '' }}" style="min-width:200px"></td>
+            <td><button type="button" class="row-remove" title="Quitar fila">{{ icon('trash', 16) }}</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="btn btn-secondary" id="btn-add-row" data-table="tabla-categorias">{{ icon('plus', 16) }} Agregar fila</button>
+      <button type="submit" class="btn">{{ icon('save', 16) }} Guardar cambios</button>
+    </div>
+  </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
+{% endblock %}

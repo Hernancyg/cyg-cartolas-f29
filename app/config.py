@@ -26,6 +26,17 @@ class Config:
     MS_TENANT_ID = os.environ.get("MS_TENANT_ID", "")
     MS_USER_UPN = os.environ.get("MS_USER_UPN", "")
 
+    # --- Pestaña "Consulta SII" (Contribuyente + RCV) ---
+    # Token de la cuenta de API Gateway (apigateway.cl), para consultar la
+    # situación tributaria de un RUT. Ver app/sii/client.py.
+    SII_APIGATEWAY_TOKEN = os.environ.get("SII_APIGATEWAY_TOKEN", "")
+    # apikey de la cuenta de SimpleAPI (simpleapi.cl), para el RCV.
+    SIMPLEAPI_KEY = os.environ.get("SIMPLEAPI_KEY", "")
+    # Llave Fernet propia de esta app para cifrar la clave del SII de cada
+    # empresa antes de guardarla en Supabase. Generar con:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    SII_CREDENTIALS_KEY = os.environ.get("SII_CREDENTIALS_KEY", "")
+
     # --- Flask ---
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "")
 
@@ -65,4 +76,19 @@ def validate_config(app):
             "MS_CLIENT_SECRET/MS_TENANT_ID/MS_USER_UPN): la pestaña "
             "'Reuniones' mostrará un mensaje de configuración pendiente "
             "en vez de las reuniones reales."
+        )
+    if not app.config.get("SII_APIGATEWAY_TOKEN"):
+        app.logger.warning(
+            "SII_APIGATEWAY_TOKEN no está configurado: 'Consulta SII → "
+            "Contribuyente' mostrará un mensaje de configuración pendiente."
+        )
+    if not app.config.get("SIMPLEAPI_KEY"):
+        app.logger.warning(
+            "SIMPLEAPI_KEY no está configurado: 'Consulta SII → RCV' "
+            "mostrará un mensaje de configuración pendiente."
+        )
+    if not app.config.get("SII_CREDENTIALS_KEY"):
+        app.logger.warning(
+            "SII_CREDENTIALS_KEY no está configurado: no se podrá guardar "
+            "la clave del SII de ninguna empresa en 'Empresas SII'."
         )

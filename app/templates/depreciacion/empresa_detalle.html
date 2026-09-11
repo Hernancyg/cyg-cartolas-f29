@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ empresa.nombre }} · Depreciación · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">{{ empresa.nombre }}</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  {{ empresa.rut or 'Sin RUT' }} ·
+  <a href="{{ url_for('depreciacion.empresas') }}">← volver a Empresas</a>
+</p>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('plus', 16) }} Agregar activo</div>
+  <form method="post" action="{{ url_for('depreciacion.activos_crear', empresa_id=empresa.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field" style="flex:2">
+        <label for="na_nombre">Nombre del activo</label>
+        <input type="text" id="na_nombre" name="nombre_activo" placeholder="Camioneta Toyota Hilux patente ABCD12">
+      </div>
+      <div class="field" style="flex:2">
+        <label for="na_categoria">Categoría (vida útil SII)</label>
+        <select id="na_categoria" name="categoria_id" onchange="depreciacionAutocompletarVidaUtil(this)">
+          <option value="" data-vida-util="">— manual (sin categoría) —</option>
+          {% for c in categorias %}
+          <option value="{{ c.id }}" data-vida-util="{{ c.vida_util_anios or '' }}">
+            {{ c.seccion }}: {{ c.descripcion }}{% if c.vida_util_anios %} ({{ c.vida_util_anios }} años){% else %} (vida útil variable){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="na_fecha">Fecha de adquisición</label><input type="date" id="na_fecha" name="fecha_adquisicion"></div>
+      <div class="field"><label for="na_valor">Valor de adquisición ($)</label><input type="text" id="na_valor" name="valor_adquisicion" placeholder="1.500.000"></div>
+      <div class="field"><label for="na_vida_util">Vida útil (años)</label><input type="number" id="na_vida_util" name="vida_util_anios" min="1"></div>
+    </div>
+    <button type="submit" class="btn">{{ icon('plus', 16) }} Agregar activo</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('key', 16) }} Activos fijos</div>
+  {% if activos %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Activo</th><th>Fecha adquisición</th><th>Valor adquisición</th><th>Vida útil</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        {% for a in activos %}
+        <tr>
+          <td>{{ a.nombre_activo }}</td>
+          <td>{{ a.fecha_adquisicion }}</td>
+          <td>{{ a.valor_adquisicion | clp }}</td>
+          <td>{{ a.vida_util_anios }} años</td>
+          <td>{{ 'Activo' if a.activo else 'Dado de baja' }}</td>
+          <td style="white-space:nowrap">
+            {% if a.activo %}
+            <form method="post" action="{{ url_for('depreciacion.activos_baja', empresa_id=empresa.id, activo_id=a.id) }}" style="display:inline" onsubmit="return confirm('¿Dar de baja {{ a.nombre_activo }}?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-secondary" title="Dar de baja">Dar de baja</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('depreciacion.activos_eliminar', empresa_id=empresa.id, activo_id=a.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar {{ a.nombre_activo }} por completo?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="row-remove" title="Eliminar">{{ icon('trash', 16) }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Todavía no has agregado ningún activo.</p>
+  {% endif %}
+</div>
+
+<div class="card highlight">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('calculator', 18) }}</div>
+    <div class="section-title">Tabla de depreciación — {{ periodo_label }}</div>
+  </div>
+
+  <form method="get" action="{{ url_for('depreciacion.empresa_detalle', empresa_id=empresa.id) }}" style="display:flex; gap:10px; align-items:end; margin-bottom:14px">
+    <div class="field">
+      <label for="periodo">Período</label>
+      <input type="month" id="periodo" name="periodo" value="{{ periodo }}">
+    </div>
+    <button type="submit" class="btn-secondary">Ver período</button>
+    <a href="{{ url_for('depreciacion.descargar', empresa_id=empresa.id, periodo=periodo) }}" class="btn">{{ icon('download', 16) }} Descargar Excel</a>
+  </form>
+
+  {% if tabla %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Activo</th><th>Fecha adquisición</th><th>Valor adquisición</th><th>Vida útil</th>
+          <th>Depreciación mensual</th><th>Meses depreciados</th><th>Depreciación acumulada</th><th>Valor libro</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in tabla %}
+        <tr>
+          <td>{{ f.nombre_activo }}{% if f.de_baja %} <span class="muted">(dado de baja)</span>{% endif %}</td>
+          <td>{{ f.fecha_adquisicion }}</td>
+          <td>{{ f.valor_adquisicion | clp }}</td>
+          <td>{{ f.vida_util_anios }} años</td>
+          <td>{{ f.depreciacion_mensual | clp }}</td>
+          <td>{{ f.meses_transcurridos }} / {{ f.meses_vida_util }}{% if f.completamente_depreciado %} <span class="muted">(depreciado)</span>{% endif %}</td>
+          <td>{{ f.depreciacion_acumulada | clp }}</td>
+          <td>{{ f.valor_libro | clp }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Ningún activo tenía fecha de adquisición dentro o antes de este período.</div>
+  {% endif %}
+</div>
+
+<script>
+function depreciacionAutocompletarVidaUtil(select) {
+  var opt = select.options[select.selectedIndex];
+  var vidaUtil = opt.getAttribute('data-vida-util');
+  var input = document.getElementById('na_vida_util');
+  if (vidaUtil) { input.value = vidaUtil; }
+}
+</script>
+{% endblock %}

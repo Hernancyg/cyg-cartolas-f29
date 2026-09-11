@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Consulta SII · RCV · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Consulta SII</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Registro de Compra y Venta (RCV) de una empresa cliente, vía SimpleAPI.</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('sii.contribuyente') }}" class="nav-item">Contribuyente</a>
+  <a href="{{ url_for('sii.rcv') }}" class="nav-item active">RCV</a>
+  <a href="{{ url_for('sii.empresas') }}" class="nav-item">Empresas SII</a>
+</div>
+
+{% if config_pendiente %}
+<div class="alert alert-info">
+  <strong>Falta conectar SimpleAPI.</strong> Crea una cuenta en
+  <a href="https://www.simpleapi.cl/" target="_blank" rel="noopener">simpleapi.cl</a>, copia tu apikey y
+  configúrala en Render (o en tu <code>.env</code> local) como <code>SIMPLEAPI_KEY</code>.
+</div>
+{% elif not empresas %}
+<div class="alert alert-info">
+  Todavía no has agregado ninguna empresa. Ve a <a href="{{ url_for('sii.empresas') }}">Empresas SII</a>
+  para agregar una con su clave del SII.
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:14px">{{ icon('reconcile', 16) }} Consultar RCV</div>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="empresa_id">Empresa</label>
+        <select id="empresa_id" name="empresa_id" {{ 'disabled' if config_pendiente or not empresas else '' }}>
+          <option value="">— elige —</option>
+          {% for e in empresas %}
+          <option value="{{ e.id }}" {{ 'selected' if e.id == empresa_id else '' }}>{{ e.nombre }} ({{ e.rut }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="periodo">Período</label>
+        <input type="month" id="periodo" name="periodo" value="{{ periodo }}" {{ 'disabled' if config_pendiente or not empresas else '' }}>
+      </div>
+      <div class="field">
+        <label for="tipo">Tipo</label>
+        <select id="tipo" name="tipo" {{ 'disabled' if config_pendiente or not empresas else '' }}>
+          <option value="venta" {{ 'selected' if tipo == 'venta' else '' }}>Ventas</option>
+          <option value="compra" {{ 'selected' if tipo == 'compra' else '' }}>Compras</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn" {{ 'disabled' if config_pendiente or not empresas else '' }}>{{ icon('reconcile', 16) }} Consultar</button>
+  </form>
+</div>
+
+{% if error %}
+<div class="alert alert-warn">{{ error }}</div>
+{% endif %}
+
+{% if resultado is not none %}
+  {% set filas = resultado if resultado is iterable and resultado is not mapping else (resultado.get('data') or resultado.get('detalle') or resultado.get('documentos') or []) %}
+  {% if filas %}
+  {% set columnas = filas[0].keys() | list %}
+  <div class="card highlight">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('reconcile', 18) }}</div>
+      <div class="section-title">{{ filas | length }} documento(s)</div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>{% for c in columnas %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for fila in filas %}
+          <tr>{% for c in columnas %}<td>{{ fila[c] }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No hay documentos para ese período.</div>
+  {% endif %}
+{% endif %}
+{% endblock %}

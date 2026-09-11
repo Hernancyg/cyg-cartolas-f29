@@ -72,6 +72,8 @@ def create_app():
     from app.reuniones.routes import reuniones_bp
     from app.conciliacion.routes import conciliacion_bp
     from app.caja_empresas.routes import caja_empresas_bp
+    from app.sii.routes import sii_bp
+    from app.depreciacion.routes import depreciacion_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(cartolas_bp)
@@ -82,6 +84,8 @@ def create_app():
     app.register_blueprint(reuniones_bp)
     app.register_blueprint(conciliacion_bp)
     app.register_blueprint(caja_empresas_bp)
+    app.register_blueprint(sii_bp)
+    app.register_blueprint(depreciacion_bp)
 
     @app.route("/")
     def raiz():

@@ -20,6 +20,8 @@ PAGINAS = [
     {"endpoint": "reuniones.index", "icon": "calendar", "label": "Reuniones", "admin_only": True, "configurable": True},
     {"endpoint": "conciliacion.index", "icon": "reconcile", "label": "Conciliación", "admin_only": True, "configurable": True},
     {"endpoint": "caja_empresas.index", "icon": "cash", "label": "Empresas Caja", "admin_only": True, "configurable": True},
+    {"endpoint": "sii.contribuyente", "icon": "shield", "label": "Consulta SII", "admin_only": True, "configurable": True},
+    {"endpoint": "depreciacion.empresas", "icon": "calculator", "label": "Depreciación", "admin_only": True, "configurable": True},
     {"endpoint": "admin.cuentas", "icon": "gear", "label": "Administrador", "admin_only": True, "configurable": False},
 ]
 

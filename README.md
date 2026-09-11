@@ -73,6 +73,87 @@ Los enlaces de Zoom se extraen automáticamente del cuerpo de la invitación
 reunión); los enlaces de Teams vienen directo del campo `onlineMeeting`
 de Graph cuando la reunión se creó como "Teams meeting" desde Outlook.
 
+## Consulta SII (Contribuyente + RCV)
+
+La pestaña "Consulta SII" (solo admin por defecto, configurable como las
+demás) tiene tres sub-pestañas:
+
+- **Contribuyente**: situación tributaria de cualquier RUT (razón social,
+  actividades, documentos timbrados, observaciones), vía
+  [API Gateway](https://www.apigateway.cl/products/sii/contribuyentes) —
+  no requiere las credenciales del contribuyente consultado.
+- **RCV**: Registro de Compra y Venta de una empresa cliente, vía
+  [SimpleAPI](https://www.simpleapi.cl/Productos/SimpleRCV) — a
+  diferencia de lo anterior, sí requiere la clave del SII de esa empresa
+  (ver "Empresas SII" más abajo).
+- **Empresas SII**: alta/baja de las empresas clientes y su clave del SII,
+  guardada siempre cifrada (nunca en texto plano) y solo usada
+  server-side para llamar a SimpleAPI.
+
+Para activarla:
+
+1. Crea una cuenta en [apigateway.cl](https://www.apigateway.cl/), copia
+   tu token y configúralo como `SII_APIGATEWAY_TOKEN`.
+2. Crea una cuenta en [simpleapi.cl](https://www.simpleapi.cl/), copia tu
+   apikey y configúrala como `SIMPLEAPI_KEY`.
+3. Genera una llave de cifrado propia de esta app (para la clave del SII
+   de cada empresa, nunca reutilices una llave de otro sistema):
+   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+   y configúrala como `SII_CREDENTIALS_KEY`.
+4. Ejecuta `migration/005_sii_empresas.sql` en Supabase (SQL Editor) para
+   crear la tabla `sii_empresas`.
+5. Agrega las 3 variables en Render y vuelve a desplegar. Si se dejan
+   vacías, cada sub-pestaña muestra un aviso de "falta configurar" en vez
+   de romper la app.
+
+**Proxy de API Gateway (opcional, recomendado si el volumen de consultas
+crece)**: API Gateway reparte las consultas de todos sus clientes entre
+un pool de IPs compartidas — para no depender de eso, se puede levantar
+un proxy propio (Docker + Squid, con IP pública propia) y configurarlo en
+el panel de apigateway.cl. Ver `proxy/README.md` para el paso a paso
+completo; es infraestructura separada de esta app (no se despliega en
+Render).
+
+**Nota sobre RCV**: el contrato exacto del endpoint de SimpleAPI
+(`app/sii/client.py:SIMPLEAPI_RCV_URL` y el body de `consultar_rcv`) se
+armó a partir de su documentación pública, sin poder confirmarlo contra
+una cuenta real — revísalo contra `documentacion.simpleapi.cl` (o con su
+soporte) apenas tengas acceso, antes de confiar en él en producción.
+
+## Depreciación
+
+La pestaña "Depreciación" (solo admin por defecto, configurable como las
+demás) genera la tabla de depreciación **lineal normal** (Art. 31 N°5 LIR)
+de los activos fijos de cada empresa cliente, según la vida útil que fija
+el SII por tipo de bien.
+
+- **Empresas**: registro propio de esta pestaña (RUT opcional + nombre),
+  sin relación con "Empresas SII" de "Consulta SII".
+- Dentro de cada empresa: se agregan sus activos fijos (persisten en
+  Supabase — quedan disponibles mes a mes, no hay que volver a cargarlos),
+  eligiendo una categoría del catálogo SII (autocompleta la vida útil
+  sugerida, editable) o ingresando la vida útil a mano. Un activo se
+  puede dar de baja (deja de sumarse hacia adelante, pero sigue apareciendo
+  en la tabla de los meses ya pasados) o eliminar del todo.
+- La tabla de depreciación se calcula al vuelo para el mes/año elegido
+  (depreciación mensual = valor de adquisición / (vida útil en años × 12),
+  sin valor residual; una vez agotada la vida útil, el valor libro queda
+  en $1 mientras el bien siga en uso, como exige el SII) y se puede
+  descargar en Excel.
+- **Categorías SII**: catálogo editable de "tipo de bien → años de vida
+  útil normal", con una semilla tomada de la
+  [tabla oficial del SII](https://www.sii.cl/valores_y_fechas/tabla_vida_util_activo_inmovilizado.html)
+  (Resolución N°43 de 2002) — se incluyeron las secciones de uso más común
+  (activos genéricos, construcción, transporte terrestre, agricultura,
+  otras) y se dejaron fuera las muy específicas de industrias reguladas
+  grandes (minería, transporte marítimo, sector eléctrico, petróleo y
+  gas, telecomunicaciones); se agregan a mano desde esta misma pantalla
+  si algún cliente las llegara a necesitar. Ver
+  `app/data/depreciacion_categorias_repo.py` para el detalle completo.
+
+Ejecuta `migration/006_depreciacion.sql` en Supabase (SQL Editor) para
+crear las tablas la primera vez.
+
 ## Estructura del proyecto
 
 ```
@@ -85,6 +166,8 @@ app/
   cartolas/    ruta "Subir Cartolas"
   f29/         ruta "Generar CSV F29"
   admin/       ruta "Administrador" (cuentas F29 + usuarios)
+  sii/         ruta "Consulta SII" (Contribuyente, RCV, Empresas SII)
+  depreciacion/ ruta "Depreciación" (Empresas, Activos, Categorías SII)
   templates/   HTML (Jinja2), estilo pixel-perfect al mockup
   static/      CSS, JS (agregar/quitar filas), logos de banco, íconos
 wsgi.py        punto de entrada para gunicorn

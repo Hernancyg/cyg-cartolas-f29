@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Consulta SII · Empresas · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Consulta SII</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Empresas clientes y su clave del SII, guardada cifrada — la usa "RCV" para llamar a SimpleAPI en su nombre.</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('sii.contribuyente') }}" class="nav-item">Contribuyente</a>
+  <a href="{{ url_for('sii.rcv') }}" class="nav-item">RCV</a>
+  <a href="{{ url_for('sii.empresas') }}" class="nav-item active">Empresas SII</a>
+</div>
+
+<div class="alert alert-info">
+  La clave del SII de cada empresa se guarda cifrada y nunca se vuelve a mostrar en pantalla — solo se puede
+  reemplazar por una nueva. Solo el servidor (con <code>SII_CREDENTIALS_KEY</code>) puede leerla para consultar el RCV.
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('key', 16) }} Empresas</div>
+  {% if empresas %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>RUT</th><th>Nombre</th><th>Clave SII</th><th></th></tr></thead>
+      <tbody>
+        {% for e in empresas %}
+        <tr>
+          <td>{{ e.rut }}</td>
+          <td>{{ e.nombre }}</td>
+          <td>
+            <form method="post" action="{{ url_for('sii.empresas_actualizar_clave', empresa_id=e.id) }}" style="display:flex; gap:6px; align-items:center">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <span class="muted" style="font-size:12px">{{ 'guardada ✓' if e.clave_sii_cifrada else 'sin clave' }}</span>
+              <input type="password" name="clave_sii" placeholder="nueva clave" autocomplete="new-password" style="max-width:140px">
+              <button type="submit" class="btn-secondary" title="Guardar nueva clave">{{ icon('save', 16) }}</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('sii.empresas_eliminar', empresa_id=e.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar la empresa {{ e.nombre }}?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="row-remove" title="Eliminar empresa">{{ icon('trash', 16) }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Todavía no has agregado ninguna empresa.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:14px">Agregar empresa</div>
+  <form method="post" action="{{ url_for('sii.empresas_crear') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <div class="field"><label for="ne_rut">RUT</label><input type="text" id="ne_rut" name="rut" placeholder="76192083-9"></div>
+      <div class="field"><label for="ne_nombre">Nombre</label><input type="text" id="ne_nombre" name="nombre"></div>
+      <div class="field"><label for="ne_clave">Clave del SII (opcional, solo si vas a usar "RCV")</label><input type="password" id="ne_clave" name="clave_sii" autocomplete="new-password"></div>
+    </div>
+    <button type="submit" class="btn">{{ icon('plus', 16) }} Agregar empresa</button>
+  </form>
+</div>
+{% endblock %}
