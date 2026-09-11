@@ -14,7 +14,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.run_verification import flask_app, FAKE, seed_data  # noqa: E402
-from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO  # noqa: E402
 from app.depreciacion import comprobantes  # noqa: E402
 from app.depreciacion.calculo import calcular_fila, calcular_kardex, calcular_tabla  # noqa: E402
 from app.data import depreciacion_categorias_repo  # noqa: E402
@@ -152,52 +151,65 @@ def test_kardex():
 
 
 def test_comprobantes():
-    """`app/depreciacion/comprobantes.py`: validación de cuentas y armado
-    de las líneas del comprobante (con y sin corrección monetaria)."""
-    activo = {"nombre_activo": "Grua horquilla", "vida_util_anios": 10, "valor_adquisicion": 8_250_000}
-    pendientes_sin_ccmm = [{"fecha": "2017-12-31", "depreciacion_ejercicio": 550_000, "correccion_monetaria": 0}]
+    """`app/depreciacion/comprobantes.py` (rediseño 11-09-2026: se
+    consolida por GRUPO CONTABLE, no por activo individual)."""
+    grua = {"nombre_activo": "Grua horquilla", "grupo_contable_codigo": None}
+    camion = {"nombre_activo": "Camion 1", "grupo_contable_codigo": "1204-01"}
+    camion2 = {"nombre_activo": "Camion 2", "grupo_contable_codigo": "1204-01"}
+    pend_camion1 = [{"fecha": "2017-12-31", "depreciacion_ejercicio": 550_000, "correccion_monetaria": 0}]
+    pend_camion2 = [{"fecha": "2018-12-31", "depreciacion_ejercicio": 825_000, "correccion_monetaria": 50_000}]
 
-    # Sin ninguna cuenta configurada.
+    # agrupar_pendientes: sin grupo asignado -> queda en "sin grupo", no se agrupa.
+    grupos, sin_grupo = comprobantes.agrupar_pendientes([(grua, pend_camion1), (camion, []), (camion2, [])])
+    check("activo sin grupo con pendientes -> aparece en 'sin grupo'", sin_grupo == ["Grua horquilla"])
+    check("activo CON grupo pero sin pendientes -> no aparece en ningún lado", grupos == {} and "Camion 1" not in sin_grupo)
+
+    # Dos activos del MISMO grupo -> se suman en una sola entrada.
+    grupos, sin_grupo = comprobantes.agrupar_pendientes([(camion, pend_camion1), (camion2, pend_camion2)])
+    check("dos activos del mismo grupo -> una sola entrada de grupo", list(grupos.keys()) == ["1204-01"])
+    check("se suman los montos de ambos activos", grupos["1204-01"]["ejercicio"] == 550_000 + 825_000 and grupos["1204-01"]["correccion"] == 50_000)
+    check("guarda los nombres de los activos incluidos", grupos["1204-01"]["nombres_activos"] == ["Camion 1", "Camion 2"])
+    check("ningún activo sin grupo en este caso", sin_grupo == [])
+
+    # validar_grupos: sin configurar en absoluto.
     try:
-        comprobantes.validar_cuentas(activo, pendientes_sin_ccmm)
-        check("sin cuentas y con pendientes -> debería haber lanzado CuentaFaltante", False)
-    except comprobantes.CuentaFaltante as exc:
-        check("sin cuentas: exige Gasto por Depreciación", "Gasto por Depreciación" in exc.cuentas_faltantes)
-        check("sin cuentas: exige Depreciación Acumulada", "Depreciación Acumulada" in exc.cuentas_faltantes)
-        check("sin cuentas: NO exige Corrección Monetaria (ningún pendiente la usa)", "Corrección Monetaria" not in exc.cuentas_faltantes)
+        comprobantes.validar_grupos(grupos, {})
+        check("grupo sin configurar -> debería haber lanzado GrupoFaltante", False)
+    except comprobantes.GrupoFaltante as exc:
+        check("avisa que el grupo no está configurado", "sin configurar" in str(exc))
 
-    check("sin pendientes, no exige nada aunque no haya cuentas", comprobantes.validar_cuentas(activo, []) is None)
-
-    # Con las 2 cuentas básicas, pero un pendiente CON corrección monetaria -> también exige la 3ª.
-    activo_2cuentas = {**activo, "cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25"}
-    pendiente_con_ccmm = [{"fecha": "2018-12-31", "depreciacion_ejercicio": 825_000, "correccion_monetaria": 50_000}]
+    # Con 2 cuentas pero falta Corrección Monetaria (el grupo trae corrección != 0).
+    grupos_contables_2 = {"1204-01": {"cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25"}}
     try:
-        comprobantes.validar_cuentas(activo_2cuentas, pendiente_con_ccmm)
-        check("con corrección y sin cuenta CCMM -> debería haber lanzado CuentaFaltante", False)
-    except comprobantes.CuentaFaltante as exc:
-        check("con corrección monetaria != 0, exige esa 3ª cuenta", exc.cuentas_faltantes == ["Corrección Monetaria"])
+        comprobantes.validar_grupos(grupos, grupos_contables_2)
+        check("con corrección y sin cuenta CCMM -> debería haber lanzado GrupoFaltante", False)
+    except comprobantes.GrupoFaltante as exc:
+        check("exige la cuenta de Corrección Monetaria cuando el grupo la necesita", "Corrección Monetaria" in str(exc))
 
-    # Con las 3 cuentas: arma las filas del comprobante.
-    activo_3cuentas = {**activo_2cuentas, "cuenta_correccion_codigo": "5501-05"}
-    comprobantes.validar_cuentas(activo_3cuentas, pendiente_con_ccmm)  # no debería lanzar
-    filas = comprobantes.construir_filas(activo_3cuentas, pendiente_con_ccmm, CUENTAS_POR_CODIGO)
-    check("3 líneas cuando hay corrección monetaria positiva (gasto + corrección + acumulada)", len(filas) == 3)
+    # Con las 3 cuentas: arma las filas del comprobante, consolidadas.
+    grupos_contables_3 = {"1204-01": {**grupos_contables_2["1204-01"], "cuenta_correccion_codigo": "5501-05"}}
+    comprobantes.validar_grupos(grupos, grupos_contables_3)  # no debería lanzar
+    filas = comprobantes.construir_filas(grupos, grupos_contables_3, "2018-12-31", "Diciembre 2018")
+    check("3 líneas cuando el grupo trae corrección monetaria positiva", len(filas) == 3)
     total_debe = sum(f[8] for f in filas if f[8])
     total_haber = sum(f[9] for f in filas if f[9])
-    check("el comprobante queda balanceado (Debe == Haber)", total_debe == total_haber == 875_000)
-    check("la línea de Depreciación Acumulada va al Haber por el total (ejercicio + corrección)", filas[2][9] == 875_000 and filas[2][4] == "1207-25")
-    check("la línea de Gasto por Depreciación va al Debe por el ejercicio solo", filas[0][8] == 825_000 and filas[0][4] == "4205-05")
-    check("la línea de Corrección Monetaria va al Debe (factor > 1)", filas[1][8] == 50_000 and filas[1][4] == "5501-05")
+    check("el comprobante consolidado queda balanceado (Debe == Haber)", total_debe == total_haber == 1_425_000)
+    check("Gasto por Depreciación = suma de AMBOS activos del grupo", filas[0][8] == 1_375_000 and filas[0][4] == "4205-05")
+    check("Corrección Monetaria = suma del grupo", filas[1][8] == 50_000 and filas[1][4] == "5501-05")
+    check("Depreciación Acumulada = total consolidado", filas[2][9] == 1_425_000 and filas[2][4] == "1207-25")
+    check("la glosa incluye la descripción del grupo y el período", "VEHICULOS" in filas[0][3] and "Diciembre 2018" in filas[0][3])
     check("Centro Costo se llena en las cuentas que lo requieren (4205-05 y 5501-05)", filas[0][6] == 100 and filas[1][6] == 100)
     check("Centro Costo vacío en la cuenta que no lo requiere (1207-25)", filas[2][6] == "")
 
     # Sin corrección monetaria: solo 2 líneas.
-    filas_sin_ccmm = comprobantes.construir_filas(activo_3cuentas, pendientes_sin_ccmm, CUENTAS_POR_CODIGO)
+    grupos_sin_ccmm, _ = comprobantes.agrupar_pendientes([(camion, pend_camion1)])
+    filas_sin_ccmm = comprobantes.construir_filas(grupos_sin_ccmm, grupos_contables_3, "2017-12-31", "Diciembre 2017")
     check("2 líneas cuando no hay corrección monetaria", len(filas_sin_ccmm) == 2)
 
-    # Corrección monetaria negativa (factor < 1, caso raro): va al Haber en vez del Debe, y sigue balanceado.
-    pendiente_ccmm_negativa = [{"fecha": "2019-12-31", "depreciacion_ejercicio": 825_000, "correccion_monetaria": -30_000}]
-    filas_negativas = comprobantes.construir_filas(activo_3cuentas, pendiente_ccmm_negativa, CUENTAS_POR_CODIGO)
+    # Corrección monetaria negativa (factor < 1, caso raro): va al Haber, sigue balanceado.
+    pend_negativa = [{"fecha": "2019-12-31", "depreciacion_ejercicio": 825_000, "correccion_monetaria": -30_000}]
+    grupos_neg, _ = comprobantes.agrupar_pendientes([(camion, pend_negativa)])
+    filas_negativas = comprobantes.construir_filas(grupos_neg, grupos_contables_3, "2019-12-31", "Diciembre 2019")
     total_debe_neg = sum(f[8] for f in filas_negativas if f[8])
     total_haber_neg = sum(f[9] for f in filas_negativas if f[9])
     check("corrección negativa: sigue balanceado", total_debe_neg == total_haber_neg == 825_000)
@@ -327,7 +339,7 @@ def test_asientos_flujo():
 
     client.post(
         f"/depreciacion/empresas/{empresa_id}/activos/crear",
-        data={"nombre_activo": "Grua horquilla", "fecha_adquisicion": "2017-04-01", "valor_adquisicion": "8250000", "vida_util_anios": "10", "categoria_id": ""},
+        data={"nombre_activo": "Grua horquilla", "fecha_adquisicion": "2017-04-01", "valor_adquisicion": "8250000", "vida_util_anios": "10", "categoria_id": "", "grupo_contable_codigo": ""},
         follow_redirects=True,
     )
     activo = FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data[0]
@@ -339,30 +351,36 @@ def test_asientos_flujo():
         follow_redirects=True,
     )
 
-    # Sin cuentas configuradas: el listado de pendientes avisa qué falta.
-    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos")
+    # Sin grupo contable asignado: el panel avisa que ese activo queda afuera.
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos?periodo=2018-12")
     body = r.get_data(as_text=True)
     check("GET /asientos -> 200", r.status_code == 200)
-    check("sin cuentas: avisa qué falta", "Faltan" in body and "Gasto por Depreciación" in body)
+    check("sin grupo: avisa que ese activo no se incluye", "Sin grupo contable" in body and "Grua horquilla" in body)
 
-    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", follow_redirects=True)
-    check("generar sin cuentas -> no descarga, avisa el motivo", r.status_code == 200 and "faltan cuentas" in r.get_data(as_text=True).lower())
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", data={"periodo": "2018-12"}, follow_redirects=True)
+    check("generar sin grupo -> no descarga, avisa el motivo", r.status_code == 200 and "sin grupo contable asignado" in r.get_data(as_text=True).lower())
     check("no se creó ningún asiento todavía", FAKE.table("depreciacion_asientos").select("*").execute().data == [])
 
-    # Configura las 3 cuentas (la 2ª fila trae Factor CCMM 1.05 -> sí hay corrección).
+    # Asigna el activo a un grupo contable, y configura ese grupo (una vez, no por activo).
     r = client.post(
-        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/cuentas/guardar",
-        data={"cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25", "cuenta_correccion_codigo": "5501-05"},
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/grupo/guardar",
+        data={"grupo_contable_codigo": "1204-01"}, follow_redirects=True,
+    )
+    check("asignar grupo al activo -> ok", r.status_code == 200 and "guardado" in r.get_data(as_text=True).lower())
+
+    r = client.post(
+        "/depreciacion/grupos-contables/guardar",
+        data={"grupo_codigo": "1204-01", "cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25", "cuenta_correccion_codigo": "5501-05"},
         follow_redirects=True,
     )
-    check("guardar cuentas -> ok", r.status_code == 200 and "guardadas" in r.get_data(as_text=True).lower())
+    check("guardar grupo contable -> ok", r.status_code == 200 and "guardado" in r.get_data(as_text=True).lower())
 
-    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos")
-    check("con las 3 cuentas, ya no avisa que faltan", "Faltan" not in r.get_data(as_text=True))
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos?periodo=2018-12")
+    check("con el grupo configurado, ya no hay activos sin grupo", "Sin grupo contable" not in r.get_data(as_text=True))
 
-    # Generar: descarga el .xls y marca las 2 fechas como asentadas.
-    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar")
-    check("generar con cuentas completas -> 200, descarga un .xls", r.status_code == 200 and r.headers.get("Content-Type") == "application/vnd.ms-excel")
+    # Generar hasta 2018-12 (coincide con la última fila del kardex, no hace falta extenderlo): descarga y marca.
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", data={"periodo": "2018-12"})
+    check("generar con grupo completo -> 200, descarga un .xls", r.status_code == 200 and r.headers.get("Content-Type") == "application/vnd.ms-excel")
 
     asentados = FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data
     check("quedaron 2 asientos generados (uno por período)", len(asentados) == 2)
@@ -370,29 +388,46 @@ def test_asientos_flujo():
     check("las fechas asentadas son las 2 del kardex", fechas_asentadas == {"2017-12-31", "2018-12-31"})
     fila_2018 = [a for a in asentados if a["fecha"] == "2018-12-31"][0]
     check("el monto de corrección quedó guardado (Factor CCMM 1.05 sobre apertura 550.000)", fila_2018["monto_correccion"] == round(550_000 * 0.05))
+    check("el kardex NO se extendió (2018-12 ya existía)", len(FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data) == 2)
 
-    # Generar de nuevo, sin agregar períodos nuevos: no hay nada pendiente.
-    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", follow_redirects=True)
-    check("generar de nuevo sin períodos nuevos -> avisa que no hay nada pendiente, no duplica", "no había ningún período pendiente" in r.get_data(as_text=True).lower())
+    # Generar de nuevo el mismo mes: no hay nada pendiente, no duplica.
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", data={"periodo": "2018-12"}, follow_redirects=True)
+    check("generar de nuevo el mismo mes -> avisa que no hay nada pendiente, no duplica", "no había ningún período pendiente" in r.get_data(as_text=True).lower())
     check("sigue habiendo solo 2 asientos (no se duplicó)", len(FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data) == 2)
 
-    # Agrega un 3er período: solo ESE queda pendiente.
-    client.post(
-        f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/periodos/guardar",
-        data={"p_fecha": ["2017-12-31", "2018-12-31", "2019-12-31"], "p_meses": ["8", "12", "12"], "p_factor_ccmm": ["1", "1.05", "1"]},
-        follow_redirects=True,
-    )
-    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos")
-    check("con un 3er período nuevo, aparece 1 pendiente (no 3)", "<td>1</td>" in r.get_data(as_text=True))
+    # Pide junio de 2019 (6 meses después de la última fila, dic-2018): el kardex se extiende SOLO al generar.
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos?periodo=2019-06")
+    check("previsualizar un mes que el kardex no alcanza -> NO escribe nada (GET no muta)", len(FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data) == 2)
+    check("la vista previa igual muestra el monto proyectado de ese mes", "1204-01" in r.get_data(as_text=True) or "VEHICULOS" in r.get_data(as_text=True))
 
-    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar")
-    check("generar el 3er período -> 200, descarga de nuevo", r.status_code == 200)
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/asientos/generar", data={"periodo": "2019-06"})
+    check("generar junio 2019 -> 200, descarga de nuevo", r.status_code == 200)
+
+    periodos_finales = FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data
+    check("el kardex SÍ quedó extendido con una fila nueva (2019-06-30, 6 meses)", any(p["fecha"] == "2019-06-30" and p["meses_utilizados"] == 6 for p in periodos_finales))
     check("ahora hay 3 asientos en total", len(FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data) == 3)
 
-    # Deshacer el asiento de 2019 -> vuelve a quedar pendiente.
-    r = client.post(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/asientos/2019-12-31/deshacer", follow_redirects=True)
+    # Deshacer el asiento de la fila auto-generada -> vuelve a quedar pendiente.
+    r = client.post(f"/depreciacion/empresas/{empresa_id}/activos/{activo_id}/asientos/2019-06-30/deshacer", follow_redirects=True)
     check("deshacer asiento -> ok", r.status_code == 200 and "deshecho" in r.get_data(as_text=True).lower())
-    check("vuelve a haber 2 asientos (se deshizo el de 2019)", len(FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data) == 2)
+    check("vuelve a haber 2 asientos (se deshizo el de 2019-06)", len(FAKE.table("depreciacion_asientos").select("*").eq("activo_id", activo_id).execute().data) == 2)
+
+    # Segundo activo, mismo grupo contable: sus pendientes se CONSOLIDAN con los del primero en una sola línea.
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/crear",
+        data={"nombre_activo": "Camion 2", "fecha_adquisicion": "2019-01-01", "valor_adquisicion": "6000000", "vida_util_anios": "5", "categoria_id": "", "grupo_contable_codigo": "1204-01"},
+        follow_redirects=True,
+    )
+    activo2 = [a for a in FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data if a["nombre_activo"] == "Camion 2"][0]
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/{activo2['id']}/periodos/guardar",
+        data={"p_fecha": ["2019-06-30"], "p_meses": ["6"], "p_factor_ccmm": ["1"]},
+        follow_redirects=True,
+    )
+
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/asientos?periodo=2019-06")
+    body = r.get_data(as_text=True)
+    check("ambos activos del grupo aparecen listados en la misma fila del grupo", "Grua horquilla" in body and "Camion 2" in body)
 
 
 def test_categorias_guardar():

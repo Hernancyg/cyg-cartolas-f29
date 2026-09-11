@@ -17,13 +17,24 @@ repo.py`) de los activos fijos de cada empresa cliente.
     Acumulada/Valor libro encadenados fila a fila.
   - "Categorías SII": el catálogo editable de "tipo de bien -> vida útil
     normal" que sugiere la vida útil al agregar un activo nuevo.
-  - "Generar asiento": arma el comprobante contable (mismo formato de 17
-    columnas que F29/Conciliación/Caja Empresas) de la depreciación del
-    ejercicio + corrección monetaria de cada activo — solo de los
-    períodos del kardex que todavía no se hayan asentado antes (ver
-    `app/data/depreciacion_asientos_repo.py`, la "memoria" de lo ya
-    generado, y `app/depreciacion/comprobantes.py` para el armado de cada
-    línea).
+  - "Grupos Contables": las 3 cuentas de depreciación (Gasto/Acumulada/
+    Corrección Monetaria) de cada "cuenta del activo fijo" (ej.
+    "1204-01 VEHICULOS") — se configuran UNA vez por grupo, no por cada
+    activo individual (rediseño 11-09-2026, ver `app/data/depreciacion_
+    grupos_contables_repo.py`). Cada activo solo elige a qué grupo
+    pertenece al crearlo.
+  - "Generar asiento": elige un mes/año a gestionar y arma el comprobante
+    contable (mismo formato de 17 columnas que F29/Conciliación/Caja
+    Empresas) CONSOLIDADO por grupo contable (todos los activos de un
+    mismo grupo suman en una sola línea) — solo con los períodos del
+    kardex que todavía no se hayan asentado antes (ver `app/data/
+    depreciacion_asientos_repo.py`, la "memoria" de lo ya generado, y
+    `app/depreciacion/comprobantes.py` para el armado de cada línea). Si
+    el kardex de un activo todavía no llega hasta el mes elegido, se le
+    agrega automáticamente una fila nueva que cubra los meses que faltan
+    (factor CCMM 1, editable después a mano en su kardex si hace falta
+    corregirlo) — así no hay que ir período por período a cada activo
+    antes de poder generar.
 
 El cálculo en sí (`app/depreciacion/calculo.py`) no toca Supabase — así se
 puede testear con datos en memoria.
@@ -38,10 +49,10 @@ from app.auth.decorators import pagina_required
 from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO, PLAN_CUENTAS
 from app.data import (
     depreciacion_activos_repo, depreciacion_asientos_repo, depreciacion_categorias_repo,
-    depreciacion_empresas_repo, depreciacion_periodos_repo,
+    depreciacion_empresas_repo, depreciacion_grupos_contables_repo, depreciacion_periodos_repo,
 )
 from app.depreciacion import comprobantes
-from app.depreciacion.calculo import calcular_kardex, calcular_tabla
+from app.depreciacion.calculo import calcular_kardex, calcular_tabla, meses_faltantes, parse_fecha, ultimo_dia_mes
 from app.depreciacion.export_writer import build_comprobantes_workbook, build_empresa_kardex_workbook, build_kardex_workbook
 
 depreciacion_bp = Blueprint("depreciacion", __name__, url_prefix="/depreciacion")
@@ -125,7 +136,7 @@ def empresa_detalle(empresa_id):
 
     return render_template(
         "depreciacion/empresa_detalle.html",
-        empresa=empresa, activos=activos, categorias=categorias, tabla=tabla,
+        empresa=empresa, activos=activos, categorias=categorias, tabla=tabla, cuentas=PLAN_CUENTAS,
         periodo=f"{year:04d}-{month:02d}", periodo_label=f"{MESES_LABEL[month - 1]} {year}",
     )
 
@@ -143,6 +154,7 @@ def activos_crear(empresa_id):
     valor_adquisicion_raw = (request.form.get("valor_adquisicion") or "").replace(".", "").replace(",", ".")
     vida_util_raw = (request.form.get("vida_util_anios") or "").strip()
     categoria_id = request.form.get("categoria_id") or None
+    grupo_contable_codigo = request.form.get("grupo_contable_codigo") or None
 
     errores = []
     if not nombre_activo:
@@ -171,6 +183,7 @@ def activos_crear(empresa_id):
 
     depreciacion_activos_repo.crear_activo(
         empresa_id, categoria_id, nombre_activo, fecha_adquisicion, valor_adquisicion, vida_util_anios,
+        grupo_contable_codigo,
     )
     flash(f"Activo '{nombre_activo}' agregado.", "success")
     return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
@@ -235,34 +248,29 @@ def activo_detalle(empresa_id, activo_id):
     periodos = depreciacion_periodos_repo.listar_por_activo(activo_id)
     kardex = calcular_kardex(activo, periodos)
     fechas_asentadas = depreciacion_asientos_repo.fechas_ya_generadas(activo_id)
+    grupo_actual_descripcion = CUENTAS_POR_CODIGO.get(activo.get("grupo_contable_codigo") or "", {}).get("descripcion", "")
 
     return render_template(
         "depreciacion/activo_detalle.html", empresa=empresa, activo=activo, filas=list(zip(periodos, kardex)),
-        cuentas=PLAN_CUENTAS, cuentas_por_codigo=CUENTAS_POR_CODIGO, fechas_asentadas=fechas_asentadas,
+        cuentas=PLAN_CUENTAS, fechas_asentadas=fechas_asentadas, grupo_actual_descripcion=grupo_actual_descripcion,
     )
 
 
-@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/cuentas/guardar", methods=["POST"])
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/grupo/guardar", methods=["POST"])
 @pagina_required("depreciacion.empresas")
-def activo_cuentas_guardar(empresa_id, activo_id):
+def activo_grupo_guardar(empresa_id, activo_id):
     activo = depreciacion_activos_repo.obtener_activo(activo_id)
     if not activo or activo["empresa_id"] != empresa_id:
         flash("Ese activo ya no existe.", "error")
         return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
 
-    for campo in ("cuenta_gasto_codigo", "cuenta_acumulada_codigo", "cuenta_correccion_codigo"):
-        codigo = request.form.get(campo) or None
-        if codigo and codigo not in CUENTAS_POR_CODIGO:
-            flash("Una de las cuentas elegidas no existe en el plan de cuentas — vuelve a buscarla.", "error")
-            return redirect(url_for("depreciacion.activo_detalle", empresa_id=empresa_id, activo_id=activo_id))
+    codigo = request.form.get("grupo_contable_codigo") or None
+    if codigo and codigo not in CUENTAS_POR_CODIGO:
+        flash("Ese grupo contable no existe en el plan de cuentas — vuelve a buscarlo.", "error")
+        return redirect(url_for("depreciacion.activo_detalle", empresa_id=empresa_id, activo_id=activo_id))
 
-    depreciacion_activos_repo.actualizar_cuentas(
-        activo_id,
-        request.form.get("cuenta_gasto_codigo") or None,
-        request.form.get("cuenta_acumulada_codigo") or None,
-        request.form.get("cuenta_correccion_codigo") or None,
-    )
-    flash("Cuentas contables guardadas.", "success")
+    depreciacion_activos_repo.actualizar_grupo_contable(activo_id, codigo)
+    flash("Grupo contable guardado.", "success")
     return redirect(url_for("depreciacion.activo_detalle", empresa_id=empresa_id, activo_id=activo_id))
 
 
@@ -337,16 +345,60 @@ def kardex_descargar(empresa_id, activo_id):
 
 
 # ---------------------------------------------------------------------------
-# Generar asiento contable (comprobante) de todos los activos de la empresa
+# Generar asiento contable (comprobante) — consolidado por grupo contable,
+# para un mes/año elegido
 # ---------------------------------------------------------------------------
 
-def _pendientes_por_activo(empresa_id):
-    """{activo_id: (activo, [filas de calcular_kardex sin asiento todavía])}
-    para cada activo de la empresa, en el mismo orden de
-    `depreciacion_activos_repo.listar_por_empresa`."""
+def _parsear_mes_anio(valor):
+    """'YYYY-MM' -> (year, month); el mes actual si falta o viene mal
+    formado."""
+    if valor:
+        try:
+            year_str, month_str = valor.split("-")
+            year, month = int(year_str), int(month_str)
+            if 1 <= month <= 12:
+                return year, month
+        except (ValueError, AttributeError):
+            pass
+    hoy = date.today()
+    return hoy.year, hoy.month
+
+
+def _extender_periodos(activo, periodos, anio, mes, persistir):
+    """Si el kardex de `activo` (ya filtrado a los períodos <= anio-mes)
+    no llega todavía hasta el cierre de anio-mes, agrega una fila que
+    cubra los meses que faltan (factor CCMM 1, editable después a mano).
+    Con `persistir=False` la fila se arma solo en memoria (para la
+    vista previa de "Generar asiento", que es un GET y no debería
+    escribir nada); con `persistir=True` (al generar de verdad) queda
+    guardada en Supabase, así el kardex del activo la sigue mostrando
+    después."""
+    fecha_ultima = parse_fecha(periodos[-1]["fecha"]) if periodos else None
+    fecha_adq = parse_fecha(activo["fecha_adquisicion"])
+    faltan = meses_faltantes(fecha_ultima, fecha_adq, anio, mes)
+    if faltan <= 0:
+        return periodos
+    fecha_nueva = ultimo_dia_mes(anio, mes).isoformat()
+    if persistir:
+        nueva = depreciacion_periodos_repo.agregar_periodo(activo["id"], fecha_nueva, faltan, 1.0)
+    else:
+        nueva = {"fecha": fecha_nueva, "meses_utilizados": faltan, "factor_ccmm": 1.0}
+    return periodos + [nueva]
+
+
+def _ordinal(fecha) -> int:
+    return fecha.year * 12 + fecha.month
+
+
+def _pendientes_por_activo(empresa_id, anio, mes, persistir=False):
+    """[(activo, [filas de calcular_kardex sin asiento todavía, hasta
+    anio-mes inclusive])] para cada activo de la empresa."""
+    objetivo_ordinal = anio * 12 + mes
     resultado = []
     for activo in depreciacion_activos_repo.listar_por_empresa(empresa_id):
         periodos = depreciacion_periodos_repo.listar_por_activo(activo["id"])
+        periodos = [p for p in periodos if _ordinal(parse_fecha(p["fecha"])) <= objetivo_ordinal]
+        periodos = _extender_periodos(activo, periodos, anio, mes, persistir)
         kardex = calcular_kardex(activo, periodos)
         asentadas = depreciacion_asientos_repo.fechas_ya_generadas(activo["id"])
         pendientes = [k for k in kardex if k["fecha"] not in asentadas]
@@ -362,16 +414,27 @@ def asientos(empresa_id):
         flash("Esa empresa ya no existe.", "error")
         return redirect(url_for("depreciacion.empresas"))
 
-    filas = []
-    for activo, pendientes in _pendientes_por_activo(empresa_id):
-        try:
-            comprobantes.validar_cuentas(activo, pendientes)
-            cuentas_faltantes = []
-        except comprobantes.CuentaFaltante as exc:
-            cuentas_faltantes = exc.cuentas_faltantes
-        filas.append({"activo": activo, "pendientes": pendientes, "cuentas_faltantes": cuentas_faltantes})
+    anio, mes = _parsear_mes_anio(request.args.get("periodo"))
+    activos_con_pendientes = _pendientes_por_activo(empresa_id, anio, mes, persistir=False)
+    grupos, activos_sin_grupo = comprobantes.agrupar_pendientes(activos_con_pendientes)
+    grupos_contables = {g["codigo"]: g for g in depreciacion_grupos_contables_repo.listar()}
 
-    return render_template("depreciacion/asientos.html", empresa=empresa, filas=filas)
+    filas = []
+    for codigo, datos in grupos.items():
+        try:
+            comprobantes.validar_grupos({codigo: datos}, grupos_contables)
+            error = None
+        except comprobantes.GrupoFaltante as exc:
+            error = str(exc)
+        filas.append({
+            "codigo": codigo, "descripcion": CUENTAS_POR_CODIGO.get(codigo, {}).get("descripcion", codigo),
+            "datos": datos, "error": error,
+        })
+
+    return render_template(
+        "depreciacion/asientos.html", empresa=empresa, filas=filas, activos_sin_grupo=activos_sin_grupo,
+        periodo=f"{anio:04d}-{mes:02d}", periodo_label=f"{MESES_LABEL[mes - 1]} {anio}",
+    )
 
 
 @depreciacion_bp.route("/empresas/<empresa_id>/asientos/generar", methods=["POST"])
@@ -382,37 +445,45 @@ def asientos_generar(empresa_id):
         flash("Esa empresa ya no existe.", "error")
         return redirect(url_for("depreciacion.empresas"))
 
-    todas_las_filas = []
-    nuevos_asientos = []
-    activos_omitidos = []
+    anio, mes = _parsear_mes_anio(request.form.get("periodo"))
+    periodo_label = f"{MESES_LABEL[mes - 1]} {anio}"
 
-    for activo, pendientes in _pendientes_por_activo(empresa_id):
-        if not pendientes:
-            continue
+    activos_con_pendientes = _pendientes_por_activo(empresa_id, anio, mes, persistir=True)
+    grupos, activos_sin_grupo = comprobantes.agrupar_pendientes(activos_con_pendientes)
+    grupos_contables = {g["codigo"]: g for g in depreciacion_grupos_contables_repo.listar()}
+
+    if activos_sin_grupo:
+        flash("No se incluyeron (sin grupo contable asignado): " + ", ".join(activos_sin_grupo), "error")
+
+    grupos_ok = {}
+    for codigo, datos in grupos.items():
         try:
-            comprobantes.validar_cuentas(activo, pendientes)
-        except comprobantes.CuentaFaltante as exc:
-            activos_omitidos.append(str(exc))
-            continue
+            comprobantes.validar_grupos({codigo: datos}, grupos_contables)
+            grupos_ok[codigo] = datos
+        except comprobantes.GrupoFaltante as exc:
+            flash(str(exc), "error")
 
-        todas_las_filas.extend(comprobantes.construir_filas(activo, pendientes, CUENTAS_POR_CODIGO))
+    if not grupos_ok:
+        flash("No había ningún período pendiente de asentar hasta ese mes.", "info" if not activos_sin_grupo else "error")
+        return redirect(url_for("depreciacion.asientos", empresa_id=empresa_id, periodo=f"{anio:04d}-{mes:02d}"))
+
+    fecha_comprobante = ultimo_dia_mes(anio, mes)
+    filas_comprobante = comprobantes.construir_filas(grupos_ok, grupos_contables, fecha_comprobante, periodo_label)
+
+    nuevos_asientos = []
+    for activo, pendientes in activos_con_pendientes:
+        codigo = activo.get("grupo_contable_codigo")
+        if codigo not in grupos_ok:
+            continue
         for p in pendientes:
             nuevos_asientos.append({
                 "activo_id": activo["id"], "fecha": p["fecha"],
                 "monto_ejercicio": p["depreciacion_ejercicio"], "monto_correccion": p["correccion_monetaria"],
             })
-
-    if activos_omitidos:
-        flash("No se incluyeron (faltan cuentas contables): " + "; ".join(activos_omitidos), "error")
-
-    if not todas_las_filas:
-        flash("No había ningún período pendiente de asentar.", "info" if not activos_omitidos else "error")
-        return redirect(url_for("depreciacion.asientos", empresa_id=empresa_id))
-
     depreciacion_asientos_repo.crear_muchos(nuevos_asientos)
 
-    contenido = build_comprobantes_workbook(todas_las_filas)
-    nombre_archivo = f"asiento_depreciacion_{empresa['nombre'].strip().replace(' ', '_')}.xls"
+    contenido = build_comprobantes_workbook(filas_comprobante)
+    nombre_archivo = f"asiento_depreciacion_{empresa['nombre'].strip().replace(' ', '_')}_{anio:04d}-{mes:02d}.xls"
     return send_file(
         io.BytesIO(contenido), as_attachment=True, download_name=nombre_archivo,
         mimetype="application/vnd.ms-excel",
@@ -424,7 +495,56 @@ def asientos_generar(empresa_id):
 def asiento_deshacer(empresa_id, activo_id, fecha):
     depreciacion_asientos_repo.eliminar_por_activo_y_fecha(activo_id, fecha)
     flash("Asiento deshecho — ese período vuelve a quedar pendiente.", "success")
-    return redirect(url_for("depreciacion.asientos", empresa_id=empresa_id))
+    return redirect(url_for("depreciacion.activo_detalle", empresa_id=empresa_id, activo_id=activo_id))
+
+
+# ---------------------------------------------------------------------------
+# Grupos Contables (cuentas de depreciación por "cuenta del activo fijo")
+# ---------------------------------------------------------------------------
+
+@depreciacion_bp.route("/grupos-contables", methods=["GET"])
+@pagina_required("depreciacion.empresas")
+def grupos_contables():
+    grupos = depreciacion_grupos_contables_repo.listar()
+    for g in grupos:
+        g["descripcion"] = CUENTAS_POR_CODIGO.get(g["codigo"], {}).get("descripcion", "")
+    return render_template("depreciacion/grupos_contables.html", grupos=grupos, cuentas=PLAN_CUENTAS)
+
+
+@depreciacion_bp.route("/grupos-contables/guardar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def grupos_contables_guardar():
+    codigo = request.form.get("grupo_codigo") or None
+    cuenta_gasto = request.form.get("cuenta_gasto_codigo") or None
+    cuenta_acumulada = request.form.get("cuenta_acumulada_codigo") or None
+    cuenta_correccion = request.form.get("cuenta_correccion_codigo") or None
+
+    errores = []
+    if not codigo or codigo not in CUENTAS_POR_CODIGO:
+        errores.append("Elige el grupo (la cuenta del activo fijo) desde el buscador.")
+    if not cuenta_gasto or cuenta_gasto not in CUENTAS_POR_CODIGO:
+        errores.append("Elige la cuenta de Gasto por Depreciación.")
+    if not cuenta_acumulada or cuenta_acumulada not in CUENTAS_POR_CODIGO:
+        errores.append("Elige la cuenta de Depreciación Acumulada.")
+    if cuenta_correccion and cuenta_correccion not in CUENTAS_POR_CODIGO:
+        errores.append("La cuenta de Corrección Monetaria elegida no existe en el plan de cuentas.")
+
+    if errores:
+        for e in errores:
+            flash(e, "error")
+        return redirect(url_for("depreciacion.grupos_contables"))
+
+    depreciacion_grupos_contables_repo.guardar(codigo, cuenta_gasto, cuenta_acumulada, cuenta_correccion)
+    flash(f"Grupo contable '{codigo}' guardado.", "success")
+    return redirect(url_for("depreciacion.grupos_contables"))
+
+
+@depreciacion_bp.route("/grupos-contables/<codigo>/eliminar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def grupos_contables_eliminar(codigo):
+    depreciacion_grupos_contables_repo.eliminar(codigo)
+    flash("Grupo contable eliminado.", "success")
+    return redirect(url_for("depreciacion.grupos_contables"))
 
 
 # ---------------------------------------------------------------------------

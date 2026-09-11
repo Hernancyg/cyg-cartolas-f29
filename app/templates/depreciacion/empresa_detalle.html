@@ -2,6 +2,7 @@
 {% block title %}{{ empresa.nombre }} · Depreciación · C&amp;G Group{% endblock %}
 {% block content %}
 {% from "_icons.html" import icon %}
+{% from "caja_empresas/_macros.html" import cuenta_search %}
 
 <div class="page-title">{{ empresa.nombre }}</div>
 <div class="page-title-underline"></div>
@@ -37,6 +38,12 @@
       <div class="field"><label for="na_fecha">Fecha de adquisición</label><input type="date" id="na_fecha" name="fecha_adquisicion"></div>
       <div class="field"><label for="na_valor">Valor de adquisición ($)</label><input type="text" id="na_valor" name="valor_adquisicion" placeholder="1.500.000"></div>
       <div class="field"><label for="na_vida_util">Vida útil (años)</label><input type="number" id="na_vida_util" name="vida_util_anios" min="1"></div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Grupo contable (cuenta del activo fijo, para "Generar asiento")</label>
+        {{ cuenta_search("na_grupo", "grupo_contable_codigo", "grupo_contable_descripcion", "", "", "Ej. 1204-01 VEHICULOS… (opcional, se puede agregar después)") }}
+      </div>
     </div>
     <button type="submit" class="btn">{{ icon('plus', 16) }} Agregar activo</button>
   </form>
@@ -128,6 +135,8 @@
   {% endif %}
 </div>
 
+<script>window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};</script>
+<script src="{{ url_for('static', filename='js/cuenta_search.js') }}"></script>
 <script>
 function depreciacionAutocompletarVidaUtil(select) {
   var opt = select.options[select.selectedIndex];

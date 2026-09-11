@@ -150,24 +150,33 @@ el SII por tipo de bien.
   activos en un mes elegido" (independiente del kardex por activo, para
   una foto mensual sin entrar a cada ficha) — mismo cálculo lineal normal,
   sin valor residual, valor libro en $1 una vez agotada la vida útil.
-- **Generar asiento contable**: por empresa, arma el comprobante (mismo
-  formato de 17 columnas "Comprobantes" que F29/Conciliación/Caja
-  Empresas) de la depreciación del ejercicio + corrección monetaria de
-  cada activo — 2 o 3 líneas por período (Debe: Gasto por Depreciación;
-  Debe/Haber según el signo: Corrección Monetaria, solo si el período
-  trae Factor CCMM distinto de 1; Haber: Depreciación Acumulada). Cada
-  activo elige sus 3 cuentas una vez, en su ficha ("Cuentas contables"),
-  buscándolas del plan de cuentas (mismo buscador que Conciliación/
-  Empresas Caja). Solo se incluyen los períodos del kardex que
-  TODAVÍA no se hayan asentado antes — la próxima vez que se genere, solo
-  entran los períodos nuevos (o los que se "deshagan" a mano para
-  corregirlos), nunca se duplica uno ya asentado. Ver
-  `app/depreciacion/comprobantes.py` y `app/data/depreciacion_asientos_
-  repo.py` para el detalle. El campo "Tipo" del comprobante queda vacío
-  (a diferencia de F29/Conciliación/Caja Empresas, que usan "I"/"E" según
-  el movimiento de caja) — la depreciación no mueve caja, así que no
-  hay un ingreso/egreso que clasificar ahí; avisa si tu sistema contable
-  necesita algún valor específico en esa columna.
+- **Grupos Contables**: las 3 cuentas de depreciación (Gasto por
+  Depreciación / Depreciación Acumulada / Corrección Monetaria) de cada
+  "cuenta del activo fijo" (ej. "1204-01 VEHÍCULOS") — se configuran UNA
+  vez por grupo, no por cada activo individual (rediseño 11-09-2026). Al
+  crear un activo, solo eliges a qué grupo pertenece (buscador del plan
+  de cuentas, mismo que Conciliación/Empresas Caja); varios activos del
+  mismo grupo (ej. 3 camiones) comparten esas 3 cuentas sin volver a
+  elegirlas. Ver `app/data/depreciacion_grupos_contables_repo.py`.
+- **Generar asiento contable**: por empresa, con un selector de **mes y
+  año** a gestionar — arma el comprobante (mismo formato de 17 columnas
+  "Comprobantes" que F29/Conciliación/Caja Empresas) de la depreciación
+  del ejercicio + corrección monetaria, **consolidado por grupo contable**
+  (todos los activos de un mismo grupo suman en una sola línea de Gasto y
+  una de Depreciación Acumulada, no una por activo individual). Solo se
+  incluye lo que todavía no se haya asentado hasta el mes elegido — si
+  pides Agosto y ya se generó Enero a Julio, solo entra Agosto. Si el
+  kardex de un activo no llega todavía hasta ese mes, se le agrega
+  automáticamente (solo al generar, nunca al solo previsualizar) una fila
+  nueva que cubre los meses que faltan, con Factor CCMM 1 — editable
+  después a mano en su kardex si hace falta corregirla. "Deshacer" (en la
+  ficha del activo, junto a la fecha) vuelve a dejar un período como
+  pendiente. Ver `app/depreciacion/comprobantes.py` y `app/data/
+  depreciacion_asientos_repo.py` para el detalle. El campo "Tipo" del
+  comprobante queda vacío (a diferencia de F29/Conciliación/Caja Empresas,
+  que usan "I"/"E" según el movimiento de caja) — la depreciación no
+  mueve caja, así que no hay un ingreso/egreso que clasificar ahí; avisa
+  si tu sistema contable necesita algún valor específico en esa columna.
 - **Categorías SII**: catálogo editable de "tipo de bien → años de vida
   útil normal", con una semilla tomada de la
   [tabla oficial del SII](https://www.sii.cl/valores_y_fechas/tabla_vida_util_activo_inmovilizado.html)
@@ -180,9 +189,10 @@ el SII por tipo de bien.
   `app/data/depreciacion_categorias_repo.py` para el detalle completo.
 
 Ejecuta `migration/006_depreciacion.sql`, `migration/007_depreciacion_
-periodos.sql`, `migration/008_depreciacion_ccmm.sql` y `migration/009_
-depreciacion_asientos.sql` en Supabase (SQL Editor) para crear las tablas
-la primera vez.
+periodos.sql`, `migration/008_depreciacion_ccmm.sql`, `migration/009_
+depreciacion_asientos.sql` y `migration/010_depreciacion_grupos_
+contables.sql` en Supabase (SQL Editor) para crear las tablas la primera
+vez.
 
 ## Estructura del proyecto
 

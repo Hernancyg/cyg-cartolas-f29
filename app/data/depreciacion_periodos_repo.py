@@ -37,3 +37,14 @@ def guardar_todos(activo_id: str, filas: List[dict]) -> None:
     ]
     if payload:
         sb.table(TABLE).insert(payload).execute()
+
+
+def agregar_periodo(activo_id: str, fecha: str, meses_utilizados: int, factor_ccmm: float = 1.0) -> dict:
+    """Inserta UNA fila nueva sin tocar las que ya existen — a diferencia
+    de `guardar_todos` (que reemplaza todo el kardex desde el formulario
+    de edición manual), esto lo usa "Generar asiento" para extender solo
+    el kardex de un activo hasta el mes que se está gestionando (ver
+    `app/depreciacion/routes.py:_extender_periodos`)."""
+    row = {"activo_id": activo_id, "fecha": fecha, "meses_utilizados": int(meses_utilizados), "factor_ccmm": float(factor_ccmm)}
+    resp = get_supabase().table(TABLE).insert(row).execute()
+    return resp.data[0]

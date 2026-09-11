@@ -22,28 +22,21 @@
 </div>
 
 <div class="card">
-  <div class="section-title" style="margin-bottom:6px">{{ icon('key', 16) }} Cuentas contables</div>
+  <div class="section-title" style="margin-bottom:6px">{{ icon('key', 16) }} Grupo contable</div>
   <p class="muted" style="margin-top:0">
-    Las usa "Generar asiento contable" para armar el comprobante de este activo — Depreciación Acumulada solo
-    necesita una cuenta de Corrección Monetaria si algún período trae Factor CCMM distinto de 1.
+    El grupo (la cuenta del activo fijo, ej. "1204-01 VEHÍCULOS") agrupa este activo con los demás de su misma
+    clase para "Generar asiento contable" — configura las 3 cuentas de depreciación del grupo una sola vez en
+    <a href="{{ url_for('depreciacion.grupos_contables') }}">Grupos Contables</a>.
   </p>
-  <form method="post" action="{{ url_for('depreciacion.activo_cuentas_guardar', empresa_id=empresa.id, activo_id=activo.id) }}">
+  <form method="post" action="{{ url_for('depreciacion.activo_grupo_guardar', empresa_id=empresa.id, activo_id=activo.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row">
       <div class="field">
-        <label>Gasto por Depreciación (Debe)</label>
-        {{ cuenta_search("cc_gasto", "cuenta_gasto_codigo", "cuenta_gasto_descripcion", activo.cuenta_gasto_codigo, (cuentas_por_codigo.get(activo.cuenta_gasto_codigo) or {}).get("descripcion", ""), "Buscar cuenta…") }}
-      </div>
-      <div class="field">
-        <label>Depreciación Acumulada (Haber)</label>
-        {{ cuenta_search("cc_acumulada", "cuenta_acumulada_codigo", "cuenta_acumulada_descripcion", activo.cuenta_acumulada_codigo, (cuentas_por_codigo.get(activo.cuenta_acumulada_codigo) or {}).get("descripcion", ""), "Buscar cuenta…") }}
-      </div>
-      <div class="field">
-        <label>Corrección Monetaria</label>
-        {{ cuenta_search("cc_correccion", "cuenta_correccion_codigo", "cuenta_correccion_descripcion", activo.cuenta_correccion_codigo, (cuentas_por_codigo.get(activo.cuenta_correccion_codigo) or {}).get("descripcion", ""), "Buscar cuenta…") }}
+        <label>Grupo contable</label>
+        {{ cuenta_search("ac_grupo", "grupo_contable_codigo", "grupo_contable_descripcion", activo.grupo_contable_codigo, grupo_actual_descripcion, "Ej. 1204-01 VEHICULOS…") }}
       </div>
     </div>
-    <button type="submit" class="btn-secondary">{{ icon('save', 16) }} Guardar cuentas</button>
+    <button type="submit" class="btn-secondary">{{ icon('save', 16) }} Guardar grupo</button>
   </form>
 </div>
 

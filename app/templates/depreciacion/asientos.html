@@ -10,43 +10,67 @@
   <a href="{{ url_for('depreciacion.empresa_detalle', empresa_id=empresa.id) }}">← volver a {{ empresa.nombre }}</a>
 </p>
 
-<div class="alert alert-info">
-  Solo se incluyen los períodos del kardex de cada activo que TODAVÍA no se hayan asentado antes — la próxima vez
-  que generes, solo se van a incluir los períodos nuevos. "Deshacer" en la ficha de un activo (junto a la fecha)
-  vuelve a dejar un período como pendiente, por si hay que corregirlo.
+<div class="card">
+  <div class="section-title" style="margin-bottom:10px">{{ icon('calendar', 16) }} Mes a gestionar</div>
+  <form method="get" action="{{ url_for('depreciacion.asientos', empresa_id=empresa.id) }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="periodo">Período</label>
+        <input type="month" id="periodo" name="periodo" value="{{ periodo }}">
+      </div>
+    </div>
+    <button type="submit" class="btn-secondary">Ver {{ periodo_label }}</button>
+  </form>
 </div>
 
+<div class="alert alert-info">
+  Muestra la depreciación pendiente de asentar hasta <strong>{{ periodo_label }}</strong> — lo que ya se generó en
+  meses anteriores no se repite. Si el kardex de un activo todavía no llega hasta ese mes, se le agrega
+  automáticamente una fila que cubre los meses que faltan (Factor CCMM 1) recién al generar, no solo al
+  previsualizar.
+</div>
+
+{% if activos_sin_grupo %}
+<div class="alert alert-warn">
+  Sin grupo contable asignado (no se van a incluir): {{ activos_sin_grupo | join(', ') }} — asígnales uno desde su
+  ficha o en <a href="{{ url_for('depreciacion.grupos_contables') }}">Grupos Contables</a>.
+</div>
+{% endif %}
+
 <div class="card">
-  <div class="section-title" style="margin-bottom:10px">{{ icon('calculator', 16) }} Activos</div>
+  <div class="section-title" style="margin-bottom:10px">{{ icon('calculator', 16) }} Grupos contables con pendientes</div>
+  {% if filas %}
   <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Activo</th><th>Períodos pendientes</th><th>Monto a asentar</th><th>Cuentas</th></tr></thead>
+      <thead><tr><th>Grupo</th><th>Activos incluidos</th><th>Gasto (ejercicio)</th><th>Corrección CCMM</th><th>Total a asentar</th><th>Estado</th></tr></thead>
       <tbody>
         {% for f in filas %}
         <tr>
-          <td><a href="{{ url_for('depreciacion.activo_detalle', empresa_id=empresa.id, activo_id=f.activo.id) }}">{{ f.activo.nombre_activo }}</a></td>
-          {% if f.pendientes %}
-          <td>{{ f.pendientes | length }}</td>
-          <td>{{ ((f.pendientes | sum(attribute='depreciacion_ejercicio')) + (f.pendientes | sum(attribute='correccion_monetaria'))) | clp }}</td>
+          <td>{{ f.codigo }} {{ f.descripcion }}</td>
+          <td>{{ f.datos.nombres_activos | join(', ') }}</td>
+          <td>{{ f.datos.ejercicio | clp }}</td>
+          <td>{{ f.datos.correccion | clp }}</td>
+          <td>{{ (f.datos.ejercicio + f.datos.correccion) | clp }}</td>
           <td>
-            {% if f.cuentas_faltantes %}
-            <span class="muted">Faltan: {{ f.cuentas_faltantes | join(', ') }}</span>
+            {% if f.error %}
+            <span class="muted">{{ f.error }}</span>
             {% else %}
-            <span class="muted">Completas ✓</span>
+            <span class="muted">Listo ✓</span>
             {% endif %}
           </td>
-          {% else %}
-          <td colspan="3"><span class="muted">Al día — nada pendiente</span></td>
-          {% endif %}
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {% else %}
+  <p class="muted">Nada pendiente de asentar hasta {{ periodo_label }}.</p>
+  {% endif %}
 </div>
 
-<form method="post" action="{{ url_for('depreciacion.asientos_generar', empresa_id=empresa.id) }}" onsubmit="return confirm('¿Generar el asiento? Los períodos incluidos quedarán marcados como asentados.');">
+<form method="post" action="{{ url_for('depreciacion.asientos_generar', empresa_id=empresa.id) }}" onsubmit="return confirm('¿Generar el asiento de {{ periodo_label }}? Los períodos incluidos quedarán marcados como asentados.');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <button type="submit" class="btn">{{ icon('download', 16) }} Generar asiento y descargar</button>
+  <input type="hidden" name="periodo" value="{{ periodo }}">
+  <button type="submit" class="btn">{{ icon('download', 16) }} Generar asiento de {{ periodo_label }} y descargar</button>
 </form>
 {% endblock %}

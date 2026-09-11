@@ -34,6 +34,7 @@ def obtener_activo(activo_id: str) -> Optional[dict]:
 def crear_activo(
     empresa_id: str, categoria_id: Optional[str], nombre_activo: str,
     fecha_adquisicion: str, valor_adquisicion: float, vida_util_anios: int,
+    grupo_contable_codigo: Optional[str] = None,
 ) -> dict:
     row = {
         "empresa_id": empresa_id,
@@ -42,6 +43,7 @@ def crear_activo(
         "fecha_adquisicion": fecha_adquisicion,
         "valor_adquisicion": valor_adquisicion,
         "vida_util_anios": vida_util_anios,
+        "grupo_contable_codigo": grupo_contable_codigo,
         "activo": True,
     }
     resp = get_supabase().table(TABLE).insert(row).execute()
@@ -56,15 +58,8 @@ def eliminar_activo(activo_id: str) -> None:
     get_supabase().table(TABLE).delete().eq("id", activo_id).execute()
 
 
-def actualizar_cuentas(
-    activo_id: str, cuenta_gasto_codigo: Optional[str],
-    cuenta_acumulada_codigo: Optional[str], cuenta_correccion_codigo: Optional[str],
-) -> None:
-    """Las 3 cuentas contables del activo (ver 'Generar asiento') — código
-    del plan de cuentas (`app/conciliacion/plan_cuentas.py`) o None si
-    todavía no se eligió."""
-    get_supabase().table(TABLE).update({
-        "cuenta_gasto_codigo": cuenta_gasto_codigo,
-        "cuenta_acumulada_codigo": cuenta_acumulada_codigo,
-        "cuenta_correccion_codigo": cuenta_correccion_codigo,
-    }).eq("id", activo_id).execute()
+def actualizar_grupo_contable(activo_id: str, grupo_contable_codigo: Optional[str]) -> None:
+    """A qué "grupo contable" pertenece el activo (ver 'Generar asiento' y
+    `depreciacion_grupos_contables_repo.py`) — código del plan de cuentas
+    del activo fijo en sí (ej. "1204-01"), o None si todavía no se eligió."""
+    get_supabase().table(TABLE).update({"grupo_contable_codigo": grupo_contable_codigo}).eq("id", activo_id).execute()

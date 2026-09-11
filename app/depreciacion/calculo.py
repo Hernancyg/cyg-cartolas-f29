@@ -20,7 +20,7 @@ Reglas:
     tributaria, no un error de redondeo).
 """
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 
@@ -166,3 +166,39 @@ def calcular_kardex(activo: dict, periodos: list) -> list:
         meses_consumidos_antes += meses_efectivos
 
     return filas
+
+
+def parse_fecha(fecha):
+    """Versión pública de `_parse_fecha`, para que otros módulos (ej.
+    `app/depreciacion/routes.py`) no tengan que tocar un nombre privado."""
+    return _parse_fecha(fecha)
+
+
+def meses_faltantes(fecha_ultima_fila, fecha_adquisicion, anio_objetivo: int, mes_objetivo: int) -> int:
+    """Cuántos meses hay que agregar como una fila NUEVA del kardex para
+    que llegue hasta el cierre de `anio_objetivo`-`mes_objetivo` — lo usa
+    "Generar asiento" para extender solo el kardex de un activo hasta el
+    mes que se está gestionando (`app/depreciacion/routes.py:
+    _extender_periodos`), sin que el usuario tenga que agregar esa fila a
+    mano en la ficha del activo primero.
+
+    - Si el activo ya tiene filas, cuenta desde el mes SIGUIENTE al de la
+      última fila (esa fila ya "usó" su propio mes de cierre).
+    - Si todavía no tiene ninguna, cuenta desde el mes de adquisición
+      INCLUSIVE (mismo criterio que `calcular_fila`: el mes de compra ya
+      cuenta como el primero).
+    - 0 si el kardex ya llega hasta ese mes o más allá (nada que agregar)."""
+    objetivo_ordinal = anio_objetivo * 12 + mes_objetivo
+    if fecha_ultima_fila is not None:
+        base_ordinal = fecha_ultima_fila.year * 12 + fecha_ultima_fila.month
+        return max(objetivo_ordinal - base_ordinal, 0)
+    base_ordinal = fecha_adquisicion.year * 12 + fecha_adquisicion.month
+    return max(objetivo_ordinal - base_ordinal + 1, 0)
+
+
+def ultimo_dia_mes(anio: int, mes: int) -> date:
+    """Fecha del último día de `anio`-`mes` (ej. 2026-02 -> 2026-02-28) —
+    la fecha que se le pone a la fila que agrega `meses_faltantes`."""
+    if mes == 12:
+        return date(anio + 1, 1, 1) - timedelta(days=1)
+    return date(anio, mes + 1, 1) - timedelta(days=1)
