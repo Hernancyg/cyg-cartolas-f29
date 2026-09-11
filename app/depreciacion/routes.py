@@ -41,7 +41,7 @@ puede testear con datos en memoria.
 """
 
 import io
-from datetime import date
+from datetime import date, datetime
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
 
@@ -507,7 +507,10 @@ def asientos_generar(empresa_id):
         flash("No había ningún período pendiente de asentar hasta ese mes.", "info" if not activos_sin_grupo else "error")
         return redirect(url_for("depreciacion.asientos", empresa_id=empresa_id, periodo=f"{anio:04d}-{mes:02d}"))
 
-    fecha_comprobante = ultimo_dia_mes(anio, mes)
+    # datetime, no date: el escritor del .xls (xlwt) solo escribe la celda
+    # de fecha si es un datetime.datetime — un date "pelado" queda en
+    # blanco silenciosamente (ver app/depreciacion/export_writer.py).
+    fecha_comprobante = datetime.combine(ultimo_dia_mes(anio, mes), datetime.min.time())
     filas_comprobante = comprobantes.construir_filas(grupos_ok, grupos_contables, fecha_comprobante, periodo_label)
 
     nuevos_asientos = []

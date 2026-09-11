@@ -9,13 +9,17 @@ Uso:
 """
 
 import sys
+from datetime import date, datetime
 from pathlib import Path
+
+import xlrd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.run_verification import flask_app, FAKE, seed_data  # noqa: E402
 from app.depreciacion import comprobantes  # noqa: E402
 from app.depreciacion.calculo import calcular_fila, calcular_kardex, calcular_tabla, fusionar_kardex_por_anio  # noqa: E402
+from app.depreciacion.export_writer import build_comprobantes_workbook  # noqa: E402
 from app.data import depreciacion_categorias_repo  # noqa: E402
 
 PASSED, FAILED = [], []
@@ -255,6 +259,42 @@ def test_comprobantes():
     total_haber_neg = sum(f[9] for f in filas_negativas if f[9])
     check("corrección negativa: sigue balanceado", total_debe_neg == total_haber_neg == 825_000)
     check("corrección negativa: la línea de Corrección Monetaria va al Haber", filas_negativas[1][9] == 30_000 and filas_negativas[1][4] == "5501-05")
+
+
+def test_comprobante_fecha_queda_escrita():
+    """Regresión (11-09-2026): `fecha_comprobante` se armaba como
+    `date` (sin hora) en `app/depreciacion/routes.py`, pero xlwt solo
+    escribe la celda de "Fecha" si recibe un `datetime.datetime` — un
+    `date` "pelado" quedaba en blanco SIN avisar (`construir_filas` no
+    revienta con ningún tipo de fecha, el problema solo se nota abriendo
+    el .xls). Este test lee de vuelta el .xls generado (con xlrd) para
+    confirmar que la celda de verdad lleva una fecha, no solo que la
+    función se pueda llamar sin reventar."""
+    activo = {"nombre_activo": "Camion 1", "grupo_contable_codigo": "1204-01"}
+    pendientes = [{"fecha": "2026-08-31", "depreciacion_ejercicio": 100_000, "correccion_monetaria": 0}]
+    grupos, _ = comprobantes.agrupar_pendientes([(activo, pendientes)])
+    grupos_contables = {"1204-01": {"cuenta_gasto_codigo": "4205-05", "cuenta_acumulada_codigo": "1207-25", "cuenta_correccion_codigo": None}}
+
+    fecha_comprobante = datetime.combine(date(2026, 8, 31), datetime.min.time())
+    filas = comprobantes.construir_filas(grupos, grupos_contables, fecha_comprobante, "Agosto 2026")
+
+    contenido = build_comprobantes_workbook(filas)
+    wb = xlrd.open_workbook(file_contents=contenido)
+    ws = wb.sheet_by_index(0)
+    celda_fecha = ws.cell(1, 2)  # fila 1 = primer comprobante (fila 0 es el encabezado), columna 2 = "Fecha"
+    check("la celda de Fecha del comprobante NO queda en blanco", celda_fecha.ctype == xlrd.XL_CELL_DATE)
+    fecha_leida = xlrd.xldate_as_datetime(celda_fecha.value, wb.datemode).date()
+    check("la fecha leída de vuelta del .xls es 31-08-2026 (último día del mes procesado)", fecha_leida == date(2026, 8, 31))
+
+    # Si a alguien se le ocurre volver a pasar un `date` en vez de `datetime` (el bug original), esto lo agarra.
+    filas_con_date_pelado = comprobantes.construir_filas(grupos, grupos_contables, date(2026, 8, 31), "Agosto 2026")
+    contenido_malo = build_comprobantes_workbook(filas_con_date_pelado)
+    wb_malo = xlrd.open_workbook(file_contents=contenido_malo)
+    celda_fecha_mala = wb_malo.sheet_by_index(0).cell(1, 2)
+    check(
+        "confirma el bug original: pasar un date (no datetime) SÍ deja la celda en blanco -> por eso routes.py siempre debe convertir a datetime",
+        celda_fecha_mala.ctype != xlrd.XL_CELL_DATE,
+    )
 
 
 def test_categorias_defaults():
@@ -545,6 +585,7 @@ def main():
     test_kardex()
     test_fusionar_kardex_por_anio()
     test_comprobantes()
+    test_comprobante_fecha_queda_escrita()
     test_categorias_defaults()
     test_rutas_flujo_completo()
     test_asientos_flujo()
