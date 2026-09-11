@@ -1,19 +1,18 @@
 """
 Genera el Excel del kardex de depreciación (ver
 `app/depreciacion/calculo.calcular_kardex`) — de UN activo
-(`build_kardex_workbook`) o de TODOS los activos de una empresa, uno por
-hoja (`build_empresa_kardex_workbook`, usado por "Tabla de depreciación →
-Descargar Excel": el usuario pidió que el archivo de salida muestre lo
-mismo que el kardex de cada activo, no solo una foto de un mes — 11-09-2026).
-Mismo estilo simple (Arial, encabezado en negrita, bordes finos) que
-`app/parsers/output_writer.py`.
+(`build_kardex_workbook`) o de TODOS los activos de una empresa, uno
+debajo del otro en la MISMA hoja (`build_empresa_kardex_workbook`, usado
+por "Tabla de depreciación → Descargar Excel": el usuario pidió que el
+archivo de salida muestre lo mismo que el kardex de cada activo, todos
+juntos en una sola hoja, con encabezado con color — 11-09-2026).
+Mismo estilo simple (Arial, bordes finos) que `app/parsers/output_writer.py`.
 """
 
-import re
 from io import BytesIO
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 NUMFMT_MONTO = "#,##0"
@@ -22,6 +21,9 @@ NUMFMT_FACTOR = "0.0000"
 
 THIN = Side(style="thin")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+
+HEADER_FILL = PatternFill(start_color="1F3864", end_color="1F3864", fill_type="solid")
+HEADER_FONT = Font(name="Arial", size=8, bold=True, color="FFFFFF")
 
 KARDEX_HEADERS = [
     "Fecha", "Meses Utilizados", "Costo Total", "Factor CCMM", "Valor Actualizado",
@@ -37,18 +39,24 @@ _MONTO_COLS = {"C", "E", "G", "H", "J", "K", "L"}
 _FACTOR_COLS = {"D", "I"}
 
 
-def _escribir_kardex(ws, titulo: str, filas: list):
-    ws["A1"] = titulo
-    ws["A1"].font = Font(name="Arial", size=10, bold=True)
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(KARDEX_HEADERS))
+def _escribir_kardex(ws, titulo: str, filas: list, start_row: int = 1) -> int:
+    """Escribe un bloque título + encabezado (con color) + filas,
+    empezando en `start_row`. Devuelve la fila libre siguiente (con un
+    espacio de separación), para poder encadenar varios activos en la
+    misma hoja."""
+    if start_row == 1:
+        for col, width in KARDEX_COL_WIDTHS.items():
+            ws.column_dimensions[col].width = width
 
-    for col, width in KARDEX_COL_WIDTHS.items():
-        ws.column_dimensions[col].width = width
+    titulo_row = start_row
+    ws.cell(row=titulo_row, column=1, value=titulo).font = Font(name="Arial", size=10, bold=True)
+    ws.merge_cells(start_row=titulo_row, start_column=1, end_row=titulo_row, end_column=len(KARDEX_HEADERS))
 
-    header_row = 3
+    header_row = titulo_row + 1
     for i, header in enumerate(KARDEX_HEADERS, start=1):
         cell = ws.cell(row=header_row, column=i, value=header)
-        cell.font = Font(name="Arial", size=8, bold=True)
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = BORDER
 
@@ -78,12 +86,7 @@ def _escribir_kardex(ws, titulo: str, filas: list):
                 cell.alignment = Alignment(horizontal="center")
         row += 1
 
-
-def _nombre_hoja(texto: str) -> str:
-    """Los nombres de hoja de Excel no admiten / \\ ? * [ ] : ni más de 31
-    caracteres."""
-    limpio = re.sub(r"[\\/*?:\[\]]", " ", texto).strip()
-    return limpio[:31] or "Activo"
+    return row + 1
 
 
 def build_kardex_workbook(empresa_nombre: str, activo: dict, filas: list) -> bytes:
@@ -98,33 +101,25 @@ def build_kardex_workbook(empresa_nombre: str, activo: dict, filas: list) -> byt
 
 
 def build_empresa_kardex_workbook(empresa_nombre: str, activos_con_kardex: list) -> bytes:
-    """`activos_con_kardex`: lista de (activo, filas_kardex) — una hoja
-    por activo, nombrada con el nombre del activo. Si la empresa no tiene
-    ningún activo, el archivo queda con una única hoja vacía en vez de
-    fallar (Excel no permite un workbook sin hojas)."""
+    """`activos_con_kardex`: lista de (activo, filas_kardex) — todos en
+    UNA sola hoja, uno debajo del otro (título + encabezado + filas de
+    cada activo, separados por una fila en blanco). Si la empresa no
+    tiene ningún activo, la hoja queda con un solo aviso en vez de
+    fallar."""
     wb = Workbook()
-    wb.remove(wb.active)
+    ws = wb.active
+    ws.title = "Depreciación"
 
     if not activos_con_kardex:
-        ws = wb.create_sheet("Depreciación")
         ws["A1"] = f"{empresa_nombre} — sin activos cargados"
         ws["A1"].font = Font(name="Arial", size=10, bold=True)
     else:
-        nombres_usados = set()
+        row = 1
         for activo, filas in activos_con_kardex:
-            nombre_hoja = _nombre_hoja(activo["nombre_activo"])
-            base = nombre_hoja
-            sufijo = 2
-            while nombre_hoja in nombres_usados:
-                nombre_hoja = f"{base[:28]}~{sufijo}"
-                sufijo += 1
-            nombres_usados.add(nombre_hoja)
-
-            ws = wb.create_sheet(nombre_hoja)
             titulo = f"{empresa_nombre} — {activo['nombre_activo']} — Kardex de depreciación"
             if not activo.get("activo", True):
                 titulo += " (dado de baja)"
-            _escribir_kardex(ws, titulo, filas)
+            row = _escribir_kardex(ws, titulo, filas, start_row=row)
 
     buf = BytesIO()
     wb.save(buf)
