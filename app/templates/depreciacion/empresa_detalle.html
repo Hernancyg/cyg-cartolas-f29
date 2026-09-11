@@ -7,9 +7,10 @@
 <div class="page-title-underline"></div>
 <p class="page-subtitle">
   {{ empresa.rut or 'Sin RUT' }} ·
-  <a href="{{ url_for('depreciacion.empresas') }}">← volver a Empresas</a> ·
-  <a href="{{ url_for('depreciacion.asientos', empresa_id=empresa.id) }}">Generar asiento contable</a>
+  <a href="{{ url_for('depreciacion.empresas') }}">← volver a Empresas</a>
 </p>
+
+<a href="{{ url_for('depreciacion.asientos', empresa_id=empresa.id) }}" class="btn" style="margin-bottom:20px">{{ icon('calculator', 16) }} Generar asiento contable</a>
 
 <div class="card">
   <div class="section-title" style="margin-bottom:6px">{{ icon('plus', 16) }} Agregar activo</div>
