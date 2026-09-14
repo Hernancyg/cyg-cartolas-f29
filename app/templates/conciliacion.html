@@ -5,7 +5,7 @@
 
 <div class="page-title">Conciliación</div>
 <div class="page-title-underline"></div>
-<p class="page-subtitle">Sube la cartola ya convertida, elige la cuenta bancaria y asigna una cuenta del plan de cuentas a cada movimiento.</p>
+<p class="page-subtitle">Sube la cartola ya convertida y concilia cada movimiento contra un documento pendiente o una cuenta del plan de cuentas.</p>
 
 {% if not filas %}
 <div class="card mergeable">
@@ -40,7 +40,7 @@
 </div>
 
 <form method="post" action="{{ url_for('conciliacion.descargar') }}" id="form-conciliacion">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="csrf_token" id="csrf-token-global" value="{{ csrf_token() }}">
   <input type="hidden" name="archivo_nombre" value="{{ archivo_nombre }}">
   <input type="hidden" name="total_filas" value="{{ filas | length }}">
 
@@ -63,59 +63,121 @@
     </div>
   </div>
 
+  <div class="card mergeable">
+    <div class="section-header">
+      <div class="section-badge">{{ icon('sparkle', 18) }}</div>
+      <div class="section-title">Documentos auxiliares (opcional)</div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      Carga los mismos Excel de "Empresas Caja" (Clientes, Proveedores, Honorarios) para que los movimientos con
+      monto y RUT reconocible se propongan automáticamente contra un documento pendiente. Sin esto, sigues pudiendo
+      conciliar cada movimiento a mano contra cualquier cuenta del plan de cuentas.
+    </p>
+
+    <div class="conc-aux-carga-lista">
+      {% for modulo, titulo in [('clientes', 'Clientes'), ('proveedores', 'Proveedores'), ('honorarios', 'Honorarios')] %}
+      <div class="conc-aux-carga">
+        <div class="conc-aux-carga-titulo">{{ titulo }}</div>
+        <div class="field-input-row">
+          <input type="file" id="archivo-aux-{{ modulo }}" accept=".xlsx,.xlsm">
+          <button type="button" class="btn btn-sm" data-cargar-aux="{{ modulo }}">{{ icon('upload', 16) }} Cargar</button>
+        </div>
+        <div id="error-aux-{{ modulo }}" hidden></div>
+        <div id="wrap-aux-{{ modulo }}">
+          {% if auxiliares.get(modulo) %}
+          {% with docs = auxiliares.get(modulo) %}{% include "conciliacion/_fragmento_auxiliares.html" %}{% endwith %}
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
   <div class="card highlight">
     <div class="section-header">
       <div class="section-badge">{{ icon('reconcile', 18) }}</div>
       <div class="section-title">Movimientos</div>
     </div>
     <p class="muted" style="margin-top:0">
-      Escribe parte del nombre de la cuenta (por ejemplo "banco" o "sueldo") en la columna Concepto
-      y selecciónala de la lista. El texto de "Detalle" es editable si necesitas ajustarlo.
+      A la derecha de cada movimiento: una propuesta automática (si calzan monto y RUT con un documento cargado) o
+      un buscador para elegir a mano un documento pendiente o una cuenta del plan de cuentas.
     </p>
 
-    <div class="table-wrap">
-      <table class="data-table" id="tabla-conciliacion">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th style="min-width:280px">Detalle de transacción</th>
-            <th>Monto cheque o cargo</th>
-            <th>Monto depósito o abono</th>
-            <th style="min-width:280px">Concepto</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for f in filas %}
-          <tr class="fila-conciliacion {{ 'fila-conciliada' if f.concepto_codigo else '' }}" data-row="{{ loop.index0 }}">
-            <td style="white-space:nowrap">
-              {{ f.fecha }}
-              <input type="hidden" name="fecha_{{ loop.index0 }}" value="{{ f.fecha }}">
-              <input type="hidden" name="fecha_iso_{{ loop.index0 }}" value="{{ f.fecha_iso }}">
-            </td>
-            <td>
-              <input type="text" class="td-editable-input" name="detalle_{{ loop.index0 }}" value="{{ f.detalle }}" autocomplete="off">
-            </td>
-            <td>
-              {{ (f.cargo | clp) if f.cargo else '' }}
-              <input type="hidden" name="cargo_{{ loop.index0 }}" value="{{ f.cargo }}">
-            </td>
-            <td>
-              {{ (f.abono | clp) if f.abono else '' }}
-              <input type="hidden" name="abono_{{ loop.index0 }}" value="{{ f.abono }}">
-            </td>
-            <td>
-              <div class="cuenta-search">
-                <input type="text" class="cuenta-search-input" placeholder="Buscar cuenta…" autocomplete="off" spellcheck="false"
-                       value="{{ (f.concepto_codigo + ' — ' + f.concepto_descripcion) if f.concepto_codigo else '' }}">
-                <input type="hidden" class="cuenta-codigo" name="concepto_codigo_{{ loop.index0 }}" value="{{ f.concepto_codigo }}">
-                <input type="hidden" class="cuenta-descripcion" name="concepto_descripcion_{{ loop.index0 }}" value="{{ f.concepto_descripcion }}">
-                <div class="cuenta-search-results" hidden></div>
+    <div class="conc-filtro-tipo">
+      <button type="button" class="conc-filtro-btn active" data-filtro="todos">Todos</button>
+      <button type="button" class="conc-filtro-btn" data-filtro="abono">Abono</button>
+      <button type="button" class="conc-filtro-btn" data-filtro="cargo">Cargo</button>
+    </div>
+
+    <div class="conc-lista" id="conc-lista">
+      {% for f in filas %}
+      <div class="conc-fila" data-row="{{ loop.index0 }}" data-tipo="{{ 'abono' if f.abono else 'cargo' }}">
+        <div class="conc-col-mov">
+          <div class="conc-mov-fecha">{{ f.fecha }}</div>
+          <input type="text" class="td-editable-input conc-mov-detalle" name="detalle_{{ loop.index0 }}" value="{{ f.detalle }}" autocomplete="off">
+          <div class="conc-mov-monto {{ 'abono' if f.abono else 'cargo' }}">
+            {{ (f.abono | clp) if f.abono else ('- ' + (f.cargo | clp)) }}
+          </div>
+          <input type="hidden" name="fecha_{{ loop.index0 }}" value="{{ f.fecha }}">
+          <input type="hidden" name="fecha_iso_{{ loop.index0 }}" value="{{ f.fecha_iso }}">
+          <input type="hidden" name="cargo_{{ loop.index0 }}" value="{{ f.cargo }}">
+          <input type="hidden" name="abono_{{ loop.index0 }}" value="{{ f.abono }}">
+        </div>
+
+        <div class="conc-col-resolucion">
+          <div class="conc-box conc-box-resuelto" hidden>
+            {{ icon('reconcile', 16) }}
+            <div class="conc-box-info">
+              <strong class="conc-resuelto-nombre"></strong>
+              <span class="muted conc-resuelto-detalle"></span>
+            </div>
+            <button type="button" class="btn-link conc-editar">Editar</button>
+          </div>
+
+          <div class="conc-box conc-box-staged" hidden>
+            <span class="conc-badge-propuesta">{{ icon('sparkle', 14) }} Propuesta</span>
+            <div class="conc-box-info">
+              <strong class="conc-staged-nombre"></strong>
+              <span class="muted conc-staged-detalle"></span>
+            </div>
+            <div class="conc-box-actions">
+              <button type="button" class="btn btn-sm conc-crear-comprobante">{{ icon('save', 14) }} Crear comprobante</button>
+              <button type="button" class="btn-link conc-buscar-toggle">Buscar movimiento</button>
+            </div>
+          </div>
+
+          <div class="conc-box conc-box-idle" hidden>
+            <div class="conc-box-info conc-box-info-idle">
+              {{ icon('sparkle', 16) }}
+              <div>
+                <strong>Sin propuestas automáticas</strong>
+                <div class="muted">No encontramos coincidencias para este movimiento.</div>
               </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+            </div>
+            <button type="button" class="btn-link conc-buscar-toggle">{{ icon('search', 14) }} Buscar</button>
+          </div>
+
+          <div class="conc-box conc-box-buscando" hidden>
+            <div class="cuenta-search conc-buscar-combinado">
+              <input type="text" class="cuenta-search-input conc-buscar-input" placeholder="Busca un documento pendiente o una cuenta…" autocomplete="off" spellcheck="false">
+              <div class="cuenta-search-results" hidden></div>
+            </div>
+            <button type="button" class="btn-link conc-cancelar-buscar">Cancelar</button>
+          </div>
+
+          <input type="hidden" class="conc-concepto-codigo" name="concepto_codigo_{{ loop.index0 }}" value="{{ f.concepto_codigo }}">
+          <input type="hidden" class="conc-concepto-descripcion" name="concepto_descripcion_{{ loop.index0 }}" value="{{ f.concepto_descripcion }}">
+          <input type="hidden" class="conc-aux-tipo" name="aux_tipo_{{ loop.index0 }}" value="{{ f.aux_tipo }}">
+          <input type="hidden" class="conc-aux-modulo" name="aux_modulo_{{ loop.index0 }}" value="{{ f.aux_modulo }}">
+          <input type="hidden" class="conc-aux-doc-idx" name="aux_doc_idx_{{ loop.index0 }}" value="{{ f.aux_doc_idx }}">
+          <input type="hidden" class="conc-aux-rut" name="aux_rut_{{ loop.index0 }}" value="{{ f.aux_rut }}">
+          <input type="hidden" class="conc-aux-nombre" name="aux_nombre_{{ loop.index0 }}" value="{{ f.aux_nombre }}">
+          <input type="hidden" class="conc-aux-tipo-doc" name="aux_tipo_doc_{{ loop.index0 }}" value="{{ f.aux_tipo_doc }}">
+          <input type="hidden" class="conc-aux-numero-doc" name="aux_numero_doc_{{ loop.index0 }}" value="{{ f.aux_numero_doc }}">
+          <input type="hidden" class="conc-aux-fecha-iso" name="aux_fecha_iso_{{ loop.index0 }}" value="{{ f.aux_fecha_iso }}">
+        </div>
+      </div>
+      {% endfor %}
     </div>
 
     <div class="actions-row" style="margin-top:14px">
@@ -127,7 +189,10 @@
   </div>
 </form>
 
-<script>window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};</script>
+<script>
+  window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};
+  window.CYG_AUX_MODULOS = {{ aux_modulos | tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/conciliacion.js') }}"></script>
 
 {% endif %}

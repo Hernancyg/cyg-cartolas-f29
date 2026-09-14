@@ -102,31 +102,41 @@ class FilaSinFecha(Exception):
     llamador decide si abortar o avisar al usuario."""
 
 
-def _fila_debe(fecha, tipo, glosa, cuenta, glosa_detalle, centro_costo, monto, es_banco):
+def _bloque_auxiliar(fila, tipo_auxiliar, rut, razon_social, tipo_documento_codigo, numero_documento, monto, fecha):
+    fila[10] = tipo_auxiliar
+    fila[11] = rut or ""
+    fila[12] = razon_social
+    fila[13] = tipo_documento_codigo if tipo_documento_codigo is not None else ""
+    fila[14] = numero_documento or ""
+    fila[15] = monto
+    fila[16] = fecha
+
+
+def _fila_debe(fecha, tipo, glosa, cuenta, glosa_detalle, centro_costo, monto, es_banco, auxiliar=None):
     fila = ["", "", "", "", cuenta, glosa_detalle, centro_costo, "", monto, "", "", "", "", "", "", "", ""]
     fila[0] = 0
     fila[1] = tipo
     fila[2] = fecha
     fila[3] = glosa
     if es_banco:
-        fila[10] = "B"
-        fila[12] = glosa_detalle
-        fila[13] = 0
-        fila[14] = 0
-        fila[15] = monto
-        fila[16] = fecha
+        _bloque_auxiliar(fila, "B", "", glosa_detalle, 0, 0, monto, fecha)
+    elif auxiliar:
+        _bloque_auxiliar(
+            fila, auxiliar["tipo"], auxiliar["rut"], auxiliar["nombre"], auxiliar["tipo_documento_codigo"],
+            auxiliar["numero_documento"], monto, auxiliar["fecha"],
+        )
     return fila
 
 
-def _fila_haber(fecha, cuenta, glosa_detalle, centro_costo, monto, es_banco):
+def _fila_haber(fecha, cuenta, glosa_detalle, centro_costo, monto, es_banco, auxiliar=None):
     fila = ["", "", "", "", cuenta, glosa_detalle, centro_costo, "", "", monto, "", "", "", "", "", "", ""]
     if es_banco:
-        fila[10] = "B"
-        fila[12] = glosa_detalle
-        fila[13] = 0
-        fila[14] = 0
-        fila[15] = monto
-        fila[16] = fecha
+        _bloque_auxiliar(fila, "B", "", glosa_detalle, 0, 0, monto, fecha)
+    elif auxiliar:
+        _bloque_auxiliar(
+            fila, auxiliar["tipo"], auxiliar["rut"], auxiliar["nombre"], auxiliar["tipo_documento_codigo"],
+            auxiliar["numero_documento"], monto, auxiliar["fecha"],
+        )
     return fila
 
 
@@ -134,10 +144,22 @@ def construir_filas_comprobantes(movimientos, cuenta_banco):
     """`movimientos`: lista de dicts con `fecha` (datetime), `detalle`
     (texto ya editado, se usa como Glosa/Glosa Detalle), `cargo`/`abono`
     (float, exactamente uno de los dos > 0), `concepto` (dict con
-    `codigo`/`descripcion`/`es_banco`/`requiere_centro_costo`).
-    `cuenta_banco`: dict con los mismos 4 campos, para la cuenta bancaria
-    fija elegida arriba. Devuelve la lista de filas (17 columnas cada una,
-    2 filas por movimiento) lista para escribir en el .xls."""
+    `codigo`/`descripcion`/`es_banco`/`requiere_centro_costo`), y
+    `auxiliar` (14-09-2026: opcional, `None` o un dict `{tipo, rut,
+    nombre, tipo_documento_codigo, numero_documento, fecha}` cuando el
+    movimiento se resolvió contra un documento auxiliar de Clientes/
+    Proveedores ("A") u Honorarios ("H") en vez de una cuenta suelta del
+    plan de cuentas — ver `app/conciliacion/documentos.py`). `cuenta_
+    banco`: dict con los mismos 4 campos, para la cuenta bancaria fija
+    elegida arriba. Devuelve la lista de filas (17 columnas cada una,
+    2 filas por movimiento) lista para escribir en el .xls.
+
+    El bloque de Tipo Auxiliar (columnas 10-16) es siempre de la cuenta
+    bancaria ("B") cuando corresponde — un `auxiliar` solo se escribe en
+    la línea de la cuenta Concepto, y solo si esa cuenta no es un banco
+    (nunca ocurren ambos casos a la vez en la práctica: la cuenta fija de
+    un documento auxiliar, 1104-01/2105-01/2105-04, nunca tiene el
+    atributo bancario en el plan de cuentas)."""
     filas = []
     for mov in movimientos:
         fecha = mov["fecha"]
@@ -145,23 +167,26 @@ def construir_filas_comprobantes(movimientos, cuenta_banco):
             raise FilaSinFecha(f"Movimiento sin fecha válida: {mov!r}")
         detalle = mov["detalle"]
         concepto = mov["concepto"]
+        auxiliar = mov.get("auxiliar")
         es_cargo = mov["cargo"] > 0
         monto = mov["cargo"] if es_cargo else mov["abono"]
         tipo = "E" if es_cargo else "I"
 
         if es_cargo:
             cuenta_debe, cuenta_haber = concepto, cuenta_banco
+            aux_debe, aux_haber = auxiliar, None
         else:
             cuenta_debe, cuenta_haber = cuenta_banco, concepto
+            aux_debe, aux_haber = None, auxiliar
 
         cc_debe = 100 if cuenta_debe["requiere_centro_costo"] else ""
         cc_haber = 100 if cuenta_haber["requiere_centro_costo"] else ""
 
         filas.append(_fila_debe(
-            fecha, tipo, detalle, cuenta_debe["codigo"], detalle, cc_debe, monto, cuenta_debe["es_banco"],
+            fecha, tipo, detalle, cuenta_debe["codigo"], detalle, cc_debe, monto, cuenta_debe["es_banco"], aux_debe,
         ))
         filas.append(_fila_haber(
-            fecha, cuenta_haber["codigo"], detalle, cc_haber, monto, cuenta_haber["es_banco"],
+            fecha, cuenta_haber["codigo"], detalle, cc_haber, monto, cuenta_haber["es_banco"], aux_haber,
         ))
     return filas
 

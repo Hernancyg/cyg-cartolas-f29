@@ -1,0 +1,45 @@
+{# Fragmento AJAX que devuelve /conciliacion/cargar-auxiliar/<modulo> al
+   subir el Excel de Clientes/Proveedores/Honorarios — mismo patrón que
+   `caja_empresas/_fragmento_documentos.html`, pero sin checkbox de
+   selección: acá cada documento es un candidato que el JS de matching
+   (app/static/js/conciliacion.js) propone o deja buscar a mano contra
+   los movimientos de la cartola; el estado "Disponible"/"Usado" lo pinta
+   y mantiene el JS (data-estado), no el servidor. #}
+<div class="table-wrap">
+  <table class="data-table conc-tabla-auxiliar" id="tabla-aux-{{ modulo }}">
+    <thead>
+      <tr>
+        <th>Nombre (RUT)</th>
+        <th>Fecha</th>
+        <th>Documento</th>
+        <th style="text-align:right">Monto</th>
+        <th>Estado</th>
+      </tr>
+    </thead>
+    <tbody id="tbody-aux-{{ modulo }}">
+      {% for d in docs %}
+      <tr class="fila-doc-auxiliar" data-modulo="{{ modulo }}" data-idx="{{ loop.index0 }}" data-estado="disponible"
+          data-rut="{{ d.rut }}" data-nombre="{{ d.nombre }}" data-tipo-documento="{{ d.tipo_documento }}"
+          data-numero-documento="{{ d.numero_documento }}" data-monto="{{ d.monto }}" data-fecha-iso="{{ d.fecha_iso }}">
+        <td>{{ d.nombre }}{% if d.rut %} <span class="muted">({{ d.rut }})</span>{% endif %}
+          <input type="hidden" name="aux_{{ modulo }}_nombre_{{ loop.index0 }}" value="{{ d.nombre }}">
+          <input type="hidden" name="aux_{{ modulo }}_rut_{{ loop.index0 }}" value="{{ d.rut }}">
+        </td>
+        <td style="white-space:nowrap">{{ d.fecha }}
+          <input type="hidden" name="aux_{{ modulo }}_fecha_{{ loop.index0 }}" value="{{ d.fecha }}">
+          <input type="hidden" name="aux_{{ modulo }}_fecha_iso_{{ loop.index0 }}" value="{{ d.fecha_iso }}">
+        </td>
+        <td>{{ d.tipo_documento }} {{ d.numero_documento }}
+          <input type="hidden" name="aux_{{ modulo }}_tipo_documento_{{ loop.index0 }}" value="{{ d.tipo_documento }}">
+          <input type="hidden" name="aux_{{ modulo }}_numero_documento_{{ loop.index0 }}" value="{{ d.numero_documento }}">
+        </td>
+        <td style="text-align:right">{{ d.monto | clp }}
+          <input type="hidden" name="aux_{{ modulo }}_monto_{{ loop.index0 }}" value="{{ d.monto }}">
+        </td>
+        <td class="conc-doc-estado"><span class="badge-ok">Disponible</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<input type="hidden" name="aux_{{ modulo }}_total" id="aux-total-{{ modulo }}" value="{{ docs | length }}">
