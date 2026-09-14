@@ -676,7 +676,10 @@ def main():
     concepto_no_banco_sin_cc = CUENTAS_POR_CODIGO_TEST["2105-18"]  # es_banco=False, requiere_centro_costo=False
 
     filas_cargo = construir_filas_comprobantes(
-        [{"fecha": _datetime_conciliacion(2026, 7, 1), "detalle": "TRASPASO A OTRO BANCO", "cargo": 2449219.0, "abono": 0.0, "concepto": concepto_no_banco_con_cc}],
+        [{
+            "fecha": _datetime_conciliacion(2026, 7, 1), "detalle": "TRASPASO A OTRO BANCO", "cargo": 2449219.0, "abono": 0.0,
+            "lineas": [{"cuenta": concepto_no_banco_con_cc, "monto": 2449219.0, "documentos": []}],
+        }],
         banco_bci,
     )
     check("cargo: línea 1 (Debe) es la cuenta Concepto, con Centro Costo 100 (Requiere Centro de Costo=SI)", (
@@ -688,7 +691,10 @@ def main():
     ))
 
     filas_abono = construir_filas_comprobantes(
-        [{"fecha": _datetime_conciliacion(2026, 7, 7), "detalle": "DEPOSITO CHEQUE", "cargo": 0.0, "abono": 34498682.0, "concepto": concepto_no_banco_sin_cc}],
+        [{
+            "fecha": _datetime_conciliacion(2026, 7, 7), "detalle": "DEPOSITO CHEQUE", "cargo": 0.0, "abono": 34498682.0,
+            "lineas": [{"cuenta": concepto_no_banco_sin_cc, "monto": 34498682.0, "documentos": []}],
+        }],
         banco_bci,
     )
     check("abono: línea 1 (Debe) es la cuenta bancaria, tipo I, sin Centro Costo", (
@@ -706,7 +712,10 @@ def main():
     _fallo_sin_fecha = False
     try:
         comprobantes_a_xls_bytes(
-            [{"fecha": "no-es-fecha", "detalle": "x", "cargo": 100.0, "abono": 0.0, "concepto": concepto_no_banco_sin_cc}],
+            [{
+                "fecha": "no-es-fecha", "detalle": "x", "cargo": 100.0, "abono": 0.0,
+                "lineas": [{"cuenta": concepto_no_banco_sin_cc, "monto": 100.0, "documentos": []}],
+            }],
             banco_bci,
         )
     except FilaSinFecha:
@@ -734,9 +743,11 @@ def main():
         "csrf_token": "", "archivo_nombre": "cartola_004_convertido.xlsx", "total_filas": "2",
         "cuenta_banco_codigo": "1101-29", "cuenta_banco_descripcion": "BANCO BCI",
         "fecha_0": "01-07-2026", "fecha_iso_0": "2026-07-01", "detalle_0": "TRASPASO FONDOS OTRO BANCO EN LINEA", "cargo_0": "2449219.0", "abono_0": "0.0",
-        "concepto_codigo_0": "4401-01", "concepto_descripcion_0": "INTERESES PAGADOS",
+        "lineas_0_total": "1", "lineas_0_0_codigo": "4401-01", "lineas_0_0_descripcion": "INTERESES PAGADOS",
+        "lineas_0_0_monto": "2449219.0", "lineas_0_0_docs_total": "0",
         "fecha_1": "07-07-2026", "fecha_iso_1": "2026-07-07", "detalle_1": "DEPOSITO CHEQUE/DOCUMENTO OTROS BANCOS", "cargo_1": "0.0", "abono_1": "34498682.0",
-        "concepto_codigo_1": "1101-01", "concepto_descripcion_1": "CUENTA CAJA",
+        "lineas_1_total": "1", "lineas_1_0_codigo": "1101-01", "lineas_1_0_descripcion": "CUENTA CAJA",
+        "lineas_1_0_monto": "34498682.0", "lineas_1_0_docs_total": "0",
     })
     check("POST /conciliacion/descargar -> 200 con la clasificación completa", r.status_code == 200)
     check("descarga con mimetype .xls", r.mimetype == "application/vnd.ms-excel")
@@ -762,9 +773,10 @@ def main():
         "csrf_token": "", "archivo_nombre": "cartola_004_convertido.xlsx", "total_filas": "2",
         "cuenta_banco_codigo": "", "cuenta_banco_descripcion": "",
         "fecha_0": "01-07-2026", "fecha_iso_0": "2026-07-01", "detalle_0": "TRASPASO FONDOS OTRO BANCO EN LINEA", "cargo_0": "2449219.0", "abono_0": "0.0",
-        "concepto_codigo_0": "4401-01", "concepto_descripcion_0": "INTERESES PAGADOS",
+        "lineas_0_total": "1", "lineas_0_0_codigo": "4401-01", "lineas_0_0_descripcion": "INTERESES PAGADOS",
+        "lineas_0_0_monto": "2449219.0", "lineas_0_0_docs_total": "0",
         "fecha_1": "07-07-2026", "fecha_iso_1": "2026-07-07", "detalle_1": "DEPOSITO CHEQUE/DOCUMENTO OTROS BANCOS", "cargo_1": "0.0", "abono_1": "34498682.0",
-        "concepto_codigo_1": "", "concepto_descripcion_1": "",
+        "lineas_1_total": "0",
     })
     body = r.get_data(as_text=True)
     check("sin cuenta bancaria: 200 (re-muestra la página, no descarga)", r.status_code == 200)

@@ -791,31 +791,22 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .conc-mov-monto.abono { color: var(--emerald); }
 .conc-mov-monto.cargo { color: var(--danger); }
 
-.conc-col-resolucion { min-width: 0; }
-.conc-box {
-  display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
-  border: 1px dashed var(--border); border-radius: var(--r-md); padding: 10px 12px;
+.conc-col-resolucion {
+  min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
 }
-.conc-box[hidden] { display: none; }
-.conc-box-resuelto { border-style: solid; border-color: rgba(var(--emerald-rgb),0.4); background: rgba(var(--emerald-rgb),0.08); color: var(--emerald); align-items: center; }
-.conc-box-resuelto .conc-box-info { color: var(--text); }
-.conc-box-staged { border-style: solid; border-color: rgba(var(--indigo-rgb),0.4); background: rgba(var(--indigo-rgb),0.06); }
-.conc-box-idle { align-items: center; justify-content: space-between; }
-.conc-box-buscando { border-style: solid; align-items: center; }
-
-.conc-box-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.conc-box-info-idle { flex-direction: row; align-items: center; gap: 10px; color: var(--text-muted); }
-.conc-box-info strong { font-size: 0.9rem; }
-.conc-box-info .muted { font-size: 0.8rem; }
-.conc-box-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
-
-.conc-badge-propuesta {
-  display: inline-flex; align-items: center; gap: 4px; background: var(--indigo); color: var(--btn-text);
-  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
-  padding: 3px 8px; border-radius: 999px; flex-shrink: 0;
+.conc-resumen-pendiente { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 0.85rem; }
+.conc-resumen-propuesta-hint {
+  display: inline-flex; align-items: center; gap: 4px; color: var(--indigo); font-size: 0.75rem; font-weight: 700;
 }
+.conc-resumen-resuelto {
+  display: flex; align-items: flex-start; gap: 8px; color: var(--emerald); width: 100%;
+  border: 1px solid rgba(var(--emerald-rgb),0.35); background: rgba(var(--emerald-rgb),0.08);
+  border-radius: var(--r-md); padding: 8px 10px;
+}
+.conc-resumen-resuelto .conc-resumen-info { display: flex; flex-direction: column; gap: 2px; color: var(--text); flex: 1; min-width: 0; }
+.conc-resumen-resuelto .conc-resumen-info strong { font-size: 0.85rem; }
+.conc-resumen-resuelto .conc-resumen-info span { font-size: 0.78rem; color: var(--text-muted); }
 
-.conc-buscar-combinado { flex: 1; min-width: 200px; }
 .conc-buscar-item-tipo {
   font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
   color: var(--text-muted); margin-right: 6px;
@@ -823,6 +814,107 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 
 @media (max-width: 760px) {
   .conc-fila { grid-template-columns: 1fr; }
+}
+
+/* Modal "Crear comprobante" (14-09-2026, a partir de un mockup de
+   referencia del usuario) — reemplaza la búsqueda inline por fila: se
+   abre uno por movimiento, con la línea del banco fija arriba y una
+   tabla de líneas de detalle editables debajo (cada una una cuenta +
+   monto, o una cuenta con auxiliar + uno o más documentos adjuntos). */
+.conc-modal-backdrop {
+  position: fixed; inset: 0; z-index: 2000;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(4,7,15,0.45); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+.conc-modal-backdrop[hidden] { display: none; }
+.conc-modal {
+  background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--r-lg);
+  box-shadow: var(--card-shadow); width: 100%; max-width: 760px; max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.conc-modal-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.conc-modal-title { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.05rem; }
+.conc-ayuda-btn {
+  display: inline-flex; align-items: center; gap: 4px; background: none;
+  border: 1px solid var(--indigo); color: var(--indigo); font-size: 0.75rem; font-weight: 700;
+  padding: 3px 10px; border-radius: 999px; cursor: pointer;
+}
+.conc-modal-close { background: none; border: none; font-size: 1.2rem; line-height: 1; color: var(--text-muted); cursor: pointer; padding: 4px; }
+.conc-modal-close:hover { color: var(--text); }
+
+.conc-ayuda-popover {
+  margin: 0 20px; margin-top: 12px; padding: 12px 14px; border-radius: var(--r-md);
+  background: var(--alert-info-bg); color: var(--alert-info-color); font-size: 0.82rem; line-height: 1.5;
+  flex-shrink: 0;
+}
+.conc-ayuda-popover[hidden] { display: none; }
+
+.conc-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.conc-modal-mov {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px; margin-bottom: 16px;
+}
+.conc-modal-mov-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.conc-modal-mov-fecha { font-size: 0.78rem; color: var(--text-muted); }
+.conc-modal-mov-detalle { font-weight: 700; }
+.conc-modal-mov-sub { font-size: 0.78rem; color: var(--text-muted); }
+.conc-modal-mov-monto { font-weight: 800; font-size: 1.1rem; flex-shrink: 0; }
+.conc-modal-mov-monto.abono { color: var(--emerald); }
+.conc-modal-mov-monto.cargo { color: var(--danger); }
+
+.conc-modal-campos { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.conc-modal-campos .field { flex: 1; min-width: 140px; }
+.conc-modal-campos .field-static {
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--input-bg);
+  color: var(--text-muted); font-size: 0.88rem;
+}
+
+.conc-modal-tabla { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.conc-modal-tabla th, .conc-modal-tabla td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+.conc-modal-tabla th { color: var(--text-muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .02em; }
+.conc-modal-tabla td.conc-col-monto { text-align: right; white-space: nowrap; font-weight: 700; }
+.conc-modal-num { width: 24px; color: var(--text-muted); }
+.conc-modal-quitar-col { width: 28px; }
+
+.conc-linea-cuenta { min-width: 220px; }
+.conc-linea-monto-input {
+  width: 100%; max-width: 140px; text-align: right; padding: 7px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--input-bg); color: var(--text); font: inherit; font-weight: 700;
+}
+.conc-linea-quitar { background: none; border: none; color: var(--danger); cursor: pointer; padding: 4px; font-size: 1rem; }
+
+.conc-linea-docs { margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; }
+.conc-linea-docs[hidden] { display: none; }
+.conc-linea-docs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.conc-doc-chip {
+  display: inline-flex; align-items: center; gap: 6px; background: rgba(var(--indigo-rgb),0.1);
+  border: 1px solid rgba(var(--indigo-rgb),0.3); border-radius: 999px; padding: 3px 6px 3px 10px; font-size: 0.78rem;
+}
+.conc-doc-chip-quitar { background: none; border: none; color: var(--indigo); cursor: pointer; font-size: 0.9rem; padding: 0 4px; }
+.conc-linea-doc-buscar { max-width: 320px; }
+
+#conc-agregar-cuenta { margin-top: 10px; }
+
+.conc-modal-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 14px 20px; border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.conc-modal-totales { display: flex; align-items: center; gap: 10px; font-size: 0.88rem; flex-wrap: wrap; }
+.conc-cuadra-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 700;
+}
+.conc-cuadra-badge.ok { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
+.conc-cuadra-badge.bad { background: rgba(var(--danger-rgb),0.14); color: var(--danger); }
+.conc-modal-acciones { display: flex; align-items: center; gap: 10px; }
+
+@media (max-width: 640px) {
+  .conc-modal-mov { flex-direction: column; align-items: flex-start; }
+  .conc-modal-footer { flex-direction: column; align-items: stretch; }
+  .conc-modal-acciones { justify-content: flex-end; }
 }
 
 /* "Detalle de transacción" editable (09-09-2026): un input que se ve como

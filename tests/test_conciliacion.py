@@ -1,17 +1,21 @@
 """
 Verificación de "Conciliación" — conciliación asistida contra documentos
-auxiliares (14-09-2026), mismo estilo sin-pytest que `tests/test_sii.py`/
-`tests/test_depreciacion.py` (reusa el bootstrap de `tests/run_verification.py`
-— `flask_app` — importándolo como módulo).
+auxiliares vía el modal "Crear comprobante" (14-09-2026), mismo estilo
+sin-pytest que `tests/test_sii.py`/`tests/test_depreciacion.py` (reusa el
+bootstrap de `tests/run_verification.py` — `flask_app` — importándolo
+como módulo).
 
-El matching automático (monto Y rut) vive en `app/static/js/conciliacion.js`
-(cliente puro) — no se puede probar acá, donde solo corre Python. Estas
-pruebas cubren todo lo que SÍ es del servidor: parseo de los 3 Excel
-auxiliares, la ruta de carga AJAX, la reconstrucción del pool de
-auxiliares tras un error de validación, y el armado del comprobante final
-(bloque de Tipo Auxiliar "A"/"H" en la línea Concepto cuando el
-movimiento llega resuelto contra un documento, balance Debe==Haber en
-cualquier combinación).
+Todo el matching automático (monto Y rut) y la interacción del modal
+(agregar/quitar líneas, adjuntar documentos, buscador combinado) viven en
+`app/static/js/conciliacion.js` (cliente puro) — no se pueden probar acá,
+donde solo corre Python. Estas pruebas cubren todo lo que SÍ es del
+servidor: parseo de los 3 Excel auxiliares, la ruta de carga AJAX, la
+reconstrucción del pool de auxiliares Y de las líneas ya armadas tras un
+error de validación, y el armado del comprobante final — cada línea sin
+documentos aporta una fila, cada línea CON documentos se expande en una
+fila por documento (mismo código de cuenta, cada una con su propio bloque
+de Tipo Auxiliar "A"/"H") — balance Debe==Haber en cualquier combinación
+de líneas/documentos.
 
 Uso:
     python tests/test_conciliacion.py
@@ -120,49 +124,66 @@ def test_auxiliar_modulos_config():
         check(f"{modulo}: la cuenta fija existe en el plan de cuentas", info["cuenta_codigo"] in CUENTAS_POR_CODIGO)
 
 
-def test_construir_filas_comprobantes_con_auxiliar():
-    """El bloque de Tipo Auxiliar "A"/"H" se escribe en la línea de la
-    cuenta Concepto (no en la del banco, que sigue siempre con "B") — y el
-    comprobante queda balanceado igual que sin auxiliar."""
-    cuenta_banco = {"codigo": "1101-29", "descripcion": "BANCO BCI", "es_banco": True, "requiere_centro_costo": False}
-    cuenta_clientes = {"codigo": "1104-01", "descripcion": "DEUDORES CLIENTES", "es_banco": False, "requiere_centro_costo": False}
-    auxiliar = {
-        "tipo": "A", "rut": "76123456-7", "nombre": "PAC HDI SEGUROS SA",
-        "tipo_documento_codigo": 33, "numero_documento": "456", "fecha": datetime(2026, 8, 18),
-    }
-    movimientos = [{
-        "fecha": datetime(2026, 8, 18), "detalle": "TRANSFERENCIA PAC HDI SEGUROS SA",
-        "cargo": 0.0, "abono": 103_733.0, "concepto": cuenta_clientes, "auxiliar": auxiliar,
-    }]
-    filas = export_writer.construir_filas_comprobantes(movimientos, cuenta_banco)
-    check("2 líneas (banco + concepto), como sin auxiliar", len(filas) == 2)
+CUENTA_BANCO = {"codigo": "1101-29", "descripcion": "BANCO BCI", "es_banco": True, "requiere_centro_costo": False}
+CUENTA_CLIENTES = {"codigo": "1104-01", "descripcion": "DEUDORES CLIENTES", "es_banco": False, "requiere_centro_costo": False}
+CUENTA_GASTO = {"codigo": "5501-05", "descripcion": "GASTOS VARIOS", "es_banco": False, "requiere_centro_costo": False}
+CUENTA_OTRO_GASTO = {"codigo": "4201-11", "descripcion": "MULTAS", "es_banco": False, "requiere_centro_costo": False}
 
+
+def test_construir_filas_comprobantes_linea_plana():
+    """Una línea sin documentos aporta UNA fila con el monto digitado a
+    mano — comportamiento base, sin auxiliar."""
+    movimientos = [{
+        "fecha": datetime(2026, 8, 21), "detalle": "OF CENTRA", "cargo": 50_000.0, "abono": 0.0,
+        "lineas": [{"cuenta": CUENTA_GASTO, "monto": 50_000.0, "documentos": []}],
+    }]
+    filas = export_writer.construir_filas_comprobantes(movimientos, CUENTA_BANCO)
+    check("2 filas (banco + 1 línea)", len(filas) == 2)
     fila_banco = next(f for f in filas if f[4] == "1101-29")
-    fila_concepto = next(f for f in filas if f[4] == "1104-01")
-    check("línea del banco sigue con Tipo Auxiliar 'B' (no la pisa el auxiliar)", fila_banco[10] == "B")
-    check("línea del concepto lleva el bloque 'A' del documento auxiliar", fila_concepto[10] == "A")
-    check("línea del concepto: Rut del documento", fila_concepto[11] == "76123456-7")
-    check("línea del concepto: Razón Social del documento", fila_concepto[12] == "PAC HDI SEGUROS SA")
-    check("línea del concepto: código de Tipo De Documento (33 = FAC-EL)", fila_concepto[13] == 33)
-    check("línea del concepto: Folio/N° Documento", fila_concepto[14] == "456")
-    check("línea del concepto: Monto = el mismo del movimiento", fila_concepto[15] == 103_733.0)
+    fila_concepto = next(f for f in filas if f[4] == "5501-05")
+    check("banco con Tipo Auxiliar 'B'", fila_banco[10] == "B")
+    check("línea plana sin Tipo Auxiliar", not fila_concepto[10])
+    check("balanceado", sum(f[8] for f in filas if f[8]) == sum(f[9] for f in filas if f[9]) == 50_000.0)
+    check("primera fila (Número=0/Tipo/Fecha/Glosa) es la línea de detalle en un cargo", fila_concepto[0] == 0 and fila_concepto[1] == "E")
+    check("la fila del banco no repite Número/Tipo/Fecha/Glosa", fila_banco[0] == "" and fila_banco[1] == "")
+
+
+def test_construir_filas_comprobantes_linea_con_varios_documentos():
+    """Una línea CON documentos (14-09-2026, modal "Crear comprobante") se
+    expande en una fila POR documento — mismo código de cuenta, cada una
+    con su propio bloque de Tipo Auxiliar "A", y el comprobante sigue
+    balanceado contra el total del movimiento."""
+    doc_a = {"tipo": "A", "rut": "1-9", "nombre": "Doc A", "tipo_documento_codigo": 33, "numero_documento": "1", "fecha": datetime(2026, 8, 1), "monto": 60_000.0}
+    doc_b = {"tipo": "A", "rut": "2-7", "nombre": "Doc B", "tipo_documento_codigo": 33, "numero_documento": "2", "fecha": datetime(2026, 8, 2), "monto": 43_733.0}
+    movimientos = [{
+        "fecha": datetime(2026, 8, 18), "detalle": "TRANSFERENCIA VARIOS CLIENTES", "cargo": 0.0, "abono": 103_733.0,
+        "lineas": [{"cuenta": CUENTA_CLIENTES, "monto": 0, "documentos": [doc_a, doc_b]}],
+    }]
+    filas = export_writer.construir_filas_comprobantes(movimientos, CUENTA_BANCO)
+    check("3 filas (banco + 2 documentos)", len(filas) == 3)
+    check("es un abono -> la primera fila es el banco", filas[0][4] == "1101-29" and filas[0][0] == 0 and filas[0][1] == "I")
+
+    filas_doc = [f for f in filas if f[4] == "1104-01"]
+    check("2 filas de la cuenta Clientes (una por documento)", len(filas_doc) == 2)
+    check("cada fila lleva el rut de SU documento", {f[11] for f in filas_doc} == {"1-9", "2-7"})
+    check("cada fila lleva el monto de SU documento (no el total combinado)", {f[9] for f in filas_doc} == {60_000.0, 43_733.0})
     check("balanceado", sum(f[8] for f in filas if f[8]) == sum(f[9] for f in filas if f[9]) == 103_733.0)
 
 
-def test_construir_filas_comprobantes_sin_auxiliar_no_cambia():
-    """Regresión: un movimiento sin `auxiliar` (o con `auxiliar=None`, o
-    directamente sin la clave) se comporta exactamente como antes de esta
-    ronda — sin bloque en la línea Concepto."""
-    cuenta_banco = {"codigo": "1101-29", "descripcion": "BANCO BCI", "es_banco": True, "requiere_centro_costo": False}
-    cuenta_gasto = {"codigo": "5501-05", "descripcion": "GASTOS VARIOS", "es_banco": False, "requiere_centro_costo": False}
+def test_construir_filas_comprobantes_varias_lineas():
+    """"+ Agregar cuenta" del modal: un movimiento partido en más de una
+    línea (ninguna con documentos) — cada línea aporta su propia fila."""
     movimientos = [{
-        "fecha": datetime(2026, 8, 21), "detalle": "OF CENTRA",
-        "cargo": 50_000.0, "abono": 0.0, "concepto": cuenta_gasto,
+        "fecha": datetime(2026, 8, 20), "detalle": "PAGO MIXTO", "cargo": 161_721.0, "abono": 0.0,
+        "lineas": [
+            {"cuenta": CUENTA_GASTO, "monto": 100_000.0, "documentos": []},
+            {"cuenta": CUENTA_OTRO_GASTO, "monto": 61_721.0, "documentos": []},
+        ],
     }]
-    filas = export_writer.construir_filas_comprobantes(movimientos, cuenta_banco)
-    fila_concepto = next(f for f in filas if f[4] == "5501-05")
-    check("sin auxiliar: la línea Concepto no lleva Tipo Auxiliar", not fila_concepto[10])
-    check("sin auxiliar: balanceado igual que siempre", sum(f[8] for f in filas if f[8]) == sum(f[9] for f in filas if f[9]) == 50_000.0)
+    filas = export_writer.construir_filas_comprobantes(movimientos, CUENTA_BANCO)
+    check("3 filas (banco + 2 líneas)", len(filas) == 3)
+    check("balanceado", sum(f[8] for f in filas if f[8]) == sum(f[9] for f in filas if f[9]) == 161_721.0)
+    check("la primera línea de detalle es la primera fila (cargo)", filas[0][4] == "5501-05" and filas[0][0] == 0)
 
 
 def test_cargar_auxiliar_rutas():
@@ -215,14 +236,19 @@ def test_cargar_auxiliar_rutas():
     check("Honorarios: separa boleta en tipo BOL-HE + número 7", 'value="BOL-HE"' in body_hon and 'value="7"' in body_hon)
 
 
-def test_descargar_con_auxiliares_y_concepto_plano():
-    """Flujo completo de `/conciliacion/descargar` con 3 movimientos: uno
-    resuelto contra un documento de Clientes (abono), uno contra un
-    documento de Proveedores (cargo), y uno resuelto a mano contra una
-    cuenta suelta del plan de cuentas (sin auxiliar) — exactamente lo que
-    dejaría armado el JS de matching/búsqueda antes de enviar el
-    formulario. Verifica que el .xls final balancea y que cada línea trae
-    el bloque de Tipo Auxiliar correcto."""
+def test_descargar_con_lineas_multiples():
+    """Flujo completo de `/conciliacion/descargar` con 3 movimientos —
+    exactamente lo que dejaría armado el modal "Crear comprobante" antes
+    de enviar el formulario:
+
+    - Fila 0 (abono): 1 línea (Clientes) con 1 documento adjunto.
+    - Fila 1 (cargo): 2 líneas — una (Proveedores) con 1 documento que NO
+      cubre el monto completo del movimiento, y otra plana (cuenta
+      suelta) con el resto ("+ Agregar cuenta").
+    - Fila 2 (cargo): 1 línea plana, sin documentos.
+
+    Verifica que el .xls final balancea y que cada fila trae el bloque de
+    Tipo Auxiliar correcto (o ninguno, en las líneas planas)."""
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
 
@@ -242,26 +268,34 @@ def test_descargar_con_auxiliares_y_concepto_plano():
         "cuenta_banco_codigo": "1101-29",
         "cuenta_banco_descripcion": "BANCO BCI",
         "total_filas": "3",
-        # Fila 0: abono, resuelto contra un documento de Clientes.
+        # Fila 0: abono, 1 línea (Clientes) con 1 documento (cubre el monto completo).
         "fecha_0": "18-08-2026", "fecha_iso_0": "2026-08-18", "detalle_0": "TRANSFERENCIA PAC HDI SEGUROS SA",
         "cargo_0": "0", "abono_0": "103733",
-        "concepto_codigo_0": "1104-01", "concepto_descripcion_0": "DEUDORES CLIENTES",
-        "aux_tipo_0": "A", "aux_modulo_0": "clientes", "aux_doc_idx_0": "0",
-        "aux_rut_0": "76123456-7", "aux_nombre_0": "PAC HDI SEGUROS SA",
-        "aux_tipo_doc_0": "FAC-EL", "aux_numero_doc_0": "456", "aux_fecha_iso_0": "2026-08-18",
-        # Fila 1: cargo, resuelto contra un documento de Proveedores.
+        "lineas_0_total": "1",
+        "lineas_0_0_codigo": "1104-01", "lineas_0_0_descripcion": "DEUDORES CLIENTES", "lineas_0_0_monto": "",
+        "lineas_0_0_docs_total": "1",
+        "lineas_0_0_doc_0_modulo": "clientes", "lineas_0_0_doc_0_idx": "0",
+        "lineas_0_0_doc_0_rut": "76123456-7", "lineas_0_0_doc_0_nombre": "PAC HDI SEGUROS SA",
+        "lineas_0_0_doc_0_tipo_doc": "FAC-EL", "lineas_0_0_doc_0_numero_doc": "456",
+        "lineas_0_0_doc_0_fecha_iso": "2026-08-18", "lineas_0_0_doc_0_monto": "103733",
+        # Fila 1: cargo, 2 líneas — Proveedores con 1 documento (100.000) + cuenta suelta (61.721).
         "fecha_1": "20-08-2026", "fecha_iso_1": "2026-08-20", "detalle_1": "PAGO A PROVEEDOR ACME LTDA",
         "cargo_1": "161721", "abono_1": "0",
-        "concepto_codigo_1": "2105-01", "concepto_descripcion_1": "FACTURAS POR PAGAR",
-        "aux_tipo_1": "A", "aux_modulo_1": "proveedores", "aux_doc_idx_1": "0",
-        "aux_rut_1": "12345678-9", "aux_nombre_1": "ACME LTDA",
-        "aux_tipo_doc_1": "FAC-EL", "aux_numero_doc_1": "789", "aux_fecha_iso_1": "2026-08-15",
-        # Fila 2: cargo, resuelto a mano contra una cuenta suelta (sin documento).
+        "lineas_1_total": "2",
+        "lineas_1_0_codigo": "2105-01", "lineas_1_0_descripcion": "FACTURAS POR PAGAR", "lineas_1_0_monto": "",
+        "lineas_1_0_docs_total": "1",
+        "lineas_1_0_doc_0_modulo": "proveedores", "lineas_1_0_doc_0_idx": "0",
+        "lineas_1_0_doc_0_rut": "12345678-9", "lineas_1_0_doc_0_nombre": "ACME LTDA",
+        "lineas_1_0_doc_0_tipo_doc": "FAC-EL", "lineas_1_0_doc_0_numero_doc": "789",
+        "lineas_1_0_doc_0_fecha_iso": "2026-08-15", "lineas_1_0_doc_0_monto": "100000",
+        "lineas_1_1_codigo": "5501-05", "lineas_1_1_descripcion": CUENTAS_POR_CODIGO["5501-05"]["descripcion"],
+        "lineas_1_1_monto": "61721", "lineas_1_1_docs_total": "0",
+        # Fila 2: cargo, 1 línea plana contra una cuenta suelta (sin documento).
         "fecha_2": "21-08-2026", "fecha_iso_2": "2026-08-21", "detalle_2": "OF CENTRA",
         "cargo_2": "50000", "abono_2": "0",
-        "concepto_codigo_2": "5501-05", "concepto_descripcion_2": CUENTAS_POR_CODIGO["5501-05"]["descripcion"],
-        "aux_tipo_2": "", "aux_modulo_2": "", "aux_doc_idx_2": "",
-        "aux_rut_2": "", "aux_nombre_2": "", "aux_tipo_doc_2": "", "aux_numero_doc_2": "", "aux_fecha_iso_2": "",
+        "lineas_2_total": "1",
+        "lineas_2_0_codigo": "5501-05", "lineas_2_0_descripcion": CUENTAS_POR_CODIGO["5501-05"]["descripcion"],
+        "lineas_2_0_monto": "50000", "lineas_2_0_docs_total": "0",
         # Pool de documentos auxiliares ya cargados (lo que viajaría desde
         # los campos ocultos del fragmento de /cargar-auxiliar).
         "aux_clientes_total": "1",
@@ -271,7 +305,7 @@ def test_descargar_con_auxiliares_y_concepto_plano():
         "aux_proveedores_total": "1",
         "aux_proveedores_nombre_0": "ACME LTDA", "aux_proveedores_rut_0": "12345678-9",
         "aux_proveedores_fecha_0": "15-08-2026", "aux_proveedores_fecha_iso_0": "2026-08-15",
-        "aux_proveedores_tipo_documento_0": "FAC-EL", "aux_proveedores_numero_documento_0": "789", "aux_proveedores_monto_0": "161721",
+        "aux_proveedores_tipo_documento_0": "FAC-EL", "aux_proveedores_numero_documento_0": "789", "aux_proveedores_monto_0": "100000",
         "aux_honorarios_total": "0",
     }
 
@@ -281,7 +315,7 @@ def test_descargar_con_auxiliares_y_concepto_plano():
     wb = xlrd.open_workbook(file_contents=r.data)
     ws = wb.sheet_by_index(0)
     filas = [ws.row_values(i) for i in range(1, ws.nrows) if ws.cell(i, 4).value]  # columna Cuenta Detalle no vacía
-    check("6 líneas en total (2 por movimiento x 3 movimientos)", len(filas) == 6)
+    check("7 filas en total (2 + 3 + 2, banco incluido)", len(filas) == 7)
 
     total_debe = sum(f[8] for f in filas if isinstance(f[8], (int, float)))
     total_haber = sum(f[9] for f in filas if isinstance(f[9], (int, float)))
@@ -290,18 +324,22 @@ def test_descargar_con_auxiliares_y_concepto_plano():
     fila_clientes = next(f for f in filas if f[4] == "1104-01")
     check("Clientes: Tipo Auxiliar 'A' en la línea 1104-01", fila_clientes[10] == "A")
     check("Clientes: Rut del documento", fila_clientes[11] == "76123456-7")
+    check("Clientes: monto = 103.733 (documento completo)", fila_clientes[9] == 103_733.0)
 
     fila_proveedores = next(f for f in filas if f[4] == "2105-01")
     check("Proveedores: Tipo Auxiliar 'A' en la línea 2105-01", fila_proveedores[10] == "A")
     check("Proveedores: Rut del documento", fila_proveedores[11] == "12345678-9")
+    check("Proveedores: monto = 100.000 (solo el documento, no el movimiento completo)", fila_proveedores[8] == 100_000.0)
 
-    fila_gasto = next(f for f in filas if f[4] == "5501-05")
-    check("Movimiento sin documento: sin Tipo Auxiliar en la línea Concepto", not fila_gasto[10])
+    filas_gasto = [f for f in filas if f[4] == "5501-05"]
+    check("2 líneas planas contra la cuenta de gasto (una por movimiento)", len(filas_gasto) == 2)
+    check("ninguna línea plana lleva Tipo Auxiliar", all(not f[10] for f in filas_gasto))
+    check("montos de las líneas planas: 61.721 (resto de fila 1) y 50.000 (fila 2)", {f[8] for f in filas_gasto} == {61_721.0, 50_000.0})
 
     # ---- Ahora un error de validación (falta la cuenta bancaria):
-    # confirma que el pool de Clientes/Proveedores se reconstruye y se
-    # vuelve a mostrar en pantalla, sin que el admin tenga que volver a
-    # subir los Excel. ----
+    # confirma que el pool de Clientes/Proveedores Y las líneas ya
+    # armadas de cada movimiento se reconstruyen y se vuelven a mostrar
+    # en pantalla, sin que el admin tenga que rehacer nada. ----
     form_incompleto = dict(form)
     form_incompleto["cuenta_banco_codigo"] = ""
     r = client.post("/conciliacion/descargar", data=form_incompleto)
@@ -310,14 +348,16 @@ def test_descargar_con_auxiliares_y_concepto_plano():
     check("el pool de Clientes se reconstruye en la página tras el error", "PAC HDI SEGUROS SA" in body)
     check("el pool de Proveedores se reconstruye en la página tras el error", "ACME LTDA" in body)
     check("el movimiento ya resuelto sigue mostrando su detalle", "TRANSFERENCIA PAC HDI SEGUROS SA" in body)
+    check("las líneas ya armadas viajan de vuelta a la página (data-lineas-iniciales)", '&#34;codigo&#34;: &#34;1104-01&#34;' in body or '"codigo": "1104-01"' in body)
 
 
 def main():
     test_auxiliar_modulos_config()
-    test_construir_filas_comprobantes_con_auxiliar()
-    test_construir_filas_comprobantes_sin_auxiliar_no_cambia()
+    test_construir_filas_comprobantes_linea_plana()
+    test_construir_filas_comprobantes_linea_con_varios_documentos()
+    test_construir_filas_comprobantes_varias_lineas()
     test_cargar_auxiliar_rutas()
-    test_descargar_con_auxiliares_y_concepto_plano()
+    test_descargar_con_lineas_multiples()
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")
     if FAILED:

@@ -124,43 +124,48 @@ soporte) apenas tengas acceso, antes de confiar en él en producción.
 
 La pestaña "Conciliación" (solo admin por defecto) sube la cartola ya
 convertida por "Subir Cartolas" y arma el comprobante contable de cada
-movimiento contra la cuenta bancaria fija elegida arriba de la tabla —
-igual que antes. La ronda del 14-09-2026 le agregó conciliación asistida
-contra documentos auxiliares, a partir de un mockup de referencia que
-entregó el usuario:
+movimiento contra la cuenta bancaria fija elegida arriba de la tabla.
+Desde el 14-09-2026, cada movimiento se resuelve en un modal "Crear
+comprobante" (a partir de un mockup de referencia que entregó el
+usuario) en vez de un buscador suelto por fila:
 
 - **Documentos auxiliares (opcional)**: se pueden cargar los mismos 3
   Excel de "Empresas Caja" (Clientes, Proveedores, Honorarios —
   reutiliza sus mismos parsers, ver `app/conciliacion/documentos.py`).
   Cada documento cargado es un candidato para emparejar contra un
   movimiento de la cartola.
-- **Propuesta automática**: cada movimiento se compara contra los
-  documentos todavía disponibles — si su monto **y** el RUT que se
-  alcance a extraer del texto del movimiento calzan EXACTO con un
-  documento, se muestra como "Propuesta" (con un botón "Crear
-  comprobante" para confirmarla). Si el texto de la cartola no trae un
-  RUT reconocible, no hay propuesta automática — el admin busca a mano
-  ("Buscar") entre los documentos disponibles y el plan de cuentas en un
-  buscador combinado. Toda esta lógica de emparejamiento vive en
-  `app/static/js/conciliacion.js` (cliente puro); el servidor solo
-  sube/parsea los 3 Excel y arma el archivo final.
-- Un movimiento resuelto contra un documento usa la cuenta fija de ese
-  módulo (1104-01 Clientes, 2105-01 Proveedores, 2105-04 Honorarios,
-  mismas que "Empresas Caja") y lleva el bloque de Tipo Auxiliar "A"/"H"
-  correspondiente (Rut, Razón Social, Tipo/N° Documento) en su línea del
-  comprobante — el resto de los movimientos sigue pudiendo resolverse a
-  mano contra cualquier cuenta suelta del plan de cuentas, exactamente
-  como en la primera ronda (ambos modos conviven, no es obligatorio
-  cargar documentos auxiliares para conciliar).
+- **Modal "Crear comprobante"**: por movimiento — muestra la línea del
+  banco (fija) y una o más **líneas de detalle** editables ("+ Agregar
+  cuenta" para partir el movimiento en varias), cada una con su propia
+  cuenta y monto. Si la propuesta automática encontró un documento
+  (monto **y** el RUT que se alcance a extraer del texto del movimiento
+  calzan EXACTO con uno todavía disponible), el modal abre con esa línea
+  ya precargada, lista para confirmar con "Crear y conciliar"; si no, el
+  admin elige la cuenta a mano. El pie del modal muestra Debe/Haber en
+  vivo con una insignia "Cuadra"/"No cuadra" — no se puede confirmar un
+  comprobante desbalanceado. Toda esta lógica vive en `app/static/js/
+  conciliacion.js` (cliente puro); el servidor solo sube/parsea los 3
+  Excel y arma el archivo final.
+- **Líneas con documentos**: si una línea usa una de las 3 cuentas con
+  auxiliar (1104-01 Clientes, 2105-01 Proveedores, 2105-04 Honorarios,
+  mismas que "Empresas Caja"), se puede buscar y adjuntar uno o **varios**
+  documentos pendientes — el monto de la línea es la suma de los
+  adjuntos. En el archivo de salida cada documento sigue siendo su propia
+  fila (mismo código de cuenta, cada una con su propio bloque de Tipo
+  Auxiliar "A"/"H" — Rut, Razón Social, Tipo/N° Documento), igual criterio
+  que "Empresas Caja" cuando se tildan varios documentos del mismo
+  módulo. Una línea sin documentos sigue siendo una cuenta suelta del
+  plan de cuentas con un monto a mano, exactamente como en la primera
+  ronda (ambos modos conviven en el mismo comprobante).
 - Un documento usado por un movimiento queda marcado "Usado" y no se le
-  vuelve a proponer a otro; "Editar" en un movimiento ya resuelto lo
-  libera de vuelta a "Disponible".
+  vuelve a proponer a otro ni aparece en la búsqueda; "Editar comprobante"
+  en un movimiento ya resuelto lo libera de vuelta a "Disponible".
 
 Ver `app/conciliacion/routes.py`, `app/conciliacion/export_writer.py` y
 `app/conciliacion/documentos.py` para el detalle completo, y
 `tests/test_conciliacion.py` para la cobertura del lado servidor (el
-matching automático, al vivir en JavaScript, se prueba a mano en el
-navegador, no con esta suite).
+matching automático y la interacción del modal, al vivir en JavaScript,
+se prueban a mano en el navegador, no con esta suite).
 
 ## Depreciación
 

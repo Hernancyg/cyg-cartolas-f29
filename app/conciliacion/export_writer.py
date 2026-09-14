@@ -12,41 +12,48 @@ columnas/anchos/formatos son idénticos) para no arriesgar ese módulo, ya en
 producción — se duplican aquí las constantes de la plantilla, igual que se
 hizo en su momento entre F29 de un período y F29 masivo.
 
-## Regla de armado de cada comprobante (2 líneas por movimiento)
+## Regla de armado de cada comprobante (banco + N líneas por movimiento)
 
-Cada movimiento de la cartola se concilia contra DOS cuentas:
+Cada movimiento de la cartola se concilia contra la **cuenta bancaria
+fija** que el admin elige arriba de la tabla (por ejemplo "1101-29 —
+BANCO BCI", la misma para todos los movimientos del archivo) y una o más
+**líneas de detalle** que arma en el modal "Crear comprobante" (14-09-2026,
+segunda ronda de la conciliación asistida — reemplaza la única cuenta
+"Concepto" por fila de las rondas anteriores):
 
-- La **cuenta bancaria fija** que el admin elige arriba de la tabla (por
-  ejemplo "1101-29 — BANCO BCI") — la misma para todos los movimientos del
-  archivo, porque todos vienen de la cartola de ese banco.
-- La **cuenta "Concepto"** que el admin elige por cada fila (el buscador ya
-  existente) — la contra-cuenta de ese movimiento en particular.
-
-Según confirmó el usuario con su propia plantilla de ejemplo:
-
+- Cada línea de detalle es una cuenta del plan de cuentas con un monto —
+  si es una de las 3 cuentas con documentos auxiliares (Clientes/
+  Proveedores/Honorarios, ver `app/conciliacion/documentos.py`), la línea
+  puede llevar VARIOS documentos adjuntos en vez de un monto suelto: cada
+  documento se escribe como su PROPIA fila (mismo código de cuenta,
+  repetido), con su propio bloque de Tipo Auxiliar "A"/"H" — el monto de
+  la línea que se ve en pantalla es la suma de sus documentos, pero en el
+  archivo de salida no hay una sola fila con el total, sino una por
+  documento (igual criterio que "Empresas Caja" cuando se tildan varios
+  documentos pendientes del mismo módulo).
 - Si el movimiento es un **cargo** (dinero que sale del banco): la cuenta
-  bancaria va al **Haber** y la cuenta Concepto al **Debe**. Tipo = "E".
+  bancaria va al **Haber** y las líneas de detalle al **Debe**. Tipo = "E".
 - Si el movimiento es un **abono** (dinero que entra al banco): la cuenta
-  bancaria va al **Debe** y la cuenta Concepto al **Haber**. Tipo = "I".
-- La primera línea del comprobante es siempre la que lleva el **Debe**
-  (con Número=0, Tipo, Fecha y Glosa); la segunda línea es siempre la que
-  lleva el **Haber** (sin esos 4 campos) — confirmado contra las 7
-  muestras de la plantilla: en los abonos la primera línea es el banco, en
-  los cargos la primera línea es la cuenta Concepto.
+  bancaria va al **Debe** y las líneas de detalle al **Haber**. Tipo = "I".
+- La PRIMERA fila del comprobante es siempre la que lleva el **Debe**
+  (con Número=0, Tipo, Fecha y Glosa); el resto no lleva esos 4 campos —
+  mismo criterio que las rondas anteriores (en los abonos la primera fila
+  es el banco, en los cargos la primera fila es la primera línea de
+  detalle).
 - "Glosa Detalle" repite el texto del movimiento (editable en pantalla,
-  toma el detalle de la cartola por defecto) en AMBAS líneas.
-- "Centro Costo" = 100 en la línea de la cuenta que tenga
-  "Requiere Centro de Costo" = SI en el plan de cuentas (columna del mismo
-  nombre); vacío si no.
-- "Tipo Auxiliar" = "B" en la línea de la cuenta que tenga
-  "Atributo Bancario" = SI en el plan de cuentas; y en ese caso también se
-  llena el bloque "A/B/H" de detalle bancario: Razon Social/Descripción =
-  el texto del movimiento, Tipo De Documento = 0, Folio = 0, Monto = el
-  mismo monto de esa línea, Fecha = la misma fecha del movimiento.
-- "Número" = 0 en la primera línea, vacío en la segunda (así también
-  "Sucursal", que esta ronda no se implementa — la plantilla del usuario
-  la deja vacía en las 7 muestras, y no pidió usar el atributo
-  "Requiere Sucursal" del plan de cuentas).
+  toma el detalle de la cartola por defecto) en TODAS las filas.
+- "Centro Costo" = 100 en la fila de la cuenta que tenga "Requiere Centro
+  de Costo" = SI en el plan de cuentas; vacío si no.
+- "Tipo Auxiliar" = "B" en la fila del banco (con el bloque de detalle
+  bancario: Razón Social/Descripción = texto del movimiento, Tipo De
+  Documento = 0, Folio = 0, Monto = el monto de esa fila, Fecha = la
+  fecha del movimiento); "A"/"H" en cada fila de un documento auxiliar
+  (con el bloque real del documento — Rut, Razón Social, Tipo/Folio,
+  Monto, Fecha); vacío en una línea de detalle sin documentos (cuenta
+  suelta del plan de cuentas).
+- El comprobante siempre queda balanceado (Debe == Haber == el monto del
+  movimiento) — se valida server-side antes de armar el archivo, ver
+  `app/conciliacion/routes.py:descargar`.
 """
 
 from datetime import datetime
@@ -102,92 +109,97 @@ class FilaSinFecha(Exception):
     llamador decide si abortar o avisar al usuario."""
 
 
-def _bloque_auxiliar(fila, tipo_auxiliar, rut, razon_social, tipo_documento_codigo, numero_documento, monto, fecha):
-    fila[10] = tipo_auxiliar
-    fila[11] = rut or ""
-    fila[12] = razon_social
-    fila[13] = tipo_documento_codigo if tipo_documento_codigo is not None else ""
-    fila[14] = numero_documento or ""
-    fila[15] = monto
-    fila[16] = fecha
-
-
-def _fila_debe(fecha, tipo, glosa, cuenta, glosa_detalle, centro_costo, monto, es_banco, auxiliar=None):
-    fila = ["", "", "", "", cuenta, glosa_detalle, centro_costo, "", monto, "", "", "", "", "", "", "", ""]
-    fila[0] = 0
-    fila[1] = tipo
-    fila[2] = fecha
-    fila[3] = glosa
-    if es_banco:
-        _bloque_auxiliar(fila, "B", "", glosa_detalle, 0, 0, monto, fecha)
-    elif auxiliar:
-        _bloque_auxiliar(
-            fila, auxiliar["tipo"], auxiliar["rut"], auxiliar["nombre"], auxiliar["tipo_documento_codigo"],
-            auxiliar["numero_documento"], monto, auxiliar["fecha"],
-        )
-    return fila
-
-
-def _fila_haber(fecha, cuenta, glosa_detalle, centro_costo, monto, es_banco, auxiliar=None):
-    fila = ["", "", "", "", cuenta, glosa_detalle, centro_costo, "", "", monto, "", "", "", "", "", "", ""]
-    if es_banco:
-        _bloque_auxiliar(fila, "B", "", glosa_detalle, 0, 0, monto, fecha)
-    elif auxiliar:
-        _bloque_auxiliar(
-            fila, auxiliar["tipo"], auxiliar["rut"], auxiliar["nombre"], auxiliar["tipo_documento_codigo"],
-            auxiliar["numero_documento"], monto, auxiliar["fecha"],
-        )
+def _fila(numero, tipo, fecha, glosa, cuenta, glosa_detalle, centro_costo, debe, haber, auxiliar):
+    """Una fila (17 columnas). `auxiliar`: `None` o un dict `{tipo, rut,
+    nombre, tipo_documento_codigo, numero_documento, fecha}` — `tipo` es
+    "B" (banco), "A" (Clientes/Proveedores) o "H" (Honorarios)."""
+    fila = [numero, tipo, fecha, glosa, cuenta, glosa_detalle, centro_costo, "", debe or "", haber or "", "", "", "", "", "", "", ""]
+    if auxiliar:
+        fila[10] = auxiliar["tipo"]
+        fila[11] = auxiliar.get("rut") or ""
+        fila[12] = auxiliar["nombre"]
+        tipo_documento_codigo = auxiliar.get("tipo_documento_codigo")
+        fila[13] = tipo_documento_codigo if tipo_documento_codigo is not None else ""
+        fila[14] = auxiliar.get("numero_documento") or ""
+        fila[15] = debe or haber
+        fila[16] = auxiliar["fecha"]
     return fila
 
 
 def construir_filas_comprobantes(movimientos, cuenta_banco):
     """`movimientos`: lista de dicts con `fecha` (datetime), `detalle`
     (texto ya editado, se usa como Glosa/Glosa Detalle), `cargo`/`abono`
-    (float, exactamente uno de los dos > 0), `concepto` (dict con
-    `codigo`/`descripcion`/`es_banco`/`requiere_centro_costo`), y
-    `auxiliar` (14-09-2026: opcional, `None` o un dict `{tipo, rut,
-    nombre, tipo_documento_codigo, numero_documento, fecha}` cuando el
-    movimiento se resolvió contra un documento auxiliar de Clientes/
-    Proveedores ("A") u Honorarios ("H") en vez de una cuenta suelta del
-    plan de cuentas — ver `app/conciliacion/documentos.py`). `cuenta_
-    banco`: dict con los mismos 4 campos, para la cuenta bancaria fija
-    elegida arriba. Devuelve la lista de filas (17 columnas cada una,
-    2 filas por movimiento) lista para escribir en el .xls.
+    (float, exactamente uno de los dos > 0), y `lineas` — lista de UNA O
+    MÁS líneas de detalle (14-09-2026, modal "Crear comprobante"), cada
+    una un dict `{cuenta, monto, documentos}`:
 
-    El bloque de Tipo Auxiliar (columnas 10-16) es siempre de la cuenta
-    bancaria ("B") cuando corresponde — un `auxiliar` solo se escribe en
-    la línea de la cuenta Concepto, y solo si esa cuenta no es un banco
-    (nunca ocurren ambos casos a la vez en la práctica: la cuenta fija de
-    un documento auxiliar, 1104-01/2105-01/2105-04, nunca tiene el
-    atributo bancario en el plan de cuentas)."""
+    - `cuenta`: dict con `codigo`/`descripcion`/`es_banco`/`requiere_
+      centro_costo` (del plan de cuentas).
+    - `monto`: el monto de la línea SI `documentos` está vacío (cuenta
+      suelta, sin documento auxiliar).
+    - `documentos`: lista de dicts `{tipo, rut, nombre, tipo_documento_
+      codigo, numero_documento, fecha, monto}` (uno por documento
+      Cliente/Proveedor/Honorario adjunto a esta línea) — si no está
+      vacía, la línea se expande en UNA FILA POR DOCUMENTO (mismo código
+      de cuenta, cada una con su propio bloque de Tipo Auxiliar "A"/"H"
+      y el monto de ESE documento) en vez de una sola fila con el total.
+
+    La suma de todas las líneas (o de los montos de sus documentos) debe
+    calzar con `cargo`/`abono` del movimiento — se valida antes de llegar
+    acá (ver `app/conciliacion/routes.py:descargar`), así que esta
+    función no vuelve a revisarlo. `cuenta_banco`: dict con los mismos 4
+    campos, para la cuenta bancaria fija elegida arriba — siempre aporta
+    exactamente UNA fila, con el bloque "B" (Tipo Auxiliar bancario).
+    Devuelve la lista de filas (17 columnas cada una) lista para escribir
+    en el .xls."""
     filas = []
     for mov in movimientos:
         fecha = mov["fecha"]
         if not isinstance(fecha, datetime):
             raise FilaSinFecha(f"Movimiento sin fecha válida: {mov!r}")
         detalle = mov["detalle"]
-        concepto = mov["concepto"]
-        auxiliar = mov.get("auxiliar")
         es_cargo = mov["cargo"] > 0
-        monto = mov["cargo"] if es_cargo else mov["abono"]
+        monto_total = mov["cargo"] if es_cargo else mov["abono"]
         tipo = "E" if es_cargo else "I"
 
+        cc_banco = 100 if cuenta_banco["requiere_centro_costo"] else ""
+        aux_banco = {
+            "tipo": "B", "rut": "", "nombre": detalle, "tipo_documento_codigo": 0,
+            "numero_documento": 0, "fecha": fecha,
+        } if cuenta_banco["es_banco"] else None
+
+        # Cada línea de detalle sin documentos aporta UNA fila; cada línea
+        # CON documentos aporta una fila POR documento.
+        detalle_datos = []  # [(cuenta, monto, auxiliar_or_None)]
+        for linea in mov["lineas"]:
+            cuenta = linea["cuenta"]
+            if linea["documentos"]:
+                for doc in linea["documentos"]:
+                    detalle_datos.append((cuenta, doc["monto"], doc))
+            else:
+                detalle_datos.append((cuenta, linea["monto"], None))
+
+        filas_detalle = []
+        for cuenta, monto, auxiliar in detalle_datos:
+            cc = 100 if cuenta["requiere_centro_costo"] else ""
+            debe, haber = (monto, None) if es_cargo else (None, monto)
+            filas_detalle.append(_fila("", "", "", "", cuenta["codigo"], detalle, cc, debe, haber, auxiliar))
+
+        debe_banco, haber_banco = (None, monto_total) if es_cargo else (monto_total, None)
+        fila_banco = _fila("", "", "", "", cuenta_banco["codigo"], detalle, cc_banco, debe_banco, haber_banco, aux_banco)
+
         if es_cargo:
-            cuenta_debe, cuenta_haber = concepto, cuenta_banco
-            aux_debe, aux_haber = auxiliar, None
+            # Banco al Haber: la primera fila es la primera línea de detalle (Debe).
+            primeros_campos = [0, tipo, fecha, detalle]
+            for i, campo in enumerate(primeros_campos):
+                filas_detalle[0][i] = campo
+            filas.extend(filas_detalle)
+            filas.append(fila_banco)
         else:
-            cuenta_debe, cuenta_haber = cuenta_banco, concepto
-            aux_debe, aux_haber = None, auxiliar
-
-        cc_debe = 100 if cuenta_debe["requiere_centro_costo"] else ""
-        cc_haber = 100 if cuenta_haber["requiere_centro_costo"] else ""
-
-        filas.append(_fila_debe(
-            fecha, tipo, detalle, cuenta_debe["codigo"], detalle, cc_debe, monto, cuenta_debe["es_banco"], aux_debe,
-        ))
-        filas.append(_fila_haber(
-            fecha, cuenta_haber["codigo"], detalle, cc_haber, monto, cuenta_haber["es_banco"], aux_haber,
-        ))
+            # Banco al Debe: la primera fila es el banco.
+            fila_banco[0], fila_banco[1], fila_banco[2], fila_banco[3] = 0, tipo, fecha, detalle
+            filas.append(fila_banco)
+            filas.extend(filas_detalle)
     return filas
 
 

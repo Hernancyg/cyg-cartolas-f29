@@ -99,8 +99,8 @@
       <div class="section-title">Movimientos</div>
     </div>
     <p class="muted" style="margin-top:0">
-      A la derecha de cada movimiento: una propuesta automática (si calzan monto y RUT con un documento cargado) o
-      un buscador para elegir a mano un documento pendiente o una cuenta del plan de cuentas.
+      "Crear comprobante" abre el detalle del movimiento — si calzan monto y RUT con un documento cargado, se
+      precarga solo; si no, buscas a mano uno o más documentos o cualquier cuenta del plan de cuentas.
     </p>
 
     <div class="conc-filtro-tipo">
@@ -111,7 +111,8 @@
 
     <div class="conc-lista" id="conc-lista">
       {% for f in filas %}
-      <div class="conc-fila" data-row="{{ loop.index0 }}" data-tipo="{{ 'abono' if f.abono else 'cargo' }}">
+      <div class="conc-fila" data-row="{{ loop.index0 }}" data-tipo="{{ 'abono' if f.abono else 'cargo' }}"
+           data-lineas-iniciales='{{ f.lineas | tojson }}'>
         <div class="conc-col-mov">
           <div class="conc-mov-fecha">{{ f.fecha }}</div>
           <input type="text" class="td-editable-input conc-mov-detalle" name="detalle_{{ loop.index0 }}" value="{{ f.detalle }}" autocomplete="off">
@@ -125,56 +126,9 @@
         </div>
 
         <div class="conc-col-resolucion">
-          <div class="conc-box conc-box-resuelto" hidden>
-            {{ icon('reconcile', 16) }}
-            <div class="conc-box-info">
-              <strong class="conc-resuelto-nombre"></strong>
-              <span class="muted conc-resuelto-detalle"></span>
-            </div>
-            <button type="button" class="btn-link conc-editar">Editar</button>
-          </div>
-
-          <div class="conc-box conc-box-staged" hidden>
-            <span class="conc-badge-propuesta">{{ icon('sparkle', 14) }} Propuesta</span>
-            <div class="conc-box-info">
-              <strong class="conc-staged-nombre"></strong>
-              <span class="muted conc-staged-detalle"></span>
-            </div>
-            <div class="conc-box-actions">
-              <button type="button" class="btn btn-sm conc-crear-comprobante">{{ icon('save', 14) }} Crear comprobante</button>
-              <button type="button" class="btn-link conc-buscar-toggle">Buscar movimiento</button>
-            </div>
-          </div>
-
-          <div class="conc-box conc-box-idle" hidden>
-            <div class="conc-box-info conc-box-info-idle">
-              {{ icon('sparkle', 16) }}
-              <div>
-                <strong>Sin propuestas automáticas</strong>
-                <div class="muted">No encontramos coincidencias para este movimiento.</div>
-              </div>
-            </div>
-            <button type="button" class="btn-link conc-buscar-toggle">{{ icon('search', 14) }} Buscar</button>
-          </div>
-
-          <div class="conc-box conc-box-buscando" hidden>
-            <div class="cuenta-search conc-buscar-combinado">
-              <input type="text" class="cuenta-search-input conc-buscar-input" placeholder="Busca un documento pendiente o una cuenta…" autocomplete="off" spellcheck="false">
-              <div class="cuenta-search-results" hidden></div>
-            </div>
-            <button type="button" class="btn-link conc-cancelar-buscar">Cancelar</button>
-          </div>
-
-          <input type="hidden" class="conc-concepto-codigo" name="concepto_codigo_{{ loop.index0 }}" value="{{ f.concepto_codigo }}">
-          <input type="hidden" class="conc-concepto-descripcion" name="concepto_descripcion_{{ loop.index0 }}" value="{{ f.concepto_descripcion }}">
-          <input type="hidden" class="conc-aux-tipo" name="aux_tipo_{{ loop.index0 }}" value="{{ f.aux_tipo }}">
-          <input type="hidden" class="conc-aux-modulo" name="aux_modulo_{{ loop.index0 }}" value="{{ f.aux_modulo }}">
-          <input type="hidden" class="conc-aux-doc-idx" name="aux_doc_idx_{{ loop.index0 }}" value="{{ f.aux_doc_idx }}">
-          <input type="hidden" class="conc-aux-rut" name="aux_rut_{{ loop.index0 }}" value="{{ f.aux_rut }}">
-          <input type="hidden" class="conc-aux-nombre" name="aux_nombre_{{ loop.index0 }}" value="{{ f.aux_nombre }}">
-          <input type="hidden" class="conc-aux-tipo-doc" name="aux_tipo_doc_{{ loop.index0 }}" value="{{ f.aux_tipo_doc }}">
-          <input type="hidden" class="conc-aux-numero-doc" name="aux_numero_doc_{{ loop.index0 }}" value="{{ f.aux_numero_doc }}">
-          <input type="hidden" class="conc-aux-fecha-iso" name="aux_fecha_iso_{{ loop.index0 }}" value="{{ f.aux_fecha_iso }}">
+          <div class="conc-resumen"><!-- poblado por JS: pendiente/propuesta o resuelto --></div>
+          <button type="button" class="btn btn-sm conc-abrir-modal">{{ icon('reconcile', 14) }} <span class="conc-abrir-modal-label">Crear comprobante</span></button>
+          <div class="conc-lineas-hidden"><!-- inputs ocultos lineas_{{ loop.index0 }}_*, poblados por JS --></div>
         </div>
       </div>
       {% endfor %}
@@ -188,6 +142,70 @@
     </div>
   </div>
 </form>
+
+<div class="conc-modal-backdrop" id="conc-modal" hidden>
+  <div class="conc-modal" role="dialog" aria-modal="true" aria-labelledby="conc-modal-titulo-texto">
+    <div class="conc-modal-header">
+      <div class="conc-modal-title">
+        <span id="conc-modal-titulo-texto">Crear comprobante</span>
+        <button type="button" class="conc-ayuda-btn" id="conc-ayuda-btn">{{ icon('info', 14) }} ¿Cómo funciona?</button>
+      </div>
+      <button type="button" class="conc-modal-close" id="conc-modal-close" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="conc-ayuda-popover" id="conc-ayuda-popover" hidden>
+      <p style="margin:0 0 8px">
+        Si el monto del movimiento y un RUT que se reconozca en su detalle calzan EXACTO con un documento cargado
+        (Clientes, Proveedores u Honorarios) todavía disponible, la línea se precarga sola con ese documento.
+      </p>
+      <p style="margin:0">
+        Si no, elige la cuenta contable de cada línea a mano. Si eliges una de las 3 cuentas con documentos
+        (Clientes/Proveedores/Honorarios), puedes buscar y adjuntar uno o varios documentos pendientes — se suman
+        para el monto de la línea. "+ Agregar cuenta" permite repartir el movimiento en más de una línea.
+      </p>
+    </div>
+
+    <div class="conc-modal-body">
+      <div class="conc-modal-mov" id="conc-modal-mov"></div>
+
+      <div class="conc-modal-campos">
+        <div class="field">
+          <label>Tipo de comprobante</label>
+          <div class="field-static" id="conc-modal-tipo"></div>
+        </div>
+        <div class="field">
+          <label>Fecha</label>
+          <div class="field-static" id="conc-modal-fecha"></div>
+        </div>
+        <div class="field">
+          <label>Glosa</label>
+          <input type="text" class="field-static" id="conc-modal-glosa" style="width:100%; box-sizing:border-box">
+        </div>
+      </div>
+
+      <table class="conc-modal-tabla">
+        <thead>
+          <tr><th class="conc-modal-num">#</th><th>Cuenta</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th class="conc-modal-quitar-col"></th></tr>
+        </thead>
+        <tbody id="conc-modal-banco-tbody"></tbody>
+        <tbody id="conc-modal-lineas-tbody"></tbody>
+      </table>
+      <button type="button" class="btn-link" id="conc-agregar-cuenta">{{ icon('plus', 14) }} Agregar cuenta</button>
+    </div>
+
+    <div class="conc-modal-footer">
+      <div class="conc-modal-totales">
+        <span>Debe <strong id="conc-modal-debe">$0</strong></span>
+        <span>Haber <strong id="conc-modal-haber">$0</strong></span>
+        <span class="conc-cuadra-badge" id="conc-cuadra-badge">Cuadra</span>
+      </div>
+      <div class="conc-modal-acciones">
+        <button type="button" class="btn-secondary" id="conc-modal-cancelar">Cancelar</button>
+        <button type="button" class="btn" id="conc-modal-crear">{{ icon('reconcile', 16) }} Crear y conciliar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};
