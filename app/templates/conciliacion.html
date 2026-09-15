@@ -77,16 +77,21 @@
     <div class="conc-aux-carga-lista">
       {% for modulo, titulo in [('clientes', 'Clientes'), ('proveedores', 'Proveedores'), ('honorarios', 'Honorarios')] %}
       <div class="conc-aux-carga">
-        <div class="conc-aux-carga-titulo">{{ titulo }}</div>
-        <div class="field-input-row">
-          <input type="file" id="archivo-aux-{{ modulo }}" accept=".xlsx,.xlsm">
-          <button type="button" class="btn btn-sm" data-cargar-aux="{{ modulo }}">{{ icon('upload', 16) }} Cargar</button>
-        </div>
-        <div id="error-aux-{{ modulo }}" hidden></div>
-        <div id="wrap-aux-{{ modulo }}">
-          {% if auxiliares.get(modulo) %}
-          {% with docs = auxiliares.get(modulo) %}{% include "conciliacion/_fragmento_auxiliares.html" %}{% endwith %}
-          {% endif %}
+        <button type="button" class="conc-aux-carga-header" data-toggle-aux="{{ modulo }}">
+          <span class="conc-aux-carga-chevron">▾</span>
+          <span class="conc-aux-carga-titulo">{{ titulo }}</span>
+        </button>
+        <div class="conc-aux-carga-body" id="body-aux-{{ modulo }}">
+          <div class="field-input-row">
+            <input type="file" id="archivo-aux-{{ modulo }}" accept=".xlsx,.xlsm">
+            <button type="button" class="btn btn-sm" data-cargar-aux="{{ modulo }}">{{ icon('upload', 16) }} Cargar</button>
+          </div>
+          <div id="error-aux-{{ modulo }}" hidden></div>
+          <div id="wrap-aux-{{ modulo }}">
+            {% if auxiliares.get(modulo) %}
+            {% with docs = auxiliares.get(modulo) %}{% include "conciliacion/_fragmento_auxiliares.html" %}{% endwith %}
+            {% endif %}
+          </div>
         </div>
       </div>
       {% endfor %}

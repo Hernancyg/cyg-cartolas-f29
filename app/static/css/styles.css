@@ -754,9 +754,23 @@ table.data-table .link-btn:hover { text-decoration: underline; }
 /* Documentos auxiliares (14-09-2026): 3 tarjetas lado a lado (Clientes/
    Proveedores/Honorarios), cada una con su propio input+botón de carga y
    la tabla de documentos ya cargados debajo (fragmento AJAX). */
-.conc-aux-carga-lista { display: flex; gap: 16px; flex-wrap: wrap; }
-.conc-aux-carga { flex: 1; min-width: 260px; }
-.conc-aux-carga-titulo { font-weight: 700; margin-bottom: 8px; color: var(--navy-2); }
+/* Documentos auxiliares (14-09-2026, plegable): un módulo por fila a
+   todo el ancho de la tarjeta (en vez de 3 columnas apretadas) — pedido
+   por el usuario para que un pool grande de documentos (ej. Clientes con
+   ~100 filas) no quede aplastado en 1/3 del ancho mientras los otros dos
+   módulos vacíos siguen ocupando su espacio al lado. */
+.conc-aux-carga-lista { display: flex; flex-direction: column; gap: 10px; }
+.conc-aux-carga { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.conc-aux-carga-header {
+  display: flex; align-items: center; gap: 8px; width: 100%; background: none;
+  border: none; padding: 12px 14px; cursor: pointer; text-align: left; font: inherit; color: inherit;
+}
+.conc-aux-carga-header:hover { background: var(--table-row-hover); }
+.conc-aux-carga-chevron { display: inline-block; color: var(--text-muted); transition: transform .15s ease; }
+.conc-aux-carga.collapsed .conc-aux-carga-chevron { transform: rotate(-90deg); }
+.conc-aux-carga-titulo { font-weight: 700; color: var(--navy-2); }
+.conc-aux-carga-body { padding: 0 14px 14px; }
+.conc-aux-carga.collapsed .conc-aux-carga-body { display: none; }
 .conc-tabla-auxiliar td, .conc-tabla-auxiliar th { font-size: 0.82rem; }
 .conc-doc-estado .badge-ok { color: var(--emerald); font-weight: 600; }
 .conc-doc-estado .badge-usado { color: var(--text-muted); font-weight: 600; }
@@ -874,9 +888,10 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 }
 .conc-linea-quitar { background: none; border: none; color: var(--danger); cursor: pointer; padding: 4px; font-size: 1rem; }
 
+.conc-linea-docs-row td { border-bottom: 1px solid var(--border); padding: 0 6px 10px; }
 .conc-linea-docs {
-  margin-top: 8px; border: 1px solid var(--border); border-radius: var(--r-md);
-  padding: 10px 12px; background: rgba(var(--indigo-rgb),0.04);
+  margin-top: 6px; border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 14px 16px; background: rgba(var(--indigo-rgb),0.04);
 }
 .conc-linea-docs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .conc-doc-chip {

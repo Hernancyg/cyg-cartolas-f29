@@ -218,6 +218,8 @@
         if (result.ok) {
           if (errorBox) { errorBox.hidden = true; errorBox.innerHTML = ""; }
           if (wrap) wrap.innerHTML = result.html;
+          var card = wrap && wrap.closest(".conc-aux-carga");
+          if (card) card.classList.remove("collapsed"); // se despliega solo al cargar bien
           recomputarEstadoDocumentos();
           document.querySelectorAll(".conc-fila").forEach(function (fila) {
             if (fila.dataset.resuelta !== "true") renderResumenFila(fila);
@@ -243,6 +245,13 @@
     if (!boton) return;
     ev.preventDefault();
     cargarAuxiliar(boton.dataset.cargarAux);
+  });
+
+  document.addEventListener("click", function (ev) {
+    var boton = ev.target.closest("[data-toggle-aux]");
+    if (!boton) return;
+    var card = boton.closest(".conc-aux-carga");
+    if (card) card.classList.toggle("collapsed");
   });
 
   function recomputarEstadoDocumentos() {
@@ -703,9 +712,6 @@
       var textoActual = linea.codigo ? linea.codigo + " — " + linea.descripcion : "";
       var campo = crearCampoBusqueda(textoActual, "Seleccionar cuenta contable");
       tdCuenta.appendChild(campo.wrap);
-      if (linea.codigo && esCuentaAuxiliar(linea.codigo)) {
-        tdCuenta.appendChild(construirAreaDocumentos(linea));
-      }
       tr.appendChild(tdCuenta);
 
       habilitarDropdown(
@@ -762,6 +768,20 @@
       tr.appendChild(tdQuitar);
 
       tbody.appendChild(tr);
+
+      // Panel de documentos: fila aparte a todo el ancho de la tabla (en
+      // vez de encajado en la angosta columna "Cuenta") — pedido por el
+      // usuario para que se vea más cómodo, sobre todo con pools grandes
+      // de documentos.
+      if (linea.codigo && esCuentaAuxiliar(linea.codigo)) {
+        var trDocs = document.createElement("tr");
+        trDocs.className = "conc-linea-docs-row";
+        var tdDocs = document.createElement("td");
+        tdDocs.colSpan = 5;
+        tdDocs.appendChild(construirAreaDocumentos(linea));
+        trDocs.appendChild(tdDocs);
+        tbody.appendChild(trDocs);
+      }
     });
   }
 
