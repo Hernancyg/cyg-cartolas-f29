@@ -10,8 +10,12 @@ reales (`Clientes_2.xlsx`, `Proveedores_2.xlsx`, `Honorarios_2.xlsx`):
   encabezado en la fila 2, datos desde la fila 3. Columna C = RUT (número),
   D = RUT (dígito verificador) — vienen separados y se juntan aquí como
   "55555555-5" (ver `_armar_rut`), E = Nombre, F = Fecha Registro
-  (datetime), K = Tipo Documento, L = N° Documento, P = Debe (monto a
-  cobrar, Clientes), Q = Haber (monto a pagar, Proveedores).
+  (datetime), K = Tipo Documento, L = N° Documento, monto en P (Debe) o Q
+  (Haber) — cuál de las dos trae el valor depende del sistema contable de
+  origen (15-09-2026: un archivo real de Proveedores del usuario traía el
+  monto pendiente en P, no en Q como se había asumido), así que se lee
+  cualquiera de las dos que venga con valor, para Clientes y Proveedores
+  por igual.
 - Honorarios ("Estado de Cuentas de Honorario - Pendientes"): encabezado en
   la fila 3, datos desde la fila 4. Columna A = Rut (ya viene completo con
   guion, ej. "16876802-8" — no hace falta juntarlo), B = Nombre, C = Fecha
@@ -76,8 +80,13 @@ def _abrir(file_storage):
         return None, f"No se pudo abrir el archivo: {exc}"
 
 
-def _parsear_clientes_proveedores(file_storage, col_monto):
-    """`col_monto`: 16 (P, Clientes/Debe) o 17 (Q, Proveedores/Haber)."""
+def _parsear_clientes_proveedores(file_storage):
+    """Lee columna P (Debe) Y Q (Haber) y usa la que venga con monto — en
+    cada fila de un "Estado de Cuentas - Pendientes" solo una de las dos
+    trae valor (15-09-2026, corregido contra un archivo real de Proveedores
+    del usuario: la suposición original de que Proveedores SIEMPRE viene en
+    Q/Haber era incorrecta — ese archivo traía el monto pendiente en P/Debe,
+    igual que Clientes, y la fila se descartaba entera por "monto <= 0")."""
     ws, error = _abrir(file_storage)
     if error:
         return None, error
@@ -90,7 +99,9 @@ def _parsear_clientes_proveedores(file_storage, col_monto):
         fecha = fila[5].value if len(fila) > 5 else None  # col F
         tipo_documento = _texto(fila[10].value if len(fila) > 10 else None)  # col K
         numero_documento = _texto(fila[11].value if len(fila) > 11 else None)  # col L
-        monto = _monto(fila[col_monto - 1].value if len(fila) >= col_monto else None)
+        monto_debe = _monto(fila[15].value if len(fila) > 15 else None)  # col P
+        monto_haber = _monto(fila[16].value if len(fila) > 16 else None)  # col Q
+        monto = monto_debe or monto_haber
         rut = _armar_rut(
             fila[2].value if len(fila) > 2 else None,  # col C (número)
             fila[3].value if len(fila) > 3 else None,  # col D (dígito verificador)
@@ -113,13 +124,13 @@ def _parsear_clientes_proveedores(file_storage, col_monto):
 
 
 def parsear_clientes(file_storage):
-    """Documentos por cobrar (columna P = Debe). Devuelve (filas, error)."""
-    return _parsear_clientes_proveedores(file_storage, col_monto=16)
+    """Documentos por cobrar. Devuelve (filas, error)."""
+    return _parsear_clientes_proveedores(file_storage)
 
 
 def parsear_proveedores(file_storage):
-    """Documentos por pagar (columna Q = Haber). Devuelve (filas, error)."""
-    return _parsear_clientes_proveedores(file_storage, col_monto=17)
+    """Documentos por pagar. Devuelve (filas, error)."""
+    return _parsear_clientes_proveedores(file_storage)
 
 
 def parsear_honorarios(file_storage):
