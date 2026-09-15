@@ -508,7 +508,7 @@
 
   var modalState = null; // { fila, rowIndex, movimiento, lineas }
 
-  function buscarDocumentosModulo(texto, modulo) {
+  function buscarDocumentosModulo(texto, modulo, limite) {
     var pool = documentosDisponibles([modulo]);
     var q = normalizar(texto).trim();
     if (q) {
@@ -518,7 +518,7 @@
         return partes.every(function (p) { return hay.indexOf(p) !== -1; });
       });
     }
-    return pool.slice(0, MAX_RESULTADOS);
+    return pool.slice(0, limite || MAX_RESULTADOS);
   }
 
   function documentoYaUsadoEnModal(modulo, idx) {
@@ -533,57 +533,106 @@
       '<span class="cuenta-search-item-desc">' + cuenta.descripcion + "</span>";
   }
 
-  function renderItemDocumento(el, docFila) {
-    var info = AUX_MODULOS[docFila.dataset.modulo] || {};
-    el.innerHTML =
-      '<span class="conc-buscar-item-tipo">' + (info.titulo || docFila.dataset.modulo) + "</span>" +
-      '<span class="cuenta-search-item-codigo">' + docFila.dataset.nombre + (docFila.dataset.rut ? " (" + docFila.dataset.rut + ")" : "") + "</span>" +
-      '<span class="cuenta-search-item-desc">' + docFila.dataset.tipoDocumento + " " + docFila.dataset.numeroDocumento +
-      " · " + formatoClp(num(docFila.dataset.monto)) + "</span>";
-  }
-
+  // Panel de documentos de una línea con cuenta auxiliar (14-09-2026,
+  // corregido a partir de una captura del usuario que mostró que el panel
+  // no se desplegaba): SIEMPRE visible en cuanto la línea usa una cuenta
+  // con auxiliar (no depende de un dropdown flotante que se abre/cierra
+  // con foco) — una tabla con los documentos disponibles de ese módulo,
+  // filtrable en vivo, con un botón "Agregar" por fila; los ya adjuntos
+  // se muestran arriba como chips removibles.
   function construirAreaDocumentos(linea) {
     var wrap = document.createElement("div");
     wrap.className = "conc-linea-docs";
 
+    var modulo = moduloDeCuenta(linea.codigo);
+    if (!modulo) return wrap;
+
     var chips = document.createElement("div");
     chips.className = "conc-linea-docs-chips";
-    linea.documentos.forEach(function (doc, di) {
-      var chip = document.createElement("span");
-      chip.className = "conc-doc-chip";
-      var texto = document.createElement("span");
-      texto.textContent = doc.nombre + (doc.rut ? " (" + doc.rut + ")" : "") + " · " + formatoClp(num(doc.monto));
-      chip.appendChild(texto);
-      var btnX = document.createElement("button");
-      btnX.type = "button";
-      btnX.className = "conc-doc-chip-quitar";
-      btnX.title = "Quitar documento";
-      btnX.textContent = "✕";
-      btnX.addEventListener("click", function () {
-        linea.documentos.splice(di, 1);
-        renderModalLineas();
-        recomputarModalTotales();
-      });
-      chip.appendChild(btnX);
-      chips.appendChild(chip);
-    });
     wrap.appendChild(chips);
 
-    var modulo = moduloDeCuenta(linea.codigo);
-    if (modulo) {
-      var buscar = crearCampoBusqueda("", "Buscar documento…");
-      buscar.wrap.classList.add("conc-linea-doc-buscar");
-      wrap.appendChild(buscar.wrap);
+    var etiqueta = document.createElement("div");
+    etiqueta.className = "conc-linea-docs-label";
+    etiqueta.textContent = "Documentos de " + (AUX_MODULOS[modulo] ? AUX_MODULOS[modulo].titulo : modulo) + " (el monto de la línea es la suma de los que agregues):";
+    wrap.appendChild(etiqueta);
 
-      habilitarDropdown(
-        buscar.input, buscar.results,
-        function (texto) {
-          return buscarDocumentosModulo(texto, modulo).filter(function (docFila) {
-            return !documentoYaUsadoEnModal(modulo, docFila.dataset.idx);
-          });
-        },
-        renderItemDocumento,
-        function (docFila) {
+    var buscarInput = document.createElement("input");
+    buscarInput.type = "text";
+    buscarInput.className = "conc-linea-docs-buscar-input";
+    buscarInput.placeholder = "Buscar por N°, RUT o nombre…";
+    wrap.appendChild(buscarInput);
+
+    var tableWrap = document.createElement("div");
+    tableWrap.className = "table-wrap conc-linea-docs-tabla-wrap";
+    var table = document.createElement("table");
+    table.className = "data-table conc-linea-docs-tabla";
+    var thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>N°</th><th>Tipo</th><th>Fecha</th><th>Contraparte</th><th style=\"text-align:right\">Monto</th><th></th></tr>";
+    var tbody = document.createElement("tbody");
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    wrap.appendChild(tableWrap);
+
+    function renderChips() {
+      chips.innerHTML = "";
+      linea.documentos.forEach(function (doc, di) {
+        var chip = document.createElement("span");
+        chip.className = "conc-doc-chip";
+        var texto = document.createElement("span");
+        texto.textContent = doc.nombre + (doc.rut ? " (" + doc.rut + ")" : "") + " · " + formatoClp(num(doc.monto));
+        chip.appendChild(texto);
+        var btnX = document.createElement("button");
+        btnX.type = "button";
+        btnX.className = "conc-doc-chip-quitar";
+        btnX.title = "Quitar documento";
+        btnX.textContent = "✕";
+        btnX.addEventListener("click", function () {
+          linea.documentos.splice(di, 1);
+          renderModalLineas();
+          recomputarModalTotales();
+        });
+        chip.appendChild(btnX);
+        chips.appendChild(chip);
+      });
+    }
+
+    function renderTabla() {
+      var candidatos = buscarDocumentosModulo(buscarInput.value, modulo, 30).filter(function (docFila) {
+        return !documentoYaUsadoEnModal(modulo, docFila.dataset.idx);
+      });
+      tbody.innerHTML = "";
+      if (!candidatos.length) {
+        var trVacio = document.createElement("tr");
+        var tdVacio = document.createElement("td");
+        tdVacio.colSpan = 6;
+        tdVacio.className = "muted";
+        tdVacio.textContent = buscarInput.value.trim()
+          ? "Sin resultados."
+          : "No hay documentos disponibles de este módulo — cárgalos arriba, en \"Documentos auxiliares\".";
+        trVacio.appendChild(tdVacio);
+        tbody.appendChild(trVacio);
+        return;
+      }
+      candidatos.forEach(function (docFila) {
+        var tr = document.createElement("tr");
+        var tdNum = document.createElement("td");
+        tdNum.textContent = docFila.dataset.numeroDocumento;
+        var tdTipo = document.createElement("td");
+        tdTipo.textContent = docFila.dataset.tipoDocumento;
+        var tdFecha = document.createElement("td");
+        tdFecha.textContent = docFila.dataset.fecha || docFila.dataset.fechaIso;
+        var tdContraparte = document.createElement("td");
+        tdContraparte.textContent = docFila.dataset.nombre + (docFila.dataset.rut ? " (" + docFila.dataset.rut + ")" : "");
+        var tdMonto = document.createElement("td");
+        tdMonto.style.textAlign = "right";
+        tdMonto.textContent = formatoClp(num(docFila.dataset.monto));
+        var tdAccion = document.createElement("td");
+        var btnAgregar = document.createElement("button");
+        btnAgregar.type = "button";
+        btnAgregar.className = "btn-link";
+        btnAgregar.textContent = "Agregar";
+        btnAgregar.addEventListener("click", function () {
           linea.documentos.push({
             modulo: modulo, idx: docFila.dataset.idx, rut: docFila.dataset.rut, nombre: docFila.dataset.nombre,
             tipo_doc: docFila.dataset.tipoDocumento, numero_doc: docFila.dataset.numeroDocumento,
@@ -591,9 +640,21 @@
           });
           renderModalLineas();
           recomputarModalTotales();
-        }
-      );
+        });
+        tdAccion.appendChild(btnAgregar);
+        tr.appendChild(tdNum);
+        tr.appendChild(tdTipo);
+        tr.appendChild(tdFecha);
+        tr.appendChild(tdContraparte);
+        tr.appendChild(tdMonto);
+        tr.appendChild(tdAccion);
+        tbody.appendChild(tr);
+      });
     }
+
+    buscarInput.addEventListener("input", renderTabla);
+    renderChips();
+    renderTabla();
 
     return wrap;
   }

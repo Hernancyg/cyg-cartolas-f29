@@ -158,8 +158,11 @@ usuario) en vez de un buscador suelto por fila:
   plan de cuentas con un monto a mano, exactamente como en la primera
   ronda (ambos modos conviven en el mismo comprobante).
 - Un documento usado por un movimiento queda marcado "Usado" y no se le
-  vuelve a proponer a otro ni aparece en la búsqueda; "Editar comprobante"
-  en un movimiento ya resuelto lo libera de vuelta a "Disponible".
+  vuelve a proponer a otro ni aparece en la tabla de disponibles; "Editar
+  comprobante" (mismo botón, en un movimiento ya resuelto) reabre el modal
+  con sus líneas y documentos tal cual quedaron — quitar el documento
+  (chip ✕) y confirmar de nuevo con "Crear y conciliar" lo libera recién
+  ahí de vuelta a "Disponible".
 
 Ver `app/conciliacion/routes.py`, `app/conciliacion/export_writer.py` y
 `app/conciliacion/documentos.py` para el detalle completo, y
