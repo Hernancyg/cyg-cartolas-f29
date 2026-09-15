@@ -107,6 +107,39 @@ def _xlsx_honorarios(docs):
     return _bytes(wb)
 
 
+def test_procesar_fecha_guardada_como_texto():
+    """Regresión (14-09-2026, reportado por el usuario con un caso real):
+    si "Subir Cartolas" no pudo reconocer el formato original de una
+    fecha y la dejó como TEXTO plano en la celda (`app/parsers/output_
+    writer.py:_parse_fecha`) en vez de una fecha real de Excel, se veía
+    bien en pantalla ("12-08-2026") pero `fecha_iso` quedaba vacío y
+    bloqueaba la descarga con "no trae una fecha reconocible" pese a que
+    el texto SÍ es una fecha válida — `_leer_excel_convertido` debe
+    reintentar interpretarlo como texto antes de rendirse."""
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Banco"
+    ws.cell(row=2, column=2, value="12-08-2026")  # fecha como TEXTO, no datetime
+    ws.cell(row=2, column=3, value="OF VIRT U")
+    ws.cell(row=2, column=5, value=912968)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    r = client.post(
+        "/conciliacion/procesar",
+        data={"archivo": (buf, "cartola.xlsx")},
+        content_type="multipart/form-data",
+    )
+    body = r.get_data(as_text=True)
+    check("procesar con fecha en texto -> 200", r.status_code == 200)
+    check("la fecha se sigue mostrando igual (12-08-2026)", "12-08-2026" in body)
+    check("fecha_iso_0 quedó poblado (2026-08-12), no vacío", 'name="fecha_iso_0" value="2026-08-12"' in body)
+
+
 def test_auxiliar_modulos_config():
     check("Clientes: cuenta fija 1104-01, bloque A, dirección abono",
           AUXILIAR_MODULOS["clientes"]["cuenta_codigo"] == "1104-01"
@@ -352,6 +385,7 @@ def test_descargar_con_lineas_multiples():
 
 
 def main():
+    test_procesar_fecha_guardada_como_texto()
     test_auxiliar_modulos_config()
     test_construir_filas_comprobantes_linea_plana()
     test_construir_filas_comprobantes_linea_con_varios_documentos()

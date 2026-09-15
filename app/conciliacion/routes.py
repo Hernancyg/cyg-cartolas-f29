@@ -97,6 +97,27 @@ def _formatear_fecha(valor):
     return str(valor).strip()
 
 
+def _reintentar_fecha_texto(valor):
+    """Cuando la celda de fecha del Excel convertido NO quedó guardada
+    como un `datetime` real (`app/parsers/output_writer.py:_parse_fecha`
+    no reconoció el formato original de la fecha del banco y escribió el
+    texto tal cual — se ve normal en pantalla, ej. "12-08-2026", pero no
+    es una fecha real de Excel) — reintenta acá con los mismos formatos
+    antes de rendirse, para no bloquear la descarga por algo que de todas
+    formas se puede leer (14-09-2026, reportado por el usuario con un
+    caso real: la celda mostraba "12-08-2026" en pantalla y aun así
+    `fecha_iso` quedaba vacío). Devuelve un `datetime` o `None`."""
+    if not valor or not isinstance(valor, str):
+        return None
+    texto = valor.strip()
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y"):
+        try:
+            return datetime.strptime(texto, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def _leer_excel_convertido(file_storage):
     """Devuelve (filas, error). `filas` es una lista de dicts con fecha
     (texto ya formateado), fecha_iso (yyyy-mm-dd, para llevar la fecha real
@@ -116,9 +137,10 @@ def _leer_excel_convertido(file_storage):
     for fecha, detalle, cargo, abono in ws.iter_rows(min_row=2, min_col=2, max_col=5, values_only=True):
         if fecha is None and not detalle and not cargo and not abono:
             continue  # fila vacía (al final de la hoja, por ejemplo)
+        fecha_dt = fecha if isinstance(fecha, datetime) else _reintentar_fecha_texto(fecha)
         filas.append({
-            "fecha": _formatear_fecha(fecha),
-            "fecha_iso": fecha.strftime("%Y-%m-%d") if isinstance(fecha, datetime) else "",
+            "fecha": _formatear_fecha(fecha_dt or fecha),
+            "fecha_iso": fecha_dt.strftime("%Y-%m-%d") if fecha_dt else "",
             "detalle": (detalle or "").strip() if isinstance(detalle, str) else (detalle or ""),
             "cargo": float(cargo) if isinstance(cargo, (int, float)) else 0.0,
             "abono": float(abono) if isinstance(abono, (int, float)) else 0.0,
