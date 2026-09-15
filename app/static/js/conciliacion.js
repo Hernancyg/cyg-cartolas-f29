@@ -546,6 +546,7 @@
       agregarOculto(prefijo + "_codigo", linea.codigo);
       agregarOculto(prefijo + "_descripcion", linea.descripcion);
       agregarOculto(prefijo + "_monto", linea.documentos.length ? "" : (linea.monto || 0));
+      agregarOculto(prefijo + "_lado", linea.lado === "haber" ? "haber" : "debe");
       agregarOculto(prefijo + "_docs_total", linea.documentos.length);
       linea.documentos.forEach(function (doc, di) {
         var dprefijo = prefijo + "_doc_" + di;
@@ -767,14 +768,22 @@
         { textoDe: function (cuenta) { return cuenta.codigo + " — " + cuenta.descripcion; }, todos: function () { return CUENTAS; } }
       );
 
+      // Lado de la línea (14-09-2026 asumía siempre "el opuesto al banco";
+      // 15-09-2026, pedido por el usuario: un comprobante con más de 2
+      // líneas puede necesitar alguna al mismo lado del banco — ej. una
+      // diferencia de pago o un ajuste — así que cada línea recuerda su
+      // propio lado (`linea.lado`, por defecto el opuesto al banco) y el
+      // lado libre muestra un botón para mandarle el monto para allá.
+      if (linea.lado !== "debe" && linea.lado !== "haber") linea.lado = esCargo ? "debe" : "haber";
       var montoLinea = montoDeLinea(linea);
       var tdDebe = document.createElement("td");
       tdDebe.className = "conc-col-monto";
       var tdHaber = document.createElement("td");
       tdHaber.className = "conc-col-monto";
-      var tdMonto = esCargo ? tdDebe : tdHaber;
+      var tdActivo = linea.lado === "debe" ? tdDebe : tdHaber;
+      var tdLibre = linea.lado === "debe" ? tdHaber : tdDebe;
       if (linea.documentos.length) {
-        tdMonto.textContent = formatoClp(montoLinea);
+        tdActivo.textContent = formatoClp(montoLinea);
       } else {
         var inputMonto = document.createElement("input");
         inputMonto.type = "number";
@@ -786,8 +795,20 @@
           linea.monto = num(inputMonto.value);
           recomputarModalTotales();
         });
-        tdMonto.appendChild(inputMonto);
+        tdActivo.appendChild(inputMonto);
       }
+      var btnMover = document.createElement("button");
+      btnMover.type = "button";
+      btnMover.className = "conc-linea-mover";
+      var otroLado = linea.lado === "debe" ? "Haber" : "Debe";
+      btnMover.title = "Mover el monto de esta línea al " + otroLado;
+      btnMover.textContent = "⇄ " + otroLado;
+      btnMover.addEventListener("click", function () {
+        linea.lado = linea.lado === "debe" ? "haber" : "debe";
+        renderModalLineas();
+        recomputarModalTotales();
+      });
+      tdLibre.appendChild(btnMover);
       tr.appendChild(tdDebe);
       tr.appendChild(tdHaber);
 
@@ -902,18 +923,27 @@
     document.getElementById("conc-modal-glosa").value = mov.detalle;
   }
 
+  // Cada línea aporta su monto al Debe o al Haber según `linea.lado`
+  // (15-09-2026: ya no es siempre "el lado opuesto al banco" — el usuario
+  // puede moverla) — el banco sigue fijo al lado que le toca según
+  // cargo/abono. Cuadra si el total Debe calza con el total Haber.
   function recomputarModalTotales() {
     var esCargo = modalState.movimiento.cargo > 0;
     var montoMovimiento = esCargo ? modalState.movimiento.cargo : modalState.movimiento.abono;
-    var sumaLineas = modalState.lineas.reduce(function (acc, l) { return acc + montoDeLinea(l); }, 0);
 
-    var debeTotal = esCargo ? sumaLineas : montoMovimiento;
-    var haberTotal = esCargo ? montoMovimiento : sumaLineas;
+    var sumaDebeLineas = 0, sumaHaberLineas = 0;
+    modalState.lineas.forEach(function (l) {
+      var lado = l.lado === "debe" || l.lado === "haber" ? l.lado : (esCargo ? "debe" : "haber");
+      if (lado === "debe") sumaDebeLineas += montoDeLinea(l); else sumaHaberLineas += montoDeLinea(l);
+    });
+
+    var debeTotal = (esCargo ? 0 : montoMovimiento) + sumaDebeLineas;
+    var haberTotal = (esCargo ? montoMovimiento : 0) + sumaHaberLineas;
 
     document.getElementById("conc-modal-debe").textContent = formatoClp(debeTotal);
     document.getElementById("conc-modal-haber").textContent = formatoClp(haberTotal);
 
-    var cuadra = Math.round(debeTotal) === Math.round(haberTotal) && Math.round(sumaLineas) === Math.round(montoMovimiento);
+    var cuadra = Math.round(debeTotal) === Math.round(haberTotal);
     var badge = document.getElementById("conc-cuadra-badge");
     badge.textContent = cuadra ? "Cuadra" : "No cuadra";
     badge.className = "conc-cuadra-badge " + (cuadra ? "ok" : "bad");
@@ -935,13 +965,14 @@
       lineas = JSON.parse(JSON.stringify(lineasExistentes));
     } else {
       var montoMov = cargo > 0 ? cargo : abono;
+      var ladoInicial = cargo > 0 ? "debe" : "haber";
       var propuesta = buscarPropuestaAutomatica(fila);
       if (propuesta) {
         var modulo = propuesta.dataset.modulo;
         var info = AUX_MODULOS[modulo];
         var cuenta = CUENTAS_POR_CODIGO[info.cuenta_codigo];
         lineas = [{
-          codigo: info.cuenta_codigo, descripcion: cuenta ? cuenta.descripcion : "", monto: 0,
+          codigo: info.cuenta_codigo, descripcion: cuenta ? cuenta.descripcion : "", monto: 0, lado: ladoInicial,
           documentos: [{
             modulo: modulo, idx: propuesta.dataset.idx, rut: propuesta.dataset.rut, nombre: propuesta.dataset.nombre,
             tipo_doc: propuesta.dataset.tipoDocumento, numero_doc: propuesta.dataset.numeroDocumento,
@@ -949,7 +980,7 @@
           }],
         }];
       } else {
-        lineas = [{ codigo: "", descripcion: "", monto: montoMov, documentos: [] }];
+        lineas = [{ codigo: "", descripcion: "", monto: montoMov, lado: ladoInicial, documentos: [] }];
       }
     }
 
@@ -989,7 +1020,8 @@
 
   document.getElementById("conc-agregar-cuenta").addEventListener("click", function () {
     if (!modalState) return;
-    modalState.lineas.push({ codigo: "", descripcion: "", monto: 0, documentos: [] });
+    var esCargo = modalState.movimiento.cargo > 0;
+    modalState.lineas.push({ codigo: "", descripcion: "", monto: 0, lado: esCargo ? "debe" : "haber", documentos: [] });
     renderModalLineas();
     recomputarModalTotales();
   });

@@ -32,9 +32,14 @@ segunda ronda de la conciliación asistida — reemplaza la única cuenta
   documento (igual criterio que "Empresas Caja" cuando se tildan varios
   documentos pendientes del mismo módulo).
 - Si el movimiento es un **cargo** (dinero que sale del banco): la cuenta
-  bancaria va al **Haber** y las líneas de detalle al **Debe**. Tipo = "E".
-- Si el movimiento es un **abono** (dinero que entra al banco): la cuenta
-  bancaria va al **Debe** y las líneas de detalle al **Haber**. Tipo = "I".
+  bancaria va al **Haber**. Tipo = "E". Si es un **abono** (dinero que
+  entra): la cuenta bancaria va al **Debe**. Tipo = "I". Cada línea de
+  detalle postea al Debe o al Haber, según elija el admin en el modal —
+  por defecto queda al lado opuesto del banco (el caso normal de un
+  comprobante de 2 líneas), pero un comprobante con más de 2 líneas puede
+  necesitar alguna al mismo lado del banco (ej. un ajuste o diferencia de
+  pago), así que cada una recuerda su propio lado (15-09-2026, pedido por
+  el usuario).
 - La PRIMERA fila del comprobante es siempre la que lleva el **Debe**
   (con Número=0, Tipo, Fecha y Glosa); el resto no lleva esos 4 campos —
   mismo criterio que las rondas anteriores (en los abonos la primera fila
@@ -138,12 +143,15 @@ def construir_filas_comprobantes(movimientos, cuenta_banco):
     (texto ya editado, se usa como Glosa/Glosa Detalle), `cargo`/`abono`
     (float, exactamente uno de los dos > 0), y `lineas` — lista de UNA O
     MÁS líneas de detalle (14-09-2026, modal "Crear comprobante"), cada
-    una un dict `{cuenta, monto, documentos}`:
+    una un dict `{cuenta, monto, lado, documentos}`:
 
     - `cuenta`: dict con `codigo`/`descripcion`/`es_banco`/`requiere_
       centro_costo` (del plan de cuentas).
     - `monto`: el monto de la línea SI `documentos` está vacío (cuenta
       suelta, sin documento auxiliar).
+    - `lado`: "debe" o "haber" (15-09-2026) — a qué columna postea el
+      monto de ESTA línea; por defecto el opuesto al banco, pero el admin
+      puede moverla en el modal.
     - `documentos`: lista de dicts `{tipo, rut, nombre, tipo_documento_
       codigo, numero_documento, fecha, monto}` (uno por documento
       Cliente/Proveedor/Honorario adjunto a esta línea) — si no está
@@ -183,19 +191,24 @@ def construir_filas_comprobantes(movimientos, cuenta_banco):
         # Debe/Haber vacío (14-09-2026, confirmado por el usuario contra un
         # ejemplo real: varias facturas del mismo cliente en una línea
         # postean el monto sumado una sola vez, cada una con su propio
-        # detalle auxiliar aparte).
-        detalle_datos = []  # [(cuenta, monto_a_postear_o_None, auxiliar_or_None)]
+        # detalle auxiliar aparte). Cada línea postea al Debe o al Haber
+        # según SU PROPIO `lado` (15-09-2026: ya no siempre el lado opuesto
+        # al banco — un comprobante con más de 2 líneas puede necesitar
+        # alguna al mismo lado del banco, ej. un ajuste o diferencia de
+        # pago; el usuario la mueve a mano en el modal).
+        detalle_datos = []  # [(cuenta, monto_a_postear_o_None, auxiliar_or_None, lado)]
         for linea in mov["lineas"]:
             cuenta = linea["cuenta"]
+            lado = linea.get("lado") or ("debe" if es_cargo else "haber")
             if linea["documentos"]:
                 total_linea = sum(doc["monto"] for doc in linea["documentos"])
                 for i, doc in enumerate(linea["documentos"]):
-                    detalle_datos.append((cuenta, total_linea if i == 0 else None, doc))
+                    detalle_datos.append((cuenta, total_linea if i == 0 else None, doc, lado))
             else:
-                detalle_datos.append((cuenta, linea["monto"], None))
+                detalle_datos.append((cuenta, linea["monto"], None, lado))
 
         filas_detalle = []
-        for cuenta, monto, auxiliar in detalle_datos:
+        for cuenta, monto, auxiliar, lado in detalle_datos:
             if monto is None:
                 # Fila de continuación (ya se posteó el total en la primera
                 # del grupo): sin Cuenta Detalle ni Glosa Detalle tampoco —
@@ -203,7 +216,7 @@ def construir_filas_comprobantes(movimientos, cuenta_banco):
                 # confirmado por el usuario contra un ejemplo real).
                 debe, haber, cc, codigo_cuenta, glosa_detalle = None, None, "", "", ""
             else:
-                debe, haber = (monto, None) if es_cargo else (None, monto)
+                debe, haber = (monto, None) if lado == "debe" else (None, monto)
                 cc = 100 if cuenta["requiere_centro_costo"] else ""
                 codigo_cuenta, glosa_detalle = cuenta["codigo"], detalle
             filas_detalle.append(_fila("", "", "", "", codigo_cuenta, glosa_detalle, cc, debe, haber, auxiliar))

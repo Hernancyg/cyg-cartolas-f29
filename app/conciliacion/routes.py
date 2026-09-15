@@ -252,13 +252,16 @@ def procesar():
     )
 
 
-def _leer_lineas_del_formulario(form, i):
+def _leer_lineas_del_formulario(form, i, es_cargo):
     """Reconstruye las líneas de detalle de UN movimiento (índice `i`) a
     partir de los campos ocultos anidados `lineas_{i}_{li}_*` /
     `lineas_{i}_{li}_doc_{di}_*` que arma el modal "Crear comprobante" en
     pantalla (`app/static/js/conciliacion.js`) — cada línea es una cuenta
     con un monto, o (si es una de las 3 cuentas con auxiliar) una cuenta
-    con uno o más documentos adjuntos en vez de un monto suelto."""
+    con uno o más documentos adjuntos en vez de un monto suelto. `lado`
+    ("debe"/"haber", 15-09-2026): a qué columna postea el monto de ESA
+    línea — ya no es siempre "el lado opuesto al banco", el usuario puede
+    moverla; `es_cargo` solo se usa como respaldo si el campo no llegó."""
     total = int(form.get(f"lineas_{i}_total") or 0)
     lineas = []
     for li in range(total):
@@ -277,10 +280,12 @@ def _leer_lineas_del_formulario(form, i):
                 "fecha_iso": form.get(f"{dprefijo}_fecha_iso", ""),
                 "monto": float(form.get(f"{dprefijo}_monto") or 0),
             })
+        lado = form.get(f"{prefijo}_lado") or ("debe" if es_cargo else "haber")
         lineas.append({
             "codigo": form.get(f"{prefijo}_codigo", ""),
             "descripcion": form.get(f"{prefijo}_descripcion", ""),
             "monto": float(form.get(f"{prefijo}_monto") or 0),
+            "lado": lado if lado in ("debe", "haber") else ("debe" if es_cargo else "haber"),
             "documentos": documentos,
         })
     return lineas
@@ -295,13 +300,14 @@ def _leer_filas_del_formulario(form):
     total = int(form.get("total_filas") or 0)
     filas = []
     for i in range(total):
+        cargo = float(form.get(f"cargo_{i}") or 0)
         filas.append({
             "fecha": form.get(f"fecha_{i}", ""),
             "fecha_iso": form.get(f"fecha_iso_{i}", ""),
             "detalle": form.get(f"detalle_{i}", ""),
-            "cargo": float(form.get(f"cargo_{i}") or 0),
+            "cargo": cargo,
             "abono": float(form.get(f"abono_{i}") or 0),
-            "lineas": _leer_lineas_del_formulario(form, i),
+            "lineas": _leer_lineas_del_formulario(form, i, cargo > 0),
         })
     return filas
 
@@ -314,18 +320,31 @@ def _monto_linea(linea):
     return linea["monto"]
 
 
+def _fila_cuadra(f):
+    """Debe == Haber del comprobante completo (banco + líneas), cada línea
+    posteando al lado que tenga elegido (15-09-2026: antes se asumía que
+    TODAS las líneas iban al lado opuesto del banco, por lo que bastaba
+    comparar la suma de las líneas contra el monto del movimiento; ahora
+    cada línea puede estar en cualquiera de los dos lados, así que se suma
+    por lado y se compara Debe total contra Haber total)."""
+    es_cargo = f["cargo"] > 0
+    monto_movimiento = f["cargo"] if es_cargo else f["abono"]
+    banco_debe = 0 if es_cargo else monto_movimiento
+    banco_haber = monto_movimiento if es_cargo else 0
+    suma_debe = sum(_monto_linea(li) for li in f["lineas"] if li.get("lado", "debe" if es_cargo else "haber") == "debe")
+    suma_haber = sum(_monto_linea(li) for li in f["lineas"] if li.get("lado", "debe" if es_cargo else "haber") == "haber")
+    return round(banco_debe + suma_debe) == round(banco_haber + suma_haber)
+
+
 def _fila_valida(f):
     """Una fila (movimiento) está lista para armar su comprobante si
     tiene al menos una línea, todas sus líneas apuntan a una cuenta real
-    del plan de cuentas, y la suma de sus montos calza con el cargo/abono
-    del movimiento (el comprobante siempre debe quedar balanceado)."""
+    del plan de cuentas, y el comprobante queda balanceado (Debe == Haber)."""
     if not f["lineas"]:
         return False
     if any(li["codigo"] not in CUENTAS_POR_CODIGO for li in f["lineas"]):
         return False
-    monto_movimiento = f["cargo"] if f["cargo"] > 0 else f["abono"]
-    suma_lineas = sum(_monto_linea(li) for li in f["lineas"])
-    return round(suma_lineas) == round(monto_movimiento)
+    return _fila_cuadra(f)
 
 
 @conciliacion_bp.route("/descargar", methods=["POST"])
@@ -364,7 +383,7 @@ def descargar():
     filas_desbalanceadas = [
         str(i + 1) for i, f in enumerate(filas)
         if f["lineas"] and not any(li["codigo"] not in CUENTAS_POR_CODIGO for li in f["lineas"])
-        and round(sum(_monto_linea(li) for li in f["lineas"])) != round(f["cargo"] if f["cargo"] > 0 else f["abono"])
+        and not _fila_cuadra(f)
     ]
     if filas_desbalanceadas:
         etiqueta = "movimiento" if len(filas_desbalanceadas) == 1 else "movimientos"
@@ -415,7 +434,7 @@ def descargar():
                     "fecha": datetime.strptime(fecha_doc_iso, "%Y-%m-%d"),
                     "monto": doc["monto"],
                 })
-            lineas.append({"cuenta": cuenta, "monto": li["monto"], "documentos": documentos})
+            lineas.append({"cuenta": cuenta, "monto": li["monto"], "lado": li["lado"], "documentos": documentos})
         movimientos.append({
             "fecha": fecha_mov,
             "detalle": f["detalle"],

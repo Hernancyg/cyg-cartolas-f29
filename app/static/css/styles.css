@@ -934,6 +934,16 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 }
 .conc-linea-quitar { background: none; border: none; color: var(--danger); cursor: pointer; padding: 4px; font-size: 1rem; }
 
+/* Botón "mover al otro lado" (15-09-2026, pedido por el usuario): vive en
+   la celda Debe/Haber que está libre en esa línea — moverla al otro lado
+   solo cambia dónde postea, no reordena las líneas ni afecta al banco. */
+.conc-linea-mover {
+  background: none; border: 1px dashed var(--border); border-radius: 8px; color: var(--text-muted);
+  cursor: pointer; padding: 6px 8px; font-size: 0.76rem; font-weight: 600; white-space: nowrap;
+  width: 100%; max-width: 140px; float: right;
+}
+.conc-linea-mover:hover { color: var(--indigo); border-color: var(--indigo); }
+
 .conc-linea-docs-row td { border-bottom: 1px solid var(--border); padding: 0 6px 10px; }
 .conc-linea-docs {
   margin-top: 6px; border: 1px solid var(--border); border-radius: var(--r-md);
