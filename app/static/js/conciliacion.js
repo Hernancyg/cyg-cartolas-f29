@@ -317,7 +317,7 @@
   // comportamiento que el buscador de la cuenta bancaria de arriba.
   // -------------------------------------------------------------------
 
-  function habilitarDropdown(input, resultsEl, buscarFn, renderItemFn, seleccionarFn) {
+  function habilitarDropdown(input, resultsEl, buscarFn, renderItemFn, seleccionarFn, autoSanar) {
     var estado = { activo: false, items: [], index: -1 };
 
     function cerrar() {
@@ -365,7 +365,28 @@
       else if (ev.key === "Enter") { if (estado.index >= 0) { ev.preventDefault(); seleccionarFn(estado.items[estado.index]); cerrar(); } }
       else if (ev.key === "Escape") { cerrar(); }
     });
-    input.addEventListener("blur", function () { setTimeout(cerrar, 120); });
+    // Al salir del campo: si el texto quedó calzando EXACTO con un
+    // resultado pero `seleccionarFn` nunca se disparó (por ejemplo, el
+    // autocompletado nativo del navegador metió el texto en vez de que
+    // el usuario haya hecho clic en una de nuestras opciones — pasa con
+    // Chrome en campos sin `name` que el usuario ya escribió antes), se
+    // corrige solo en vez de quedar con un texto "fantasma" que no
+    // corresponde a ninguna selección real. Busca contra la lista COMPLETA
+    // (`autoSanar.todos()`), no contra `buscarFn` — el texto ya formateado
+    // ("1104-01 — DEUDORES CLIENTES") no calza con el buscador de palabras
+    // sueltas por el guion largo del medio.
+    input.addEventListener("blur", function () {
+      setTimeout(function () {
+        if (autoSanar) {
+          var texto = input.value.trim();
+          if (texto) {
+            var exacto = autoSanar.todos().filter(function (item) { return autoSanar.textoDe(item) === texto; })[0];
+            if (exacto) seleccionarFn(exacto);
+          }
+        }
+        cerrar();
+      }, 120);
+    });
   }
 
   function crearCampoBusqueda(valorInicial, placeholder) {
@@ -375,7 +396,12 @@
     input.type = "text";
     input.className = "cuenta-search-input";
     input.placeholder = placeholder || "Buscar…";
+    // `autocomplete="off"` solo, Chrome lo ignora seguido en campos que
+    // el usuario ya llenó antes en la misma página — un `name` al azar
+    // (sin relación con datos reales) le quita la pista que usa para
+    // sugerir autocompletado.
     input.autocomplete = "off";
+    input.name = "cyg-no-autofill-" + Math.random().toString(36).slice(2);
     input.spellcheck = false;
     input.value = valorInicial || "";
     var results = document.createElement("div");
@@ -687,12 +713,14 @@
         function (texto) { return buscarCuentas(texto); },
         renderItemCuenta,
         function (cuenta) {
+          if (linea.codigo === cuenta.codigo) return; // ya estaba elegida — no reinicia sus documentos
           linea.codigo = cuenta.codigo;
           linea.descripcion = cuenta.descripcion;
           linea.documentos = [];
           renderModalLineas();
           recomputarModalTotales();
-        }
+        },
+        { textoDe: function (cuenta) { return cuenta.codigo + " — " + cuenta.descripcion; }, todos: function () { return CUENTAS; } }
       );
 
       var montoLinea = montoDeLinea(linea);

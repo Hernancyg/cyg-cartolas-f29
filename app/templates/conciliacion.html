@@ -54,7 +54,7 @@
       Es la misma para todos los movimientos de este archivo.
     </p>
     <div class="cuenta-search cuenta-search-banco">
-      <input type="text" id="cuenta-banco-input" class="cuenta-search-input" placeholder="Buscar cuenta bancaria…"
+      <input type="text" id="cuenta-banco-input" name="cyg-no-autofill-banco" class="cuenta-search-input" placeholder="Buscar cuenta bancaria…"
              autocomplete="off" spellcheck="false"
              value="{{ (cuenta_banco_codigo + ' — ' + cuenta_banco_descripcion) if cuenta_banco_codigo else '' }}">
       <input type="hidden" id="cuenta-banco-codigo" class="cuenta-codigo" name="cuenta_banco_codigo" value="{{ cuenta_banco_codigo }}">
