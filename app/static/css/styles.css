@@ -931,7 +931,10 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .conc-linea-monto-input {
   width: 100%; max-width: 140px; text-align: right; padding: 7px 10px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--input-bg); color: var(--text); font: inherit; font-weight: 700;
+  -moz-appearance: textfield; appearance: textfield;
 }
+.conc-linea-monto-input::-webkit-outer-spin-button,
+.conc-linea-monto-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .conc-linea-quitar { background: none; border: none; color: var(--danger); cursor: pointer; padding: 4px; font-size: 1rem; }
 
 /* Botón "mover al otro lado" (15-09-2026, pedido por el usuario): vive en
