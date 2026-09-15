@@ -76,7 +76,7 @@
 
     <div class="conc-aux-carga-lista">
       {% for modulo, titulo in [('clientes', 'Clientes'), ('proveedores', 'Proveedores'), ('honorarios', 'Honorarios')] %}
-      <div class="conc-aux-carga">
+      <div class="conc-aux-carga{{ ' collapsed' if auxiliares.get(modulo) else '' }}">
         <button type="button" class="conc-aux-carga-header" data-toggle-aux="{{ modulo }}">
           <span class="conc-aux-carga-chevron">▾</span>
           <span class="conc-aux-carga-titulo">{{ titulo }}</span>
@@ -114,7 +114,33 @@
       <button type="button" class="conc-filtro-btn" data-filtro="cargo">Cargo</button>
     </div>
 
-    <div class="conc-lista" id="conc-lista">
+    <div class="conc-board">
+      <div class="conc-col conc-col-sin">
+        <div class="conc-col-head">
+          <span class="conc-col-title"><span class="conc-col-dot"></span> Sin conciliar</span>
+          <span class="conc-col-count" id="conc-col-sin-count">0</span>
+        </div>
+        <div class="conc-col-cards" id="conc-col-sin-cards"></div>
+      </div>
+      <div class="conc-col conc-col-prop">
+        <div class="conc-col-head">
+          <span class="conc-col-title"><span class="conc-col-dot"></span> Con propuesta</span>
+          <span class="conc-col-count" id="conc-col-prop-count">0</span>
+        </div>
+        <div class="conc-col-cards" id="conc-col-prop-cards"></div>
+      </div>
+      <div class="conc-col conc-col-ok">
+        <div class="conc-col-head">
+          <span class="conc-col-title"><span class="conc-col-dot"></span> Conciliado</span>
+          <span class="conc-col-count" id="conc-col-ok-count">0</span>
+        </div>
+        <div class="conc-col-cards" id="conc-col-ok-cards"></div>
+      </div>
+    </div>
+
+    <!-- Fuente: cada fila se renderiza acá y el JS la traslada a su columna
+         del tablero según su estado (sin conciliar / con propuesta / conciliado). -->
+    <div id="conc-filas-fuente" hidden>
       {% for f in filas %}
       <div class="conc-fila" data-row="{{ loop.index0 }}" data-tipo="{{ 'abono' if f.abono else 'cargo' }}"
            data-lineas-iniciales='{{ f.lineas | tojson }}'>
@@ -158,31 +184,23 @@
     </div>
 
     <div class="conc-modal-body">
-      <div class="conc-modal-mov" id="conc-modal-mov"></div>
+      <div class="conc-modal-ficha" id="conc-modal-mov"><!-- poblado por JS: monto, glosa origen, tipo, fecha --></div>
 
-      <div class="conc-modal-campos">
+      <div class="conc-modal-trabajo">
         <div class="field">
-          <label>Tipo de comprobante</label>
-          <div class="field-static" id="conc-modal-tipo"></div>
-        </div>
-        <div class="field">
-          <label>Fecha</label>
-          <div class="field-static" id="conc-modal-fecha"></div>
-        </div>
-        <div class="field">
-          <label>Glosa</label>
+          <label>Glosa del comprobante</label>
           <input type="text" class="field-static" id="conc-modal-glosa" style="width:100%; box-sizing:border-box">
         </div>
-      </div>
 
-      <table class="conc-modal-tabla">
-        <thead>
-          <tr><th class="conc-modal-num">#</th><th>Cuenta</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th class="conc-modal-quitar-col"></th></tr>
-        </thead>
-        <tbody id="conc-modal-banco-tbody"></tbody>
-        <tbody id="conc-modal-lineas-tbody"></tbody>
-      </table>
-      <button type="button" class="btn-link" id="conc-agregar-cuenta">{{ icon('plus', 14) }} Agregar cuenta</button>
+        <table class="conc-modal-tabla">
+          <thead>
+            <tr><th class="conc-modal-num">#</th><th>Cuenta</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th class="conc-modal-quitar-col"></th></tr>
+          </thead>
+          <tbody id="conc-modal-banco-tbody"></tbody>
+          <tbody id="conc-modal-lineas-tbody"></tbody>
+        </table>
+        <button type="button" class="btn-link" id="conc-agregar-cuenta">{{ icon('plus', 14) }} Agregar cuenta</button>
+      </div>
     </div>
 
     <div class="conc-modal-footer">

@@ -474,16 +474,46 @@
       var pendiente = document.createElement("div");
       pendiente.className = "conc-resumen-pendiente";
       pendiente.appendChild(document.createTextNode("Sin conciliar"));
-      if (buscarPropuestaAutomatica(fila)) {
+      var propuesta = buscarPropuestaAutomatica(fila);
+      if (propuesta) {
         pendiente.appendChild(document.createTextNode(" · "));
         var hint = document.createElement("span");
         hint.className = "conc-resumen-propuesta-hint";
-        hint.textContent = "Propuesta disponible";
+        hint.textContent = "Sugerido: " + propuesta.dataset.nombre;
         pendiente.appendChild(hint);
       }
       resumen.appendChild(pendiente);
       if (etiqueta) etiqueta.textContent = "Crear comprobante";
     }
+
+    moverFilaAColumna(fila);
+  }
+
+  // -------------------------------------------------------------------
+  // Tablero por estado (14-09-2026, a partir de un mockup de referencia
+  // del usuario): reemplaza la lista plana de filas — cada `.conc-fila`
+  // vive en una de tres columnas ("sin" / "prop" / "ok") según su estado,
+  // recalculado cada vez que `renderResumenFila` corre (carga inicial,
+  // documentos auxiliares recién cargados, o al confirmar el modal).
+  // -------------------------------------------------------------------
+
+  function bucketDeFila(fila) {
+    if (fila.dataset.resuelta === "true") return "ok";
+    return buscarPropuestaAutomatica(fila) ? "prop" : "sin";
+  }
+
+  function actualizarColumnas() {
+    ["sin", "prop", "ok"].forEach(function (bucket) {
+      var cont = document.getElementById("conc-col-" + bucket + "-cards");
+      var badge = document.getElementById("conc-col-" + bucket + "-count");
+      if (cont && badge) badge.textContent = cont.children.length;
+    });
+  }
+
+  function moverFilaAColumna(fila) {
+    var destino = document.getElementById("conc-col-" + bucketDeFila(fila) + "-cards");
+    if (destino && fila.parentNode !== destino) destino.appendChild(fila);
+    actualizarColumnas();
   }
 
   function commitLineasAFormulario(fila, lineas) {
@@ -813,35 +843,54 @@
     tbody.appendChild(tr);
   }
 
+  // Ficha del movimiento (columna izquierda del modal, 14-09-2026, a
+  // partir de un mockup de referencia del usuario): monto, glosa de
+  // origen, tipo y fecha quedan fijos acá; la columna derecha
+  // (".conc-modal-trabajo") es donde se edita el comprobante.
   function renderModalCabecera() {
     var mov = modalState.movimiento;
     var esCargo = mov.cargo > 0;
     var monto = esCargo ? mov.cargo : mov.abono;
+    var tipoClase = esCargo ? "cargo" : "abono";
 
-    var contMov = document.getElementById("conc-modal-mov");
-    contMov.innerHTML = "";
-    var info = document.createElement("div");
-    info.className = "conc-modal-mov-info";
-    var fechaEl = document.createElement("div");
-    fechaEl.className = "conc-modal-mov-fecha";
-    fechaEl.textContent = mov.fecha;
-    var detalleEl = document.createElement("div");
-    detalleEl.className = "conc-modal-mov-detalle";
-    detalleEl.textContent = mov.detalle;
-    var subEl = document.createElement("div");
-    subEl.className = "conc-modal-mov-sub";
-    subEl.textContent = "Cartola bancaria";
-    info.appendChild(fechaEl);
-    info.appendChild(detalleEl);
-    info.appendChild(subEl);
+    var cont = document.getElementById("conc-modal-mov");
+    cont.innerHTML = "";
+
+    var eyebrow = document.createElement("div");
+    eyebrow.className = "conc-modal-ficha-eyebrow";
+    eyebrow.textContent = "Movimiento bancario";
+    cont.appendChild(eyebrow);
+
     var montoEl = document.createElement("div");
-    montoEl.className = "conc-modal-mov-monto " + (esCargo ? "cargo" : "abono");
-    montoEl.textContent = (esCargo ? "− " : "") + formatoClp(monto);
-    contMov.appendChild(info);
-    contMov.appendChild(montoEl);
+    montoEl.className = "conc-modal-ficha-monto " + tipoClase;
+    montoEl.textContent = (esCargo ? "− " : "+ ") + formatoClp(monto);
+    cont.appendChild(montoEl);
 
-    document.getElementById("conc-modal-tipo").textContent = esCargo ? "Egreso" : "Ingreso";
-    document.getElementById("conc-modal-fecha").textContent = mov.fecha;
+    var detalleEl = document.createElement("div");
+    detalleEl.className = "conc-modal-ficha-detalle";
+    detalleEl.textContent = mov.detalle;
+    cont.appendChild(detalleEl);
+
+    var subEl = document.createElement("div");
+    subEl.className = "conc-modal-ficha-sub";
+    subEl.textContent = "Cartola bancaria";
+    cont.appendChild(subEl);
+
+    var pill = document.createElement("span");
+    pill.className = "conc-modal-ficha-pill " + tipoClase;
+    pill.textContent = esCargo ? "Egreso" : "Ingreso";
+    cont.appendChild(pill);
+
+    var metaFecha = document.createElement("div");
+    metaFecha.className = "conc-modal-ficha-meta";
+    var metaFechaK = document.createElement("span");
+    metaFechaK.textContent = "Fecha";
+    var metaFechaV = document.createElement("span");
+    metaFechaV.textContent = mov.fecha;
+    metaFecha.appendChild(metaFechaK);
+    metaFecha.appendChild(metaFechaV);
+    cont.appendChild(metaFecha);
+
     document.getElementById("conc-modal-glosa").value = mov.detalle;
   }
 

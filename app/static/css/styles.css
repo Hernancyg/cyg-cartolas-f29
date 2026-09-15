@@ -776,11 +776,11 @@ table.data-table .link-btn:hover { text-decoration: underline; }
 .conc-doc-estado .badge-usado { color: var(--text-muted); font-weight: 600; }
 tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 
-/* Conciliación asistida — lista de movimientos en dos columnas (14-09-2026,
-   pedida por el usuario a partir de un mockup de referencia): a la
-   izquierda el movimiento de la cartola, a la derecha su resolución
-   (propuesta automática, buscador, o ya resuelto). Reemplaza la tabla
-   plana de una sola columna "Concepto" que había hasta ahora. */
+/* Conciliación asistida — tablero de 3 columnas por estado (14-09-2026,
+   reemplaza la lista plana en dos columnas que había hasta ahora, a
+   partir de un mockup de referencia del usuario): cada `.conc-fila` es
+   una tarjeta compacta que el JS traslada a la columna "Sin conciliar" /
+   "Con propuesta" / "Conciliado" según su estado. */
 .conc-filtro-tipo { display: flex; gap: 8px; margin-bottom: 14px; }
 .conc-filtro-btn {
   background: var(--btn-secondary-bg); border: 1px solid var(--btn-secondary-border);
@@ -789,11 +789,41 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 }
 .conc-filtro-btn.active { background: var(--indigo); border-color: var(--indigo); color: var(--btn-text); }
 
-.conc-lista { display: flex; flex-direction: column; gap: 10px; }
+.conc-board { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+@media (max-width: 900px) {
+  .conc-board { grid-template-columns: 1fr; }
+}
+
+.conc-col { border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column; }
+.conc-col-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; }
+.conc-col-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.85rem; color: var(--text); }
+.conc-col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.conc-col-count { font-size: 0.78rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+
+.conc-col-sin .conc-col-head { background: rgba(var(--amber-rgb),0.10); }
+.conc-col-sin .conc-col-dot { background: var(--amber); }
+.conc-col-sin .conc-col-count { background: rgba(var(--amber-rgb),0.16); color: var(--amber); }
+
+.conc-col-prop .conc-col-head { background: rgba(var(--indigo-rgb),0.10); }
+.conc-col-prop .conc-col-dot { background: var(--indigo); }
+.conc-col-prop .conc-col-count { background: rgba(var(--indigo-rgb),0.16); color: var(--indigo); }
+
+.conc-col-ok .conc-col-head { background: rgba(var(--emerald-rgb),0.10); }
+.conc-col-ok .conc-col-dot { background: var(--emerald); }
+.conc-col-ok .conc-col-count { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
+
+.conc-col-cards {
+  padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  max-height: 560px; overflow-y: auto;
+}
+.conc-col-cards:empty::after {
+  content: "Sin movimientos en este estado."; color: var(--text-muted); font-size: 0.82rem; padding: 8px 4px;
+}
+
 .conc-fila {
-  display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 16px;
-  padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-md);
-  background: var(--card-bg); align-items: start;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--card-bg);
 }
 .conc-fila[hidden] { display: none; }
 .conc-fila.conc-fila-resuelta { border-color: rgba(var(--emerald-rgb),0.35); background: rgba(var(--emerald-rgb),0.06); }
@@ -806,9 +836,10 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .conc-mov-monto.cargo { color: var(--danger); }
 
 .conc-col-resolucion {
-  min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
 }
-.conc-resumen-pendiente { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 0.85rem; }
+.conc-resumen { min-width: 0; flex: 1; }
+.conc-resumen-pendiente { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 0.85rem; flex-wrap: wrap; }
 .conc-resumen-propuesta-hint {
   display: inline-flex; align-items: center; gap: 4px; color: var(--indigo); font-size: 0.75rem; font-weight: 700;
 }
@@ -824,10 +855,6 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .conc-buscar-item-tipo {
   font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
   color: var(--text-muted); margin-right: 6px;
-}
-
-@media (max-width: 760px) {
-  .conc-fila { grid-template-columns: 1fr; }
 }
 
 /* Modal "Crear comprobante" (14-09-2026, a partir de un mockup de
@@ -854,22 +881,41 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .conc-modal-close { background: none; border: none; font-size: 1.2rem; line-height: 1; color: var(--text-muted); cursor: pointer; padding: 4px; }
 .conc-modal-close:hover { color: var(--text); }
 
-.conc-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
-.conc-modal-mov {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px; margin-bottom: 16px;
+/* Cuerpo del modal en dos columnas (14-09-2026, a partir de un mockup de
+   referencia del usuario): la ficha del movimiento bancario queda fija a
+   la izquierda; el trabajo contable (glosa, líneas, documentos) a la
+   derecha — reemplaza el bloque único apilado que había hasta ahora. */
+.conc-modal-body { padding: 0; overflow-y: auto; flex: 1; display: grid; grid-template-columns: 230px 1fr; }
+@media (max-width: 640px) {
+  .conc-modal-body { grid-template-columns: 1fr; }
 }
-.conc-modal-mov-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.conc-modal-mov-fecha { font-size: 0.78rem; color: var(--text-muted); }
-.conc-modal-mov-detalle { font-weight: 700; }
-.conc-modal-mov-sub { font-size: 0.78rem; color: var(--text-muted); }
-.conc-modal-mov-monto { font-weight: 800; font-size: 1.1rem; flex-shrink: 0; }
-.conc-modal-mov-monto.abono { color: var(--emerald); }
-.conc-modal-mov-monto.cargo { color: var(--danger); }
 
-.conc-modal-campos { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
-.conc-modal-campos .field { flex: 1; min-width: 140px; }
-.conc-modal-campos .field-static {
+.conc-modal-ficha {
+  padding: 20px; border-right: 1px solid var(--border); background: rgba(var(--indigo-rgb),0.03);
+  display: flex; flex-direction: column; gap: 6px;
+}
+@media (max-width: 640px) {
+  .conc-modal-ficha { border-right: none; border-bottom: 1px solid var(--border); }
+}
+.conc-modal-ficha-eyebrow { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--text-muted); }
+.conc-modal-ficha-monto { font-size: 1.5rem; font-weight: 800; margin-top: 2px; }
+.conc-modal-ficha-monto.abono { color: var(--emerald); }
+.conc-modal-ficha-monto.cargo { color: var(--danger); }
+.conc-modal-ficha-detalle { font-size: 0.9rem; font-weight: 600; color: var(--text); line-height: 1.4; }
+.conc-modal-ficha-sub { font-size: 0.76rem; color: var(--text-muted); }
+.conc-modal-ficha-pill {
+  align-self: flex-start; font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-top: 6px;
+}
+.conc-modal-ficha-pill.abono { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
+.conc-modal-ficha-pill.cargo { background: rgba(var(--danger-rgb),0.14); color: var(--danger); }
+.conc-modal-ficha-meta {
+  display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted);
+  border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px;
+}
+.conc-modal-ficha-meta span:last-child { color: var(--text); font-weight: 600; }
+
+.conc-modal-trabajo { padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.conc-modal-trabajo .field .field-static {
   padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--input-bg);
   color: var(--text-muted); font-size: 0.88rem;
 }
@@ -931,7 +977,6 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .conc-modal-acciones { display: flex; align-items: center; gap: 10px; }
 
 @media (max-width: 640px) {
-  .conc-modal-mov { flex-direction: column; align-items: flex-start; }
   .conc-modal-footer { flex-direction: column; align-items: stretch; }
   .conc-modal-acciones { justify-content: flex-end; }
 }
