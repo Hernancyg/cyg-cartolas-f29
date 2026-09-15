@@ -886,7 +886,6 @@
     renderModalBanco();
     renderModalLineas();
     recomputarModalTotales();
-    document.getElementById("conc-ayuda-popover").hidden = true;
     document.getElementById("conc-modal").hidden = false;
   }
 
@@ -909,11 +908,6 @@
   });
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape" && modalState) cerrarModal();
-  });
-
-  document.getElementById("conc-ayuda-btn").addEventListener("click", function () {
-    var pop = document.getElementById("conc-ayuda-popover");
-    pop.hidden = !pop.hidden;
   });
 
   document.getElementById("conc-agregar-cuenta").addEventListener("click", function () {
