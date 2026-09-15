@@ -197,11 +197,16 @@ def construir_filas_comprobantes(movimientos, cuenta_banco):
         filas_detalle = []
         for cuenta, monto, auxiliar in detalle_datos:
             if monto is None:
-                debe, haber, cc = None, None, ""
+                # Fila de continuación (ya se posteó el total en la primera
+                # del grupo): sin Cuenta Detalle ni Glosa Detalle tampoco —
+                # solo aporta su propio bloque auxiliar (14-09-2026,
+                # confirmado por el usuario contra un ejemplo real).
+                debe, haber, cc, codigo_cuenta, glosa_detalle = None, None, "", "", ""
             else:
                 debe, haber = (monto, None) if es_cargo else (None, monto)
                 cc = 100 if cuenta["requiere_centro_costo"] else ""
-            filas_detalle.append(_fila("", "", "", "", cuenta["codigo"], detalle, cc, debe, haber, auxiliar))
+                codigo_cuenta, glosa_detalle = cuenta["codigo"], detalle
+            filas_detalle.append(_fila("", "", "", "", codigo_cuenta, glosa_detalle, cc, debe, haber, auxiliar))
 
         debe_banco, haber_banco = (None, monto_total) if es_cargo else (monto_total, None)
         fila_banco = _fila("", "", "", "", cuenta_banco["codigo"], detalle, cc_banco, debe_banco, haber_banco, aux_banco)
