@@ -111,8 +111,15 @@ class FilaSinFecha(Exception):
 
 def _fila(numero, tipo, fecha, glosa, cuenta, glosa_detalle, centro_costo, debe, haber, auxiliar):
     """Una fila (17 columnas). `auxiliar`: `None` o un dict `{tipo, rut,
-    nombre, tipo_documento_codigo, numero_documento, fecha}` — `tipo` es
-    "B" (banco), "A" (Clientes/Proveedores) o "H" (Honorarios)."""
+    nombre, tipo_documento_codigo, numero_documento, fecha, monto}` —
+    `tipo` es "B" (banco), "A" (Clientes/Proveedores) o "H" (Honorarios).
+    `debe`/`haber` son el monto CONTABLE de esta fila (14-09-2026: puede
+    venir vacío a propósito — ver `construir_filas_comprobantes`, cuando
+    una línea agrupa varios documentos solo la primera fila postea el
+    total, las demás solo llevan su propio detalle auxiliar) — el monto
+    del bloque auxiliar (columna "A/B/H: Monto") es SIEMPRE el de `auxiliar
+    ["monto"]` (el valor propio de ESE documento), sin importar si esta
+    fila posteó algo en Debe/Haber o no."""
     fila = [numero, tipo, fecha, glosa, cuenta, glosa_detalle, centro_costo, "", debe or "", haber or "", "", "", "", "", "", "", ""]
     if auxiliar:
         fila[10] = auxiliar["tipo"]
@@ -121,7 +128,7 @@ def _fila(numero, tipo, fecha, glosa, cuenta, glosa_detalle, centro_costo, debe,
         tipo_documento_codigo = auxiliar.get("tipo_documento_codigo")
         fila[13] = tipo_documento_codigo if tipo_documento_codigo is not None else ""
         fila[14] = auxiliar.get("numero_documento") or ""
-        fila[15] = debe or haber
+        fila[15] = auxiliar.get("monto")
         fila[16] = auxiliar["fecha"]
     return fila
 
@@ -165,24 +172,35 @@ def construir_filas_comprobantes(movimientos, cuenta_banco):
         cc_banco = 100 if cuenta_banco["requiere_centro_costo"] else ""
         aux_banco = {
             "tipo": "B", "rut": "", "nombre": detalle, "tipo_documento_codigo": 0,
-            "numero_documento": 0, "fecha": fecha,
+            "numero_documento": 0, "fecha": fecha, "monto": monto_total,
         } if cuenta_banco["es_banco"] else None
 
-        # Cada línea de detalle sin documentos aporta UNA fila; cada línea
-        # CON documentos aporta una fila POR documento.
-        detalle_datos = []  # [(cuenta, monto, auxiliar_or_None)]
+        # Cada línea de detalle sin documentos aporta UNA fila. Una línea
+        # CON documentos aporta una fila POR documento (para no perder el
+        # detalle de Rut/Folio/Monto de cada uno) — pero el monto CONTABLE
+        # (Debe/Haber) de esa cuenta se postea UNA sola vez, en la primera
+        # de esas filas, por el TOTAL de la línea; las demás quedan con
+        # Debe/Haber vacío (14-09-2026, confirmado por el usuario contra un
+        # ejemplo real: varias facturas del mismo cliente en una línea
+        # postean el monto sumado una sola vez, cada una con su propio
+        # detalle auxiliar aparte).
+        detalle_datos = []  # [(cuenta, monto_a_postear_o_None, auxiliar_or_None)]
         for linea in mov["lineas"]:
             cuenta = linea["cuenta"]
             if linea["documentos"]:
-                for doc in linea["documentos"]:
-                    detalle_datos.append((cuenta, doc["monto"], doc))
+                total_linea = sum(doc["monto"] for doc in linea["documentos"])
+                for i, doc in enumerate(linea["documentos"]):
+                    detalle_datos.append((cuenta, total_linea if i == 0 else None, doc))
             else:
                 detalle_datos.append((cuenta, linea["monto"], None))
 
         filas_detalle = []
         for cuenta, monto, auxiliar in detalle_datos:
-            cc = 100 if cuenta["requiere_centro_costo"] else ""
-            debe, haber = (monto, None) if es_cargo else (None, monto)
+            if monto is None:
+                debe, haber, cc = None, None, ""
+            else:
+                debe, haber = (monto, None) if es_cargo else (None, monto)
+                cc = 100 if cuenta["requiere_centro_costo"] else ""
             filas_detalle.append(_fila("", "", "", "", cuenta["codigo"], detalle, cc, debe, haber, auxiliar))
 
         debe_banco, haber_banco = (None, monto_total) if es_cargo else (monto_total, None)

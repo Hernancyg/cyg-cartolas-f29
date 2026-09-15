@@ -184,8 +184,13 @@ def test_construir_filas_comprobantes_linea_plana():
 def test_construir_filas_comprobantes_linea_con_varios_documentos():
     """Una línea CON documentos (14-09-2026, modal "Crear comprobante") se
     expande en una fila POR documento — mismo código de cuenta, cada una
-    con su propio bloque de Tipo Auxiliar "A", y el comprobante sigue
-    balanceado contra el total del movimiento."""
+    con su propio bloque de Tipo Auxiliar "A" y su propio monto en la
+    columna del bloque auxiliar ("A/B/H: Monto") — pero el monto CONTABLE
+    (Debe/Haber) de esa cuenta se postea UNA sola vez, en la primera fila
+    del grupo, por el TOTAL de la línea; las demás quedan con Debe/Haber
+    vacío (corregido 14-09-2026 contra un ejemplo real que entregó el
+    usuario: 3 facturas del mismo cliente en una línea postean el monto
+    sumado una sola vez, no una vez por fila)."""
     doc_a = {"tipo": "A", "rut": "1-9", "nombre": "Doc A", "tipo_documento_codigo": 33, "numero_documento": "1", "fecha": datetime(2026, 8, 1), "monto": 60_000.0}
     doc_b = {"tipo": "A", "rut": "2-7", "nombre": "Doc B", "tipo_documento_codigo": 33, "numero_documento": "2", "fecha": datetime(2026, 8, 2), "monto": 43_733.0}
     movimientos = [{
@@ -199,7 +204,9 @@ def test_construir_filas_comprobantes_linea_con_varios_documentos():
     filas_doc = [f for f in filas if f[4] == "1104-01"]
     check("2 filas de la cuenta Clientes (una por documento)", len(filas_doc) == 2)
     check("cada fila lleva el rut de SU documento", {f[11] for f in filas_doc} == {"1-9", "2-7"})
-    check("cada fila lleva el monto de SU documento (no el total combinado)", {f[9] for f in filas_doc} == {60_000.0, 43_733.0})
+    check("solo la primera fila del grupo postea el Haber, por el TOTAL (103.733)", filas_doc[0][9] == 103_733.0)
+    check("la segunda fila del grupo NO postea Haber (ya se posteó en la primera)", not filas_doc[1][9])
+    check("cada fila igual lleva el monto de SU documento en el bloque auxiliar (columna 15)", (filas_doc[0][15], filas_doc[1][15]) == (60_000.0, 43_733.0))
     check("balanceado", sum(f[8] for f in filas if f[8]) == sum(f[9] for f in filas if f[9]) == 103_733.0)
 
 
