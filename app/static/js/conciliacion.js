@@ -282,9 +282,17 @@
   // Matching automático: monto Y rut deben calzar exacto (14-09-2026,
   // confirmado por el usuario) — si el texto del movimiento no trae un
   // RUT reconocible, no se propone nada automático (queda "idle").
+  //
+  // `(?<!\d)` en vez de `\b` antes del número (15-09-2026, corregido
+  // contra un caso real: "TRANSFERENCIA A77086878-5 J PACK SPA" no
+  // calzaba porque la letra "A" queda pegada al RUT sin espacio — "A" y
+  // "7" son ambos \w, así que ahí NO hay borde de palabra \b. Un
+  // lookbehind que solo exige que lo anterior no sea OTRO dígito acepta
+  // el caso pegado a una letra sin abrir la puerta a matchear en medio de
+  // una tira de dígitos larga que no sea un RUT real.
   // -------------------------------------------------------------------
 
-  var RUT_REGEX = /\b(\d{1,2}\.?\d{3}\.?\d{3})-([0-9kK])\b/;
+  var RUT_REGEX = /(?<!\d)(\d{1,2}\.?\d{3}\.?\d{3})-([0-9kK])\b/;
 
   function extraerRut(texto) {
     var m = RUT_REGEX.exec(texto || "");
