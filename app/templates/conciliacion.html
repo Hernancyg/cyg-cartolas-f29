@@ -211,7 +211,7 @@
   window.CYG_PLAN_CUENTAS = {{ cuentas | tojson }};
   window.CYG_AUX_MODULOS = {{ aux_modulos | tojson }};
 </script>
-<script src="{{ url_for('static', filename='js/conciliacion.js') }}"></script>
+<script src="{{ static_v('js/conciliacion.js') }}"></script>
 
 {% endif %}
 {% endblock %}

@@ -79,6 +79,22 @@ def create_app():
 
     app.jinja_env.filters["dmy"] = _dmy
 
+    def _static_v(filename):
+        """URL de un archivo estático con `?v=<mtime>` — evita que el
+        navegador sirva una versión vieja desde caché después de un deploy
+        (Flask no versiona `url_for('static', ...)` por su cuenta). Si el
+        archivo no existe (o falla el `stat`), se sirve sin versión en vez
+        de romper la página."""
+        from pathlib import Path
+        from flask import url_for
+        try:
+            v = int((Path(app.static_folder) / filename).stat().st_mtime)
+        except OSError:
+            return url_for("static", filename=filename)
+        return url_for("static", filename=filename, v=v)
+
+    app.jinja_env.globals["static_v"] = _static_v
+
     from app.auth.routes import auth_bp
     from app.cartolas.routes import cartolas_bp
     from app.f29.routes import f29_bp
