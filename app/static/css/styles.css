@@ -865,14 +865,21 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .conc-modal-backdrop {
   position: fixed; inset: 0; z-index: 2000;
   display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(4,7,15,0.45); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  background: rgba(4,7,15,0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
 .conc-modal-backdrop[hidden] { display: none; }
+/* El modal usa un fondo más opaco que las demás tarjetas (`--card-bg`,
+   15-09-2026: pedido por el usuario — con la transparencia normal de
+   `--card-bg` en tema oscuro (5%) se alcanzaba a leer el tablero detrás,
+   distrayendo mientras se arma el comprobante) — mismo blur "glass" que
+   el resto de la app, solo más sólido acá para que se lea mejor. */
 .conc-modal {
-  background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--r-lg);
+  background: rgba(255,255,255,0.92); border: 1px solid var(--card-border); border-radius: var(--r-lg);
   box-shadow: var(--card-shadow); width: 100%; max-width: 1080px; max-height: 90vh;
   display: flex; flex-direction: column; overflow: hidden;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
 }
+:root[data-theme="dark"] .conc-modal { background: rgba(8,13,26,0.95); }
 .conc-modal-header {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
