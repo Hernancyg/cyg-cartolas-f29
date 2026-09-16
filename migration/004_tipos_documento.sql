@@ -18,12 +18,15 @@ alter table tipos_documento enable row level security;
 -- solo la service-role key (usada server-side por la app Flask, nunca
 -- expuesta al navegador) puede leer/escribir.
 
--- Códigos de partida confirmados por el usuario. Mientras la tabla esté
--- vacía la app usa estos mismos valores por defecto (ver
--- `app/data/tipos_documento_repo.py:DEFAULTS`), pero conviene dejarlos
--- creados aquí para que aparezcan de entrada en el panel de Administrador.
+-- Códigos de partida confirmados por el usuario (BOL-EL/BOL-VO agregados
+-- 16-09-2026). Mientras la tabla esté vacía la app usa estos mismos
+-- valores por defecto (ver `app/data/tipos_documento_repo.py:DEFAULTS`),
+-- pero conviene dejarlos creados aquí para que aparezcan de entrada en el
+-- panel de Administrador.
 insert into tipos_documento (texto, codigo) values
     ('FAC-EL', 33),
     ('FAC-EE', 34),
-    ('BOL-HE', 99)
+    ('BOL-HE', 99),
+    ('BOL-EL', 39),
+    ('BOL-VO', 48)
 on conflict (texto) do nothing;
