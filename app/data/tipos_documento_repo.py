@@ -28,14 +28,17 @@ logger = logging.getLogger(__name__)
 TABLE = "tipos_documento"
 _CACHE_TTL_SEGUNDOS = 30
 
-# Códigos de partida, confirmados por el usuario (10-09-2026). Se usan
-# mientras la tabla de Supabase no tenga ninguna fila propia, o si Supabase
-# falla — así un tipo de documento conocido nunca queda sin código por un
-# problema pasajero de conexión.
+# Códigos de partida, confirmados por el usuario (10-09-2026, BOL-EL/
+# BOL-VO agregados 16-09-2026). Se usan mientras la tabla de Supabase no
+# tenga ninguna fila propia, o si Supabase falla — así un tipo de
+# documento conocido nunca queda sin código por un problema pasajero de
+# conexión.
 DEFAULTS: Dict[str, int] = {
     "FAC-EL": 33,
     "FAC-EE": 34,
     "BOL-HE": 99,
+    "BOL-EL": 39,
+    "BOL-VO": 48,
 }
 
 _cache: Dict[str, int] = {}
