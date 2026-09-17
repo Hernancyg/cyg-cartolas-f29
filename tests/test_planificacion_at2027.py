@@ -154,6 +154,8 @@ def test_estado_calculado_resumen_y_exportar():
     check("fila con 6/6 meses -> badge 'Completado'", 'plan-estado-completado">' in body)
     check("tarjeta 'Total empresas' = 3", ">3<" in body and "Total empresas" in body)
     check("tarjeta 'Con plan asignado' cuenta 1 (33%)", "33%" in body)
+    check("total por mes 'Sep' = 2 (A MEDIO CAMINO + TODO ASIGNADO)", '<div class="plan-mes-label">Sep</div>' in body and '<div class="plan-mes-value">2</div>' in body)
+    check("total por mes 'Ene' = 1 (solo TODO ASIGNADO)", '<div class="plan-mes-label">Ene</div>' in body and '<div class="plan-mes-value">1</div>' in body)
 
     r = client.get("/planificacion_at2027/exportar")
     check("GET /planificacion_at2027/exportar -> 200", r.status_code == 200)

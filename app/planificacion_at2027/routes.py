@@ -61,6 +61,12 @@ def _estado_de_fila(fila: dict) -> str:
     return "en_proceso"
 
 
+MESES_LABEL = {
+    "mes_septiembre": "Sep", "mes_octubre": "Oct", "mes_noviembre": "Nov",
+    "mes_diciembre": "Dic", "mes_enero": "Ene", "mes_febrero": "Feb",
+}
+
+
 def _resumen_de(filas: list) -> dict:
     total = len(filas)
     completado = sum(1 for f in filas if f["estado"] == "completado")
@@ -70,9 +76,18 @@ def _resumen_de(filas: list) -> dict:
     def pct(n):
         return round(n / total * 100) if total else 0
 
+    # Totales por mes (17-09-2026, pedido por el usuario junto con las
+    # tarjetas de resumen): cuántas empresas tienen a alguien asignado en
+    # cada uno de los 6 meses, calculado en vivo igual que "estado".
+    meses = [
+        {"label": MESES_LABEL[m], "count": sum(1 for f in filas if (f.get(m) or "").strip())}
+        for m in MESES
+    ]
+
     return {
         "total": total, "completado": completado, "en_proceso": en_proceso, "sin_asignar": sin_asignar,
         "completado_pct": pct(completado), "en_proceso_pct": pct(en_proceso), "sin_asignar_pct": pct(sin_asignar),
+        "meses": meses,
     }
 
 

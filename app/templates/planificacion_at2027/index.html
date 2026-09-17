@@ -47,6 +47,16 @@
   </div>
 </div>
 
+<div class="plan-meses-strip">
+  {% for m in resumen.meses %}
+  <div class="plan-mes-tile">
+    <div class="plan-mes-label">{{ m.label }}</div>
+    <div class="plan-mes-value">{{ m.count }}</div>
+    <div class="plan-mes-sub">de {{ resumen.total }}</div>
+  </div>
+  {% endfor %}
+</div>
+
 <div class="card">
   <div class="section-title" style="margin-bottom:10px">Detalle por empresa</div>
   <p class="muted" style="margin-top:0">
