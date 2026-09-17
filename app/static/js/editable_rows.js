@@ -7,11 +7,15 @@
     if (removeBtn) {
       var row = removeBtn.closest("tr");
       var tbody = row && row.parentElement;
+      // No permitir vaciar completamente una tabla que requiere al menos 1
+      // fila: clona la fila ANTES de quitarla (17-09-2026, corregido — antes
+      // clonaba después de `row.remove()`, así que `tbody.querySelector("tr")`
+      // ya no encontraba ninguna fila y la reposición quedaba muerta en
+      // silencio; solo no se había notado porque ninguna tabla con
+      // data-min-rows había llegado a este caso).
+      var repuesto = (tbody && tbody.dataset.minRows && tbody.rows.length === 1) ? limpiarClon(row) : null;
       if (row) row.remove();
-      // no permitir vaciar completamente una tabla que requiere al menos 1 fila
-      if (tbody && tbody.dataset.minRows && tbody.rows.length === 0) {
-        addRowFromTemplate(tbody);
-      }
+      if (repuesto) tbody.appendChild(repuesto);
       return;
     }
   });
@@ -30,16 +34,16 @@
     });
   });
 
+  function limpiarClon(row) {
+    var clon = row.cloneNode(true);
+    clon.querySelectorAll("input").forEach(function (inp) { inp.value = ""; });
+    clon.querySelectorAll("select").forEach(function (sel) { sel.selectedIndex = 0; });
+    return clon;
+  }
+
   function addRowFromTemplate(tbody) {
     var lastRow = tbody.querySelector("tr");
-    var newRow;
-    if (lastRow) {
-      newRow = lastRow.cloneNode(true);
-      newRow.querySelectorAll("input").forEach(function (inp) { inp.value = ""; });
-      newRow.querySelectorAll("select").forEach(function (sel) { sel.selectedIndex = 0; });
-    } else {
-      return;
-    }
-    tbody.appendChild(newRow);
+    if (!lastRow) return; // sin ninguna fila que clonar — el template debe renderizar al menos una (ver data-min-rows)
+    tbody.appendChild(limpiarClon(lastRow));
   }
 })();

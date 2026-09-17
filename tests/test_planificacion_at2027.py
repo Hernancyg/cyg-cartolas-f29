@@ -1,0 +1,161 @@
+"""
+Verificación de "Planificación AT 2027" (17-09-2026) — tabla editable de
+seguimiento de empresas, más la carga masiva por Excel desde
+Administrador. Mismo estilo sin-pytest que `tests/test_conciliacion.py`
+(reusa el bootstrap de `tests/run_verification.py` — `flask_app`).
+
+Uso:
+    python tests/test_planificacion_at2027.py
+"""
+
+import io
+import sys
+from pathlib import Path
+
+from openpyxl import Workbook
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tests.run_verification import flask_app, seed_data  # noqa: E402
+
+seed_data()  # crea el usuario "testuser"/"trabajador123" (rol trabajador) usado en test_trabajador_sin_acceso
+
+PASSED, FAILED = [], []
+
+
+def check(label, condition, extra=""):
+    if condition:
+        PASSED.append(label)
+        print(f"  OK  {label}")
+    else:
+        FAILED.append(label)
+        print(f" FAIL {label} {extra}")
+
+
+def _login_admin(client):
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+
+def _xlsx_planificacion(filas):
+    """`filas`: lista de listas de 18 valores, mismo orden que
+    `app/admin/routes.py:PLANIFICACION_COLUMNAS` (encabezado en la fila 1,
+    datos desde la fila 2)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append([
+        "N°", "Empresa", "Analista", "Prioridad", "Caja/Banco",
+        "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero", "Febrero",
+        "Actualización Balance", "Reunión Cat1 (1°)", "Reunión Cat2", "Reunión Cat3",
+        "Reunión Cat1 (2°)", "Grupo", "Estado Balance (Último mes trabajado)",
+    ])
+    for fila in filas:
+        ws.append(fila)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_pagina_y_guardado_manual():
+    client = flask_app.test_client()
+    _login_admin(client)
+
+    r = client.get("/planificacion_at2027/")
+    check("GET /planificacion_at2027/ 200 (admin)", r.status_code == 200 and b"Planificaci" in r.data)
+
+    r = client.get("/admin/planificacion_at2027")
+    check("GET /admin/planificacion_at2027 200 (admin)", r.status_code == 200)
+    check("subnav de Administrador incluye Planificación AT 2027", "Planificación AT 2027" in r.get_data(as_text=True))
+
+    r = client.post("/planificacion_at2027/guardar", data={
+        "p_numero": ["3", ""], "p_empresa": ["E DOS ASESORIA SPA", ""],
+        "p_analista": ["David", ""], "p_prioridad": ["3", ""], "p_caja_banco": ["Caja", ""],
+        "p_mes_septiembre": ["", ""], "p_mes_octubre": ["Javiera V", ""], "p_mes_noviembre": ["", ""],
+        "p_mes_diciembre": ["Javiera V", ""], "p_mes_enero": ["Javiera V", ""], "p_mes_febrero": ["", ""],
+        "p_actualizacion_balance": ["Semestral", ""], "p_reunion_cat1_1": ["", ""], "p_reunion_cat2": ["", ""],
+        "p_reunion_cat3": ["", ""], "p_reunion_cat1_2": ["", ""], "p_grupo": ["", ""],
+        "p_estado_balance_ultimo_mes": ["Diciembre", ""],
+    }, follow_redirects=True)
+    check("guardar manualmente -> 200", r.status_code == 200)
+    body = r.get_data(as_text=True)
+    check("la empresa guardada aparece de vuelta", "E DOS ASESORIA SPA" in body)
+    check("la fila vacía (segunda) no se guarda", body.count("value=\"David\"") == 1)
+
+
+def test_carga_masiva_valida():
+    client = flask_app.test_client()
+    _login_admin(client)
+
+    xlsx = _xlsx_planificacion([
+        [50, "ALIMENTOS SAN LUCAS", "Javier", 3, "Caja", "Catalina", "", "Catalina", "", "Javier", "", "Semestral", "", "", "", "", "", ""],
+        [79, "INVERSIONES TBA SPA", "Javier", 1, "Banco", "", "Javier", "", "Javier", "", "Javier", "Mensual", "Octubre", "", "", "", "", "Febrero"],
+    ])
+    r = client.post(
+        "/admin/planificacion_at2027/cargar",
+        data={"archivo": (io.BytesIO(xlsx), "planificacion.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("carga masiva válida -> 200", r.status_code == 200)
+    body = r.get_data(as_text=True)
+    check("Planificación cargada: aviso de éxito", "cargada" in body)
+    check("trae la primera empresa del Excel", "ALIMENTOS SAN LUCAS" in body)
+    check("trae la segunda empresa del Excel", "INVERSIONES TBA SPA" in body)
+
+    r = client.get("/planificacion_at2027/")
+    body = r.get_data(as_text=True)
+    check("la carga masiva REEMPLAZÓ lo guardado a mano (ya no aparece)", "E DOS ASESORIA SPA" not in body)
+
+
+def test_carga_masiva_con_errores_no_guarda_nada():
+    client = flask_app.test_client()
+    _login_admin(client)
+
+    xlsx = _xlsx_planificacion([
+        [50, "ALIMENTOS SAN LUCAS", "Javier", 3, "Caja", "", "", "", "", "", "", "Semestral", "", "", "", "", "", ""],
+        [None, "", "Silvana", 2, "Banco", "", "", "", "", "", "", "", "", "", "", "", "", ""],  # sin empresa
+        [98, "SARAVIA Y GUZMAN SPA", "Jonathan", 9, "Banco", "", "", "", "", "", "", "", "", "", "", "", "", ""],  # prioridad inválida
+    ])
+    r = client.post(
+        "/admin/planificacion_at2027/cargar",
+        data={"archivo": (io.BytesIO(xlsx), "planificacion.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("carga con errores -> 200 (re-muestra la página, no revienta)", r.status_code == 200)
+    body = r.get_data(as_text=True)
+    check("avisa la fila sin 'Empresa'", "no tiene 'Empresa'" in body)
+    check("avisa la fila con 'Prioridad' inválida", "no es 1, 2 o 3" in body)
+
+    r = client.get("/planificacion_at2027/")
+    body = r.get_data(as_text=True)
+    check("nada se guardó: sigue la carga válida anterior, no la de esta prueba", "ALIMENTOS SAN LUCAS" in body and "SARAVIA Y GUZMAN SPA" not in body)
+
+
+def test_trabajador_sin_acceso():
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
+
+    r = client.get("/planificacion_at2027/")
+    check("trabajador NO puede ver Planificación AT 2027 (403)", r.status_code == 403)
+
+    r = client.get("/admin/planificacion_at2027")
+    check("trabajador NO puede ver la carga masiva en Administrador (403)", r.status_code == 403)
+
+    r = client.post("/admin/planificacion_at2027/cargar", data={}, content_type="multipart/form-data")
+    check("trabajador NO puede cargar el Excel (403)", r.status_code == 403)
+
+
+def main():
+    test_pagina_y_guardado_manual()
+    test_carga_masiva_valida()
+    test_carga_masiva_con_errores_no_guarda_nada()
+    test_trabajador_sin_acceso()
+
+    print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")
+    if FAILED:
+        print("Fallaron:", FAILED)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

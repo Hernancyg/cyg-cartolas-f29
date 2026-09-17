@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Planificación AT 2027 · Administrador · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">⚙ Panel de Administrador</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  Sube el Excel de seguimiento para reemplazar de una vez toda la tabla de
+  <a href="{{ url_for('planificacion_at2027.index') }}">Planificación AT 2027</a> — incluye las filas que
+  hayas editado a mano en esa pestaña, se pierden si no están también en este Excel.
+</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('admin.cuentas') }}" class="nav-item">Cuentas F29</a>
+  <a href="{{ url_for('admin.usuarios') }}" class="nav-item">Usuarios</a>
+  <a href="{{ url_for('admin.pestanas') }}" class="nav-item">Pestañas</a>
+  <a href="{{ url_for('admin.tipos_documento') }}" class="nav-item">Tipos de Documento</a>
+  <a href="{{ url_for('admin.planificacion_at2027') }}" class="nav-item active">Planificación AT 2027</a>
+</div>
+
+<div class="card mergeable">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('upload', 18) }}</div>
+    <div class="section-title">Carga masiva desde Excel</div>
+  </div>
+  <p class="muted" style="margin-top:0">
+    Primera fila con los encabezados (N°, Empresa, Analista, Prioridad, Caja/Banco, Septiembre…Febrero,
+    Actualización Balance, Reunión Cat1 (1°), Reunión Cat2, Reunión Cat3, Reunión Cat1 (2°), Grupo,
+    Estado Balance) y los datos desde la segunda fila — mismo orden de columnas que la tabla en pantalla.
+  </p>
+  <form method="post" action="{{ url_for('admin.planificacion_at2027_cargar') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="dropzone" id="dropzone-planificacion">
+      <div class="dropzone-left">
+        <div class="cloud-icon">{{ icon('cloud-arrow', 40) }}</div>
+        <div class="dz-title" id="dz-planificacion-title">Arrastra tu archivo aquí</div>
+        <div class="dz-or">o</div>
+        <label for="archivo-planificacion" class="btn" style="cursor:pointer;">Seleccionar archivo</label>
+        <input type="file" id="archivo-planificacion" name="archivo" accept=".xlsx,.xlsm" required>
+      </div>
+      <div class="dropzone-illustration">
+        <svg viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="dz-plan-grad-1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="var(--indigo)"/>
+              <stop offset="1" stop-color="var(--teal)"/>
+            </linearGradient>
+          </defs>
+          <rect x="30" y="34" width="70" height="92" rx="10" fill="rgba(var(--indigo-rgb),0.08)" stroke="url(#dz-plan-grad-1)" stroke-width="2"/>
+          <path d="M46 62h38M46 76h38M46 90h24" stroke="var(--text-muted)" stroke-width="2.4" stroke-linecap="round"/>
+          <circle cx="99" cy="40" r="27" fill="rgba(var(--teal-rgb),0.10)"/>
+          <path d="M87 44h24a8 8 0 0 0 0-16 15 15 0 0 0-29-4A11 11 0 0 0 87 44z" fill="none" stroke="url(#dz-plan-grad-1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M99 32v18M92.5 43l6.5 6.5 6.5-6.5" stroke="url(#dz-plan-grad-1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="103" cy="108" r="16" fill="var(--emerald)"/>
+          <path d="M96 108l4.5 4.5L111 102" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+    <p class="upload-caption">Formato permitido: XLSX, XLSM</p>
+    <button type="submit" class="btn" style="margin-top:14px">{{ icon('upload', 16) }} Cargar planificación</button>
+  </form>
+</div>
+<script>
+  document.getElementById("archivo-planificacion").addEventListener("change", function () {
+    var titulo = document.getElementById("dz-planificacion-title");
+    if (this.files && this.files[0]) titulo.textContent = this.files[0].name;
+  });
+</script>
+{% endblock %}

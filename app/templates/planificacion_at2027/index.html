@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Planificación AT 2027 · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Planificación AT 2027</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Seguimiento de empresas: analista asignado por mes, prioridad y estado de balance. Los colores de Analista y de los meses son solo para distinguir a simple vista — mismo nombre, mismo color, siempre.</p>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:10px">{{ filas | length }} empresa{{ 's' if filas | length != 1 else '' }}</div>
+  <p class="muted" style="margin-top:0">
+    Para cargar o reemplazar toda la planificación de una vez desde un Excel, ve a
+    <a href="{{ url_for('admin.planificacion_at2027') }}">Administrador → Planificación AT 2027</a>.
+  </p>
+
+  <div class="field" style="max-width:320px">
+    <label for="plan-filtro">Buscar</label>
+    <input type="text" id="plan-filtro" placeholder="Filtra por empresa, analista, grupo…" autocomplete="off">
+  </div>
+
+  <form method="post" action="{{ url_for('planificacion_at2027.guardar') }}" id="form-planificacion">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table" id="tabla-planificacion">
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>Empresa</th>
+            <th>Analista</th>
+            <th>Prioridad</th>
+            <th>Caja/Banco</th>
+            <th>Septiembre</th>
+            <th>Octubre</th>
+            <th>Noviembre</th>
+            <th>Diciembre</th>
+            <th>Enero</th>
+            <th>Febrero</th>
+            <th>Actualización Balance</th>
+            <th>Reunión Cat1 (1°)</th>
+            <th>Reunión Cat2</th>
+            <th>Reunión Cat3</th>
+            <th>Reunión Cat1 (2°)</th>
+            <th>Grupo</th>
+            <th>Estado Balance (último mes trabajado)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody data-min-rows="1">
+          {% set fila_vacia = {
+            'numero': none, 'empresa': '', 'analista': '', 'prioridad': none, 'caja_banco': '',
+            'mes_septiembre': '', 'mes_octubre': '', 'mes_noviembre': '', 'mes_diciembre': '',
+            'mes_enero': '', 'mes_febrero': '', 'actualizacion_balance': '',
+            'reunion_cat1_1': '', 'reunion_cat2': '', 'reunion_cat3': '', 'reunion_cat1_2': '',
+            'grupo': '', 'estado_balance_ultimo_mes': '',
+          } %}
+          {# Sin esto, una tabla recién estrenada (sin filas guardadas todavía)
+             no tiene ninguna <tr> que "Agregar fila" pueda clonar como
+             plantilla (ver app/static/js/editable_rows.js:addRowFromTemplate)
+             — 17-09-2026, bug real encontrado en verificación visual. #}
+          {% for f in (filas if filas else [fila_vacia]) %}
+          <tr>
+            <td><input type="number" step="1" name="p_numero" value="{{ f.numero if f.numero is not none else '' }}" style="width:64px"></td>
+            <td><input type="text" name="p_empresa" value="{{ f.empresa or '' }}" style="min-width:220px"></td>
+            <td class="plan-cell-nombre"{% if f.analista %} style="--plan-hue:{{ f.analista | hue_de }}"{% endif %}>
+              <input type="text" name="p_analista" value="{{ f.analista or '' }}" style="min-width:120px">
+            </td>
+            <td class="{{ 'plan-prioridad-' ~ f.prioridad if f.prioridad in (1, 2, 3) else '' }}">
+              <select name="p_prioridad">
+                <option value="" {{ 'selected' if not f.prioridad else '' }}></option>
+                <option value="1" {{ 'selected' if f.prioridad == 1 else '' }}>1</option>
+                <option value="2" {{ 'selected' if f.prioridad == 2 else '' }}>2</option>
+                <option value="3" {{ 'selected' if f.prioridad == 3 else '' }}>3</option>
+              </select>
+            </td>
+            <td>
+              <select name="p_caja_banco">
+                <option value="" {{ 'selected' if not f.caja_banco else '' }}></option>
+                <option value="Caja" {{ 'selected' if f.caja_banco == 'Caja' else '' }}>Caja</option>
+                <option value="Banco" {{ 'selected' if f.caja_banco == 'Banco' else '' }}>Banco</option>
+              </select>
+            </td>
+            {% for mes in ['mes_septiembre', 'mes_octubre', 'mes_noviembre', 'mes_diciembre', 'mes_enero', 'mes_febrero'] %}
+            <td class="plan-cell-nombre"{% if f[mes] %} style="--plan-hue:{{ f[mes] | hue_de }}"{% endif %}>
+              <input type="text" name="p_{{ mes }}" value="{{ f[mes] or '' }}" style="min-width:100px">
+            </td>
+            {% endfor %}
+            <td><input type="text" name="p_actualizacion_balance" value="{{ f.actualizacion_balance or '' }}" style="min-width:120px"></td>
+            <td><input type="text" name="p_reunion_cat1_1" value="{{ f.reunion_cat1_1 or '' }}" style="min-width:100px"></td>
+            <td><input type="text" name="p_reunion_cat2" value="{{ f.reunion_cat2 or '' }}" style="min-width:100px"></td>
+            <td><input type="text" name="p_reunion_cat3" value="{{ f.reunion_cat3 or '' }}" style="min-width:100px"></td>
+            <td><input type="text" name="p_reunion_cat1_2" value="{{ f.reunion_cat1_2 or '' }}" style="min-width:100px"></td>
+            <td><input type="text" name="p_grupo" value="{{ f.grupo or '' }}" style="min-width:100px"></td>
+            <td><input type="text" name="p_estado_balance_ultimo_mes" value="{{ f.estado_balance_ultimo_mes or '' }}" style="min-width:140px"></td>
+            <td><button type="button" class="row-remove" title="Quitar fila">{{ icon('trash', 16) }}</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="btn btn-secondary" id="btn-add-row" data-table="tabla-planificacion">{{ icon('plus', 16) }} Agregar fila</button>
+      <button type="submit" class="btn">{{ icon('save', 16) }} Guardar cambios</button>
+    </div>
+  </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
+<script>
+  // Filtro en vivo (17-09-2026: la tabla más grande del proyecto, ~150-200
+  // filas — ninguna otra tabla editable necesitó buscador hasta ahora). El
+  // texto de cada celda vive en el `value` de un <input>/<select> — no en
+  // el textContent de la fila (que para estos controles siempre viene
+  // vacío) — corregido tras encontrarlo en verificación visual: el filtro
+  // ocultaba TODAS las filas siempre, sin encontrar ninguna coincidencia.
+  document.getElementById("plan-filtro").addEventListener("input", function () {
+    var q = this.value.trim().toLowerCase();
+    document.querySelectorAll("#tabla-planificacion tbody tr").forEach(function (tr) {
+      if (!q) { tr.hidden = false; return; }
+      var valores = [];
+      tr.querySelectorAll("input, select").forEach(function (campo) { valores.push(campo.value); });
+      tr.hidden = valores.join(" ").toLowerCase().indexOf(q) === -1;
+    });
+  });
+
+  // Al agregar una fila (editable_rows.js clona la primera fila real y
+  // limpia inputs/selects, pero no toca el color de fondo por nombre que
+  // esa fila ya tenía) — se limpia acá para que una fila recién agregada
+  // no aparezca con un color heredado de otra persona.
+  document.getElementById("btn-add-row").addEventListener("click", function () {
+    setTimeout(function () {
+      var tbody = document.querySelector("#tabla-planificacion tbody");
+      var ultima = tbody && tbody.lastElementChild;
+      if (!ultima) return;
+      ultima.querySelectorAll(".plan-cell-nombre").forEach(function (td) {
+        td.style.removeProperty("--plan-hue");
+      });
+      ultima.querySelectorAll("[class*='plan-prioridad-']").forEach(function (td) {
+        td.className = td.className.replace(/\bplan-prioridad-\d\b/g, "").trim();
+      });
+    }, 0);
+  });
+</script>
+{% endblock %}

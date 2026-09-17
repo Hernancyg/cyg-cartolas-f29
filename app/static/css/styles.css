@@ -1013,3 +1013,15 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .td-editable-input:focus {
   outline: none; background: var(--input-bg); border-color: var(--indigo);
 }
+
+/* Planificación AT 2027 (17-09-2026): colores solo estéticos, sin
+   significado de estado — el mismo nombre de analista siempre cae en el
+   mismo tono (hue calculado en `app/__init__.py:_hue_de`, guardado en la
+   variable `--plan-hue` de cada celda), y la prioridad usa los mismos
+   3 colores semánticos que el resto de la app (peligro/ámbar/esmeralda). */
+.plan-cell-nombre[style*="--plan-hue"] { background: hsl(var(--plan-hue), 55%, 90%); }
+:root[data-theme="dark"] .plan-cell-nombre[style*="--plan-hue"] { background: hsl(var(--plan-hue), 40%, 22%); }
+
+.plan-prioridad-1 { background: rgba(var(--danger-rgb),0.14); }
+.plan-prioridad-2 { background: rgba(var(--amber-rgb),0.16); }
+.plan-prioridad-3 { background: rgba(var(--emerald-rgb),0.14); }

@@ -79,6 +79,19 @@ def create_app():
 
     app.jinja_env.filters["dmy"] = _dmy
 
+    def _hue_de(texto):
+        """Hue determinístico (0-359) a partir de un texto — usado para
+        colorear celdas por nombre de analista en "Planificación AT 2027"
+        sin guardar un color por persona (17-09-2026, pedido por el
+        usuario: mismo nombre, mismo color, solo estético, sin significado
+        de estado)."""
+        texto = (texto or "").strip().lower()
+        if not texto:
+            return 0
+        return (sum(ord(c) for c in texto) * 37) % 360
+
+    app.jinja_env.filters["hue_de"] = _hue_de
+
     def _static_v(filename):
         """URL de un archivo estático con `?v=<mtime>` — evita que el
         navegador sirva una versión vieja desde caché después de un deploy
@@ -106,6 +119,7 @@ def create_app():
     from app.caja_empresas.routes import caja_empresas_bp
     from app.sii.routes import sii_bp
     from app.depreciacion.routes import depreciacion_bp
+    from app.planificacion_at2027.routes import planificacion_at2027_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(cartolas_bp)
@@ -118,6 +132,7 @@ def create_app():
     app.register_blueprint(caja_empresas_bp)
     app.register_blueprint(sii_bp)
     app.register_blueprint(depreciacion_bp)
+    app.register_blueprint(planificacion_at2027_bp)
 
     @app.route("/")
     def raiz():
