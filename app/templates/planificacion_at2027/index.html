@@ -248,9 +248,54 @@
 <script>
   var MESES_CAMPOS = ["mes_septiembre", "mes_octubre", "mes_noviembre", "mes_diciembre", "mes_enero", "mes_febrero"];
   var MESES_TILE_KEY = ["sep", "oct", "nov", "dic", "ene", "feb"];
+  var ORDEN_AVANCE = ["Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero", "Febrero"];
 
   function cygPlanCampoDe(tr, nombre) {
     return tr.querySelector('[name="p_' + nombre + '"]');
+  }
+
+  // Estado en vivo (19-09-2026, pedido por el usuario): al editar los
+  // meses asignados o "Avance Balance", el badge de "Estado" se
+  // recalcula al tiro en el navegador — sin esto, quedaba desactualizado
+  // hasta guardar y recargar la página. Misma lógica que
+  // `_estado_de_fila`/`_ultimo_mes_planificado` en
+  // app/planificacion_at2027/routes.py: hay que mantener ambas en sync.
+  var CYG_PLAN_ESTADO_INFO = {
+    completado: { icono: {{ icon('check-circle', 13) | tojson }}, texto: "Completado", pill: "plan-prioridad-3" },
+    en_proceso: { icono: {{ icon('clock', 13) | tojson }}, texto: "En proceso", pill: "plan-prioridad-2" },
+    sin_asignar: { icono: {{ icon('alert-circle', 13) | tojson }}, texto: "Sin asignar", pill: "" },
+  };
+
+  function cygPlanUltimoMesPlanificado(tr) {
+    var ultimo = null;
+    MESES_CAMPOS.forEach(function (campo, i) {
+      var c = cygPlanCampoDe(tr, campo);
+      if (c && c.value.trim()) ultimo = ORDEN_AVANCE[i];
+    });
+    return ultimo;
+  }
+
+  function cygPlanCalcularEstado(tr) {
+    var ultimo = cygPlanUltimoMesPlanificado(tr);
+    if (!ultimo) return "sin_asignar";
+    var avanceCampo = cygPlanCampoDe(tr, "actualizacion_balance");
+    var avance = avanceCampo ? avanceCampo.value.trim().toLowerCase() : "";
+    return avance === ultimo.toLowerCase() ? "completado" : "en_proceso";
+  }
+
+  function cygPlanActualizarEstadoFila(tr) {
+    var estado = cygPlanCalcularEstado(tr);
+    var info = CYG_PLAN_ESTADO_INFO[estado];
+    var badge = tr.querySelector(".plan-estado");
+    if (badge) {
+      badge.className = "plan-estado plan-estado-" + estado;
+      badge.innerHTML = info.icono + " " + info.texto;
+    }
+    var select = cygPlanCampoDe(tr, "actualizacion_balance");
+    if (select) {
+      select.className = select.className.replace(/\bplan-prioridad-\d\b/g, "").trim();
+      if (info.pill) select.classList.add(info.pill);
+    }
   }
 
   // Expandir pantalla (17-09-2026, pedido por el usuario): con muchas
@@ -475,12 +520,23 @@
     selectMes.addEventListener("change", aplicarFiltros);
 
     // Repuebla el desplegable de Analista y los checkboxes del informe si
-    // se edita un nombre en vivo en la columna "Analista", para no tener
-    // que recargar.
-    document.getElementById("tabla-planificacion").addEventListener("input", function (ev) {
+    // se edita un nombre en vivo en la columna "Analista", y recalcula el
+    // badge de "Estado" de la fila si se edita un mes o "Avance Balance"
+    // (19-09-2026, pedido por el usuario) — para no tener que guardar y
+    // recargar para ver el cambio.
+    function cygPlanOnCambioFila(ev) {
       var nombre = (ev.target.getAttribute("name") || "").replace(/^p_/, "");
       if (nombre === "analista") poblarAnalistas();
-    });
+      if (MESES_CAMPOS.indexOf(nombre) !== -1 || nombre === "actualizacion_balance") {
+        var tr = ev.target.closest("tr");
+        if (tr) {
+          cygPlanActualizarEstadoFila(tr);
+          recalcularKPIs();
+        }
+      }
+    }
+    document.getElementById("tabla-planificacion").addEventListener("input", cygPlanOnCambioFila);
+    document.getElementById("tabla-planificacion").addEventListener("change", cygPlanOnCambioFila);
 
     poblarAnalistas();
   })();
@@ -548,11 +604,7 @@
       ultima.querySelectorAll(".plan-select-pill").forEach(function (sel) {
         sel.className = sel.className.replace(/\bplan-prioridad-\d\b/g, "").trim();
       });
-      var badge = ultima.querySelector(".plan-estado");
-      if (badge) {
-        badge.className = "plan-estado plan-estado-sin_asignar";
-        badge.innerHTML = {{ icon('alert-circle', 13) | tojson }} + " Sin asignar";
-      }
+      cygPlanActualizarEstadoFila(ultima);
     }, 0);
   });
 </script>
