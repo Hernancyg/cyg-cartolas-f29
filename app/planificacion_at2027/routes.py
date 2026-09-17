@@ -51,23 +51,35 @@ ENCABEZADOS_EXPORTAR = [
 # "Actualización Balance" (18-09-2026, redefinido por el usuario): ya no
 # es la frecuencia del balance (Mensual/Trimestral/...) sino el AVANCE —
 # hasta qué mes del ciclo Septiembre→Febrero está al día el balance de esa
-# empresa. Es un <select> con estos 6 valores exactos (ver el template).
+# empresa. Es un <select> con estos 6 valores exactos (ver el template),
+# en el mismo orden que MESES.
 ORDEN_AVANCE = ["Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero", "Febrero"]
-_ORDEN_AVANCE_LOWER = [m.lower() for m in ORDEN_AVANCE]
+
+
+def _ultimo_mes_planificado(fila: dict) -> str | None:
+    """Último mes del ciclo (Sep→Feb) que tiene a alguien asignado en las
+    columnas de mes, o `None` si ninguno tiene asignación todavía."""
+    ultimo = None
+    for mes, etiqueta in zip(MESES, ORDEN_AVANCE):
+        if (fila.get(mes) or "").strip():
+            ultimo = etiqueta
+    return ultimo
 
 
 def _estado_de_fila(fila: dict) -> str:
-    """"Sin asignar" (sin avance registrado), "Completado" (avance =
-    Febrero, el último mes del ciclo) o "En proceso" (cualquier mes
-    intermedio) — calculado en vivo a partir de "Actualización Balance",
-    sin guardar nada nuevo en la base de datos (18-09-2026, redefinido a
-    partir de cómo el usuario usa esa columna: antes se derivaba de
-    cuántos de los 6 meses tenían a alguien asignado, pero eso refleja
-    quién quedó a cargo, no si el balance de ese mes ya se hizo)."""
-    avance = (fila.get("actualizacion_balance") or "").strip().lower()
-    if not avance or avance not in _ORDEN_AVANCE_LOWER:
+    """"Sin asignar" (ningún mes tiene analista asignado todavía),
+    "Completado" (el "Avance Balance" ya llegó al último mes que SÍ tiene
+    alguien asignado) o "En proceso" (tiene meses asignados pero el avance
+    todavía no alcanza a ese último mes) — calculado en vivo a partir de
+    los 6 meses y de "Actualización Balance", sin guardar nada nuevo en la
+    base de datos (19-09-2026, redefinido por el usuario: antes
+    "Completado" exigía llegar a Febrero fijo, sin importar hasta qué mes
+    se había planificado realmente a esa empresa)."""
+    ultimo = _ultimo_mes_planificado(fila)
+    if ultimo is None:
         return "sin_asignar"
-    return "completado" if avance == _ORDEN_AVANCE_LOWER[-1] else "en_proceso"
+    avance = (fila.get("actualizacion_balance") or "").strip().lower()
+    return "completado" if avance == ultimo.lower() else "en_proceso"
 
 
 MESES_LABEL = {

@@ -135,15 +135,24 @@ def test_estado_calculado_resumen_y_exportar():
     client = flask_app.test_client()
     _login_admin(client)
 
-    # 3 filas: Avance Balance vacío / "Octubre" (mes intermedio) / "Febrero"
-    # (último mes del ciclo) -> sin_asignar / en_proceso / completado
-    # (18-09-2026: "Estado" se redefinió para depender de "Avance Balance",
-    # no de cuántos de los 6 meses tienen a alguien asignado — esos meses
-    # ahora solo alimentan la franja de "totales por mes").
+    # 4 filas cubriendo los 3 estados (19-09-2026: "Estado" se redefinió
+    # de nuevo — ya no exige llegar a "Febrero" fijo, sino al ÚLTIMO mes
+    # que de verdad tiene a alguien asignado en esa fila):
+    #  - SIN AVANCE SPA: ningún mes asignado -> sin_asignar.
+    #  - A MEDIO CAMINO SPA: asignada Sep/Oct/Nov (último = Noviembre),
+    #    Avance = "Octubre" (no llega al último asignado) -> en_proceso.
+    #  - TODO ASIGNADO SPA: asignada los 6 meses (último = Febrero),
+    #    Avance = "Febrero" -> completado.
+    #  - COMPLETADO ANTES DE FEBRERO SPA: asignada solo Sep/Oct (último =
+    #    Octubre), Avance = "Octubre" -> completado, PESE A NO llegar a
+    #    Febrero — esta fila es la que distingue la redefinición de la
+    #    lógica anterior (que exigía Febrero sin importar hasta qué mes
+    #    estaba realmente planificada la empresa).
     xlsx = _xlsx_planificacion([
         [1, "SIN AVANCE SPA", "David", 2, "Caja", "", "", "", "", "", "", "", "", "", "", "", "", ""],
         [2, "A MEDIO CAMINO SPA", "Javier", 1, "Banco", "Javier", "Javier", "Javier", "", "", "", "Octubre", "", "", "", "", "", ""],
         [3, "TODO ASIGNADO SPA", "Catalina", 3, "Caja", "Catalina", "Catalina", "Catalina", "Catalina", "Catalina", "Catalina", "Febrero", "", "", "", "", "", ""],
+        [4, "COMPLETADO ANTES DE FEBRERO SPA", "Marco", 2, "Banco", "Marco", "Marco", "", "", "", "", "Octubre", "", "", "", "", "", ""],
     ])
     client.post(
         "/admin/planificacion_at2027/cargar",
@@ -153,18 +162,26 @@ def test_estado_calculado_resumen_y_exportar():
 
     r = client.get("/planificacion_at2027/")
     body = r.get_data(as_text=True)
-    check("fila sin Avance Balance -> badge 'Sin asignar'", 'plan-estado-sin_asignar">' in body)
-    check("fila con Avance Balance = Octubre -> badge 'En proceso'", 'plan-estado-en_proceso">' in body)
-    check("fila con Avance Balance = Febrero -> badge 'Completado'", 'plan-estado-completado">' in body)
-    check("tarjeta 'Total' = 3/3 (18-09-2026: formato filtradas/total)", 'id="plan-kpi-total">3/3<' in body)
-    check("tarjeta 'Con plan asignado' cuenta 1 (33%)", "33%" in body)
+    check("fila sin ningún mes asignado -> badge 'Sin asignar'", 'plan-estado-sin_asignar">' in body)
+    check("fila cuyo avance no llega al último mes asignado -> 'En proceso'", 'plan-estado-en_proceso">' in body)
+    check("fila con avance = Febrero (su último mes asignado) -> 'Completado'", 'plan-estado-completado">' in body)
+    check(
+        "fila con avance = Octubre pero SIN llegar a Febrero también -> 'Completado' "
+        "(porque Octubre es su último mes asignado)",
+        body.count('plan-estado-completado">') == 2,
+    )
+    check("tarjeta 'Total' = 4/4 (formato filtradas/total)", 'id="plan-kpi-total">4/4<' in body)
+    check("tarjeta 'Completado' cuenta 2 (50%)", 'id="plan-kpi-completado">2 <span class="plan-kpi-pct">50%' in body)
+    check("tarjeta 'En proceso' cuenta 1 (25%)", 'id="plan-kpi-en-proceso">1 <span class="plan-kpi-pct">25%' in body)
+    check("tarjeta 'Sin asignar' cuenta 1 (25%)", 'id="plan-kpi-sin-asignar">1 <span class="plan-kpi-pct">25%' in body)
     check("tarjeta 'Caja / Banco' presente", 'id="plan-kpi-caja"' in body and 'id="plan-kpi-banco"' in body)
-    check("total por mes 'Sep' = 2 (A MEDIO CAMINO + TODO ASIGNADO)", 'id="plan-mes-sep-value">2<' in body)
+    check("total por mes 'Sep' = 3 (A MEDIO CAMINO + TODO ASIGNADO + COMPLETADO ANTES)", 'id="plan-mes-sep-value">3<' in body)
     check("total por mes 'Ene' = 1 (solo TODO ASIGNADO)", 'id="plan-mes-ene-value">1<' in body)
     check("botón 'Mostrar reuniones' presente (columnas de Reunión ocultas por defecto)", 'id="plan-reuniones-btn"' in body)
     check("Avance Balance = Febrero queda seleccionado en su <select>", '<option value="Febrero" selected>Febrero</option>' in body)
     check("botón 'Generar informe PDF' presente", 'id="plan-informe-toggle-btn"' in body)
     check("botón 'Expandir' (18-09-2026: texto acortado)", 'id="plan-expandir-label">Expandir<' in body)
+    check("filtro de Analista ya no menciona 'cualquier mes' (19-09-2026: solo mira esa columna)", "Analista (o cualquier mes)" not in body)
 
     r = client.get("/planificacion_at2027/exportar")
     check("GET /planificacion_at2027/exportar -> 200", r.status_code == 200)
@@ -177,8 +194,8 @@ def test_estado_calculado_resumen_y_exportar():
     encabezados = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
     check("exportar: encabezado 'Empresa' en la columna 2", encabezados[1] == "Empresa")
     empresas_exportadas = [row[1].value for row in ws.iter_rows(min_row=2)]
-    check("exportar: trae las 3 empresas cargadas", set(empresas_exportadas) == {
-        "SIN AVANCE SPA", "A MEDIO CAMINO SPA", "TODO ASIGNADO SPA",
+    check("exportar: trae las 4 empresas cargadas", set(empresas_exportadas) == {
+        "SIN AVANCE SPA", "A MEDIO CAMINO SPA", "TODO ASIGNADO SPA", "COMPLETADO ANTES DE FEBRERO SPA",
     })
 
 

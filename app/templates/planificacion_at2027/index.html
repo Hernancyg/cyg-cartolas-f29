@@ -98,7 +98,7 @@
         </select>
       </div>
       <div class="field" style="max-width:200px">
-        <label for="plan-filtro-analista">Analista (o cualquier mes)</label>
+        <label for="plan-filtro-analista">Analista</label>
         <select id="plan-filtro-analista"><option value="">Todos</option></select>
       </div>
       <div class="field" style="max-width:160px">
@@ -323,13 +323,12 @@
 
   // Filtros en vivo (17-09-2026: la tabla más grande del proyecto, ~150-200
   // filas). El texto de cada celda vive en el `value` de un <input>/
-  // <select>, no en el textContent de la fila. El filtro de Analista se
-  // arma escaneando en vivo TODOS los nombres que aparecen en la columna
-  // "Analista" Y en las 6 columnas de mes (una persona puede estar
-  // asignada en un mes sin ser la analista principal de la fila). Los
-  // KPIs y la franja de meses (18-09-2026, pedido por el usuario) se
-  // recalculan sobre las filas visibles después de cada filtro — "Total"
-  // muestra filtradas/total, el resto recalcula sus % sobre lo filtrado.
+  // <select>, no en el textContent de la fila. El filtro de Analista
+  // (19-09-2026, pedido por el usuario) solo mira la columna "Analista" —
+  // ya no escanea también las 6 columnas de mes. Los KPIs y la franja de
+  // meses (18-09-2026, pedido por el usuario) se recalculan sobre las
+  // filas visibles después de cada filtro — "Total" muestra
+  // filtradas/total, el resto recalcula sus % sobre lo filtrado.
   (function () {
     var inputBuscar = document.getElementById("plan-filtro");
     var selectPrioridad = document.getElementById("plan-filtro-prioridad");
@@ -338,21 +337,16 @@
     var selectMes = document.getElementById("plan-filtro-mes");
     var GRAN_TOTAL = document.querySelectorAll("#tabla-planificacion tbody tr").length;
 
-    function nombresDeFila(tr) {
-      var nombres = [];
+    function nombreAnalistaDeFila(tr) {
       var analista = cygPlanCampoDe(tr, "analista");
-      if (analista && analista.value.trim()) nombres.push(analista.value.trim());
-      MESES_CAMPOS.forEach(function (mes) {
-        var campo = cygPlanCampoDe(tr, mes);
-        if (campo && campo.value.trim()) nombres.push(campo.value.trim());
-      });
-      return nombres;
+      return analista && analista.value.trim() ? analista.value.trim() : null;
     }
 
     function poblarAnalistas() {
       var vistos = {};
       document.querySelectorAll("#tabla-planificacion tbody tr").forEach(function (tr) {
-        nombresDeFila(tr).forEach(function (n) { vistos[n.toLowerCase()] = n; });
+        var n = nombreAnalistaDeFila(tr);
+        if (n) vistos[n.toLowerCase()] = n;
       });
       var nombres = Object.keys(vistos).map(function (k) { return vistos[k]; })
         .sort(function (a, b) { return a.localeCompare(b, "es"); });
@@ -456,16 +450,14 @@
           visible = !!campoCajaBanco && campoCajaBanco.value === cajaBanco;
         }
 
-        if (visible && analista && mes) {
-          // combinados: esa persona asignada EN ese mes específico
-          var campoMes = cygPlanCampoDe(tr, mes);
-          visible = !!campoMes && campoMes.value.trim().toLowerCase() === analista;
-        } else if (visible && analista) {
-          // solo Analista: en la columna Analista o en cualquier mes
-          var nombres = nombresDeFila(tr).map(function (n) { return n.toLowerCase(); });
-          visible = nombres.indexOf(analista) !== -1;
-        } else if (visible && mes) {
-          // solo Mes: cualquier fila con alguien asignado ese mes
+        if (visible && analista) {
+          // Analista (19-09-2026): solo mira la columna "Analista".
+          var nombreFila = nombreAnalistaDeFila(tr);
+          visible = !!nombreFila && nombreFila.toLowerCase() === analista;
+        }
+
+        if (visible && mes) {
+          // Mes: cualquier fila con alguien asignado ese mes en particular.
           var campoMesSolo = cygPlanCampoDe(tr, mes);
           visible = !!campoMesSolo && campoMesSolo.value.trim() !== "";
         }
@@ -483,11 +475,11 @@
     selectMes.addEventListener("change", aplicarFiltros);
 
     // Repuebla el desplegable de Analista y los checkboxes del informe si
-    // se edita un nombre en vivo (Analista o cualquier columna de mes),
-    // para no tener que recargar.
+    // se edita un nombre en vivo en la columna "Analista", para no tener
+    // que recargar.
     document.getElementById("tabla-planificacion").addEventListener("input", function (ev) {
       var nombre = (ev.target.getAttribute("name") || "").replace(/^p_/, "");
-      if (nombre === "analista" || MESES_CAMPOS.indexOf(nombre) !== -1) poblarAnalistas();
+      if (nombre === "analista") poblarAnalistas();
     });
 
     poblarAnalistas();
