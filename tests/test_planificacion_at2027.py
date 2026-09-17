@@ -156,12 +156,15 @@ def test_estado_calculado_resumen_y_exportar():
     check("fila sin Avance Balance -> badge 'Sin asignar'", 'plan-estado-sin_asignar">' in body)
     check("fila con Avance Balance = Octubre -> badge 'En proceso'", 'plan-estado-en_proceso">' in body)
     check("fila con Avance Balance = Febrero -> badge 'Completado'", 'plan-estado-completado">' in body)
-    check("tarjeta 'Total empresas' = 3", ">3<" in body and "Total empresas" in body)
+    check("tarjeta 'Total' = 3/3 (18-09-2026: formato filtradas/total)", 'id="plan-kpi-total">3/3<' in body)
     check("tarjeta 'Con plan asignado' cuenta 1 (33%)", "33%" in body)
-    check("total por mes 'Sep' = 2 (A MEDIO CAMINO + TODO ASIGNADO)", '<div class="plan-mes-label">Sep</div>' in body and '<div class="plan-mes-value">2</div>' in body)
-    check("total por mes 'Ene' = 1 (solo TODO ASIGNADO)", '<div class="plan-mes-label">Ene</div>' in body and '<div class="plan-mes-value">1</div>' in body)
+    check("tarjeta 'Caja / Banco' presente", 'id="plan-kpi-caja"' in body and 'id="plan-kpi-banco"' in body)
+    check("total por mes 'Sep' = 2 (A MEDIO CAMINO + TODO ASIGNADO)", 'id="plan-mes-sep-value">2<' in body)
+    check("total por mes 'Ene' = 1 (solo TODO ASIGNADO)", 'id="plan-mes-ene-value">1<' in body)
     check("botón 'Mostrar reuniones' presente (columnas de Reunión ocultas por defecto)", 'id="plan-reuniones-btn"' in body)
     check("Avance Balance = Febrero queda seleccionado en su <select>", '<option value="Febrero" selected>Febrero</option>' in body)
+    check("botón 'Generar informe PDF' presente", 'id="plan-informe-toggle-btn"' in body)
+    check("botón 'Expandir' (18-09-2026: texto acortado)", 'id="plan-expandir-label">Expandir<' in body)
 
     r = client.get("/planificacion_at2027/exportar")
     check("GET /planificacion_at2027/exportar -> 200", r.status_code == 200)
@@ -179,6 +182,24 @@ def test_estado_calculado_resumen_y_exportar():
     })
 
 
+def test_informe_pdf():
+    client = flask_app.test_client()
+    _login_admin(client)
+
+    r = client.post("/planificacion_at2027/informe", data={}, follow_redirects=True)
+    check("informe sin analistas elegidos -> 200 (re-muestra la página con el error)", r.status_code == 200)
+    check("avisa que hay que elegir al menos un analista", "Selecciona al menos un analista" in r.get_data(as_text=True))
+
+    r = client.post("/planificacion_at2027/informe", data={"analistas": ["Javier"]})
+    check("informe de un analista -> 200", r.status_code == 200)
+    check("informe entrega un .pdf (Content-Type correcto)", (r.headers.get("Content-Type") or "") == "application/pdf")
+    check("informe: el PDF no viene vacío", len(r.data) > 500)
+
+    r = client.post("/planificacion_at2027/informe", data={"analistas": ["Javier", "Catalina"]})
+    check("informe de varios analistas a la vez -> 200", r.status_code == 200)
+    check("informe entrega un .pdf (Content-Type correcto)", (r.headers.get("Content-Type") or "") == "application/pdf")
+
+
 def test_trabajador_sin_acceso():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
@@ -188,6 +209,9 @@ def test_trabajador_sin_acceso():
 
     r = client.get("/planificacion_at2027/exportar")
     check("trabajador NO puede exportar a Excel (403)", r.status_code == 403)
+
+    r = client.post("/planificacion_at2027/informe", data={"analistas": ["Javier"]})
+    check("trabajador NO puede generar el informe PDF (403)", r.status_code == 403)
 
     r = client.get("/admin/planificacion_at2027")
     check("trabajador NO puede ver la carga masiva en Administrador (403)", r.status_code == 403)
@@ -201,6 +225,7 @@ def main():
     test_carga_masiva_valida()
     test_carga_masiva_con_errores_no_guarda_nada()
     test_estado_calculado_resumen_y_exportar()
+    test_informe_pdf()
     test_trabajador_sin_acceso()
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")

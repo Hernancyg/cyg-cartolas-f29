@@ -17,6 +17,7 @@ from openpyxl import Workbook
 
 from app.auth.decorators import pagina_required
 from app.data import planificacion_at2027_repo
+from app.planificacion_at2027.pdf_informe import generar_pdf_informe
 
 planificacion_at2027_bp = Blueprint(
     "planificacion_at2027", __name__, url_prefix="/planificacion_at2027",
@@ -73,6 +74,10 @@ MESES_LABEL = {
     "mes_septiembre": "Sep", "mes_octubre": "Oct", "mes_noviembre": "Nov",
     "mes_diciembre": "Dic", "mes_enero": "Ene", "mes_febrero": "Feb",
 }
+# Clave corta para los ids del DOM que el JS recalcula al filtrar
+# (`plan-mes-<key>-value`/`-sub`) — mismo texto que MESES_LABEL, en
+# minúscula, sin acentos.
+MESES_KEY = {m: MESES_LABEL[m].lower() for m in MESES}
 
 
 def _resumen_de(filas: list) -> dict:
@@ -80,6 +85,8 @@ def _resumen_de(filas: list) -> dict:
     completado = sum(1 for f in filas if f["estado"] == "completado")
     en_proceso = sum(1 for f in filas if f["estado"] == "en_proceso")
     sin_asignar = sum(1 for f in filas if f["estado"] == "sin_asignar")
+    caja = sum(1 for f in filas if (f.get("caja_banco") or "") == "Caja")
+    banco = sum(1 for f in filas if (f.get("caja_banco") or "") == "Banco")
 
     def pct(n):
         return round(n / total * 100) if total else 0
@@ -88,13 +95,14 @@ def _resumen_de(filas: list) -> dict:
     # tarjetas de resumen): cuántas empresas tienen a alguien asignado en
     # cada uno de los 6 meses, calculado en vivo igual que "estado".
     meses = [
-        {"label": MESES_LABEL[m], "count": sum(1 for f in filas if (f.get(m) or "").strip())}
+        {"key": MESES_KEY[m], "label": MESES_LABEL[m], "count": sum(1 for f in filas if (f.get(m) or "").strip())}
         for m in MESES
     ]
 
     return {
         "total": total, "completado": completado, "en_proceso": en_proceso, "sin_asignar": sin_asignar,
         "completado_pct": pct(completado), "en_proceso_pct": pct(en_proceso), "sin_asignar_pct": pct(sin_asignar),
+        "caja": caja, "banco": banco,
         "meses": meses,
     }
 
@@ -152,6 +160,33 @@ def exportar():
     return send_file(
         buffer, as_attachment=True, download_name="planificacion_at2027.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@planificacion_at2027_bp.route("/informe", methods=["POST"])
+@pagina_required("planificacion_at2027.index")
+def informe():
+    """Informe PDF por analista (18-09-2026, pedido por el usuario): uno
+    o varios a la vez, cada uno con su propio resumen (mismo cálculo que
+    las tarjetas KPI, pero acotado a SUS empresas) y el detalle de sus
+    empresas — ver `app/planificacion_at2027/pdf_informe.py`."""
+    analistas_elegidos = [a.strip() for a in request.form.getlist("analistas") if a.strip()]
+    if not analistas_elegidos:
+        flash("Selecciona al menos un analista para el informe.", "error")
+        return redirect(url_for("planificacion_at2027.index"))
+
+    filas = planificacion_at2027_repo.listar_todos()
+    for f in filas:
+        f["estado"] = _estado_de_fila(f)
+
+    secciones = []
+    for analista in analistas_elegidos:
+        filas_analista = [f for f in filas if (f.get("analista") or "").strip() == analista]
+        secciones.append({"analista": analista, "filas": filas_analista, "resumen": _resumen_de(filas_analista)})
+
+    pdf = generar_pdf_informe(secciones)
+    return send_file(
+        pdf, as_attachment=True, download_name="informe_planificacion_at2027.pdf", mimetype="application/pdf",
     )
 
 

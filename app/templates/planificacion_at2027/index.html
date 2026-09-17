@@ -8,7 +8,7 @@
     <div class="plan-header-icon">{{ icon('calendar', 22) }}</div>
     <div>
       <div class="page-title">Planificación AT 2027</div>
-      <p class="page-subtitle" style="margin:4px 0 0">Seguimiento de empresas: analista asignado por mes, prioridad y estado de balance. Los colores de Analista y de los meses son solo para distinguir a simple vista — mismo nombre, mismo color, siempre.</p>
+      <p class="page-subtitle" style="margin:4px 0 0">Seguimiento de empresas: analista asignado por mes, prioridad y avance de balance. Los colores de Analista y de los meses son solo para distinguir a simple vista — mismo nombre, mismo color, siempre.</p>
     </div>
   </div>
 
@@ -16,32 +16,39 @@
     <div class="plan-kpi">
       <div class="plan-kpi-icon plan-kpi-icon-neutral">{{ icon('building', 18) }}</div>
       <div>
-        <div class="plan-kpi-label">Total empresas</div>
-        <div class="plan-kpi-value">{{ resumen.total }}</div>
+        <div class="plan-kpi-label">Total</div>
+        <div class="plan-kpi-value" id="plan-kpi-total">{{ resumen.total }}/{{ resumen.total }}</div>
       </div>
     </div>
     <div class="plan-kpi">
       <div class="plan-kpi-icon plan-kpi-icon-ok">{{ icon('check-circle', 18) }}</div>
       <div>
         <div class="plan-kpi-label">Con plan asignado</div>
-        <div class="plan-kpi-value">{{ resumen.completado }} <span class="plan-kpi-pct">{{ resumen.completado_pct }}%</span></div>
-        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-ok" style="width:{{ resumen.completado_pct }}%"></div></div>
+        <div class="plan-kpi-value" id="plan-kpi-completado">{{ resumen.completado }} <span class="plan-kpi-pct">{{ resumen.completado_pct }}%</span></div>
+        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-ok" id="plan-kpi-bar-completado" style="width:{{ resumen.completado_pct }}%"></div></div>
       </div>
     </div>
     <div class="plan-kpi">
       <div class="plan-kpi-icon plan-kpi-icon-progreso">{{ icon('clock', 18) }}</div>
       <div>
         <div class="plan-kpi-label">En proceso</div>
-        <div class="plan-kpi-value">{{ resumen.en_proceso }} <span class="plan-kpi-pct">{{ resumen.en_proceso_pct }}%</span></div>
-        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-progreso" style="width:{{ resumen.en_proceso_pct }}%"></div></div>
+        <div class="plan-kpi-value" id="plan-kpi-en-proceso">{{ resumen.en_proceso }} <span class="plan-kpi-pct">{{ resumen.en_proceso_pct }}%</span></div>
+        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-progreso" id="plan-kpi-bar-en-proceso" style="width:{{ resumen.en_proceso_pct }}%"></div></div>
       </div>
     </div>
     <div class="plan-kpi">
       <div class="plan-kpi-icon plan-kpi-icon-alerta">{{ icon('alert-circle', 18) }}</div>
       <div>
         <div class="plan-kpi-label">Sin asignar</div>
-        <div class="plan-kpi-value">{{ resumen.sin_asignar }} <span class="plan-kpi-pct">{{ resumen.sin_asignar_pct }}%</span></div>
-        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-alerta" style="width:{{ resumen.sin_asignar_pct }}%"></div></div>
+        <div class="plan-kpi-value" id="plan-kpi-sin-asignar">{{ resumen.sin_asignar }} <span class="plan-kpi-pct">{{ resumen.sin_asignar_pct }}%</span></div>
+        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-alerta" id="plan-kpi-bar-sin-asignar" style="width:{{ resumen.sin_asignar_pct }}%"></div></div>
+      </div>
+    </div>
+    <div class="plan-kpi">
+      <div class="plan-kpi-icon plan-kpi-icon-neutral">{{ icon('bank', 18) }}</div>
+      <div>
+        <div class="plan-kpi-label">Caja / Banco</div>
+        <div class="plan-kpi-value"><span id="plan-kpi-caja">{{ resumen.caja }}</span> <span class="plan-kpi-pct">Caja</span> · <span id="plan-kpi-banco">{{ resumen.banco }}</span> <span class="plan-kpi-pct">Banco</span></div>
       </div>
     </div>
   </div>
@@ -51,8 +58,8 @@
   {% for m in resumen.meses %}
   <div class="plan-mes-tile">
     <div class="plan-mes-label">{{ m.label }}</div>
-    <div class="plan-mes-value">{{ m.count }}</div>
-    <div class="plan-mes-sub">de {{ resumen.total }}</div>
+    <div class="plan-mes-value" id="plan-mes-{{ m.key }}-value">{{ m.count }}</div>
+    <div class="plan-mes-sub" id="plan-mes-{{ m.key }}-sub">de {{ resumen.total }}</div>
   </div>
   {% endfor %}
 </div>
@@ -66,9 +73,12 @@
 
   <div class="plan-toolbar">
     <div class="plan-filtros">
-      <div class="plan-search">
-        {{ icon('search', 16) }}
-        <input type="text" id="plan-filtro" placeholder="Buscar por empresa, analista, grupo…" autocomplete="off">
+      <div class="field" style="max-width:280px">
+        <label for="plan-filtro">&nbsp;</label>
+        <div class="plan-search">
+          {{ icon('search', 16) }}
+          <input type="text" id="plan-filtro" placeholder="Buscar por empresa, analista, grupo…" autocomplete="off">
+        </div>
       </div>
       <div class="field" style="max-width:140px">
         <label for="plan-filtro-prioridad">Prioridad</label>
@@ -104,14 +114,28 @@
         </select>
       </div>
     </div>
-    <div class="plan-toolbar-acciones">
-      <button type="button" class="btn btn-secondary" id="plan-reuniones-btn">
-        {{ icon('calendar', 16) }} <span id="plan-reuniones-label">Mostrar reuniones</span>
-      </button>
-      <button type="button" class="btn btn-secondary" id="plan-expandir-btn">
-        {{ icon('expand', 16) }} <span id="plan-expandir-label">Expandir pantalla</span>
-      </button>
-      <a class="btn plan-btn-exportar" href="{{ url_for('planificacion_at2027.exportar') }}">{{ icon('download', 16) }} Exportar a Excel</a>
+    <div class="plan-toolbar-acciones-wrap">
+      <label class="plan-toolbar-acciones-spacer">&nbsp;</label>
+      <div class="plan-toolbar-acciones">
+        <div class="plan-informe-dropdown" id="plan-informe-dropdown">
+          <button type="button" class="btn btn-secondary" id="plan-informe-toggle-btn" onclick="cygPlanToggleInforme(event)">
+            {{ icon('invoice', 16) }} Generar informe PDF
+          </button>
+          <form method="post" action="{{ url_for('planificacion_at2027.informe') }}" class="plan-informe-panel" id="plan-informe-panel" hidden>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="plan-informe-panel-title">Elige uno o varios analistas</div>
+            <div id="plan-informe-checkboxes"></div>
+            <button type="submit" class="btn plan-btn-exportar plan-informe-panel-generar">Generar informe</button>
+          </form>
+        </div>
+        <button type="button" class="btn btn-secondary" id="plan-reuniones-btn">
+          {{ icon('calendar', 16) }} <span id="plan-reuniones-label">Mostrar reuniones</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="plan-expandir-btn">
+          {{ icon('expand', 16) }} <span id="plan-expandir-label">Expandir</span>
+        </button>
+        <a class="btn plan-btn-exportar" href="{{ url_for('planificacion_at2027.exportar') }}">{{ icon('download', 16) }} Exportar a Excel</a>
+      </div>
     </div>
   </div>
 
@@ -126,17 +150,17 @@
             <th data-sort-key="analista">Analista<span class="plan-sort-ind"></span></th>
             <th data-sort-key="prioridad">Prioridad<span class="plan-sort-ind"></span></th>
             <th data-sort-key="caja_banco">Caja/Banco<span class="plan-sort-ind"></span></th>
-            <th data-sort-key="mes_septiembre">Septiembre<span class="plan-sort-ind"></span></th>
-            <th data-sort-key="mes_octubre">Octubre<span class="plan-sort-ind"></span></th>
-            <th data-sort-key="mes_noviembre">Noviembre<span class="plan-sort-ind"></span></th>
-            <th data-sort-key="mes_diciembre">Diciembre<span class="plan-sort-ind"></span></th>
-            <th data-sort-key="mes_enero">Enero<span class="plan-sort-ind"></span></th>
-            <th data-sort-key="mes_febrero">Febrero<span class="plan-sort-ind"></span></th>
-            <th data-sort-key="actualizacion_balance">Avance Balance<span class="plan-sort-ind"></span></th>
+            <th class="plan-col-mes" data-sort-key="mes_septiembre">Septiembre<span class="plan-sort-ind"></span></th>
+            <th class="plan-col-mes" data-sort-key="mes_octubre">Octubre<span class="plan-sort-ind"></span></th>
+            <th class="plan-col-mes" data-sort-key="mes_noviembre">Noviembre<span class="plan-sort-ind"></span></th>
+            <th class="plan-col-mes" data-sort-key="mes_diciembre">Diciembre<span class="plan-sort-ind"></span></th>
+            <th class="plan-col-mes" data-sort-key="mes_enero">Enero<span class="plan-sort-ind"></span></th>
+            <th class="plan-col-mes" data-sort-key="mes_febrero">Febrero<span class="plan-sort-ind"></span></th>
             <th class="plan-col-reunion">Reunión Cat1 (1°)</th>
             <th class="plan-col-reunion">Reunión Cat2</th>
             <th class="plan-col-reunion">Reunión Cat3</th>
             <th class="plan-col-reunion">Reunión Cat1 (2°)</th>
+            <th data-sort-key="actualizacion_balance">Avance Balance<span class="plan-sort-ind"></span></th>
             <th data-sort-key="grupo">Grupo<span class="plan-sort-ind"></span></th>
             <th>Estado Balance (último mes trabajado)</th>
             <th data-sort-key="estado">Estado<span class="plan-sort-ind"></span></th>
@@ -181,12 +205,16 @@
               </select>
             </td>
             {% for mes in ['mes_septiembre', 'mes_octubre', 'mes_noviembre', 'mes_diciembre', 'mes_enero', 'mes_febrero'] %}
-            <td>
+            <td class="plan-col-mes">
               <div class="plan-pill"{% if f[mes] %} style="--plan-hue:{{ f[mes] | hue_de }}"{% endif %}>
                 <input type="text" name="p_{{ mes }}" value="{{ f[mes] or '' }}" placeholder="—">
               </div>
             </td>
             {% endfor %}
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_1" value="{{ f.reunion_cat1_1 or '' }}" style="min-width:100px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat2" value="{{ f.reunion_cat2 or '' }}" style="min-width:100px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat3" value="{{ f.reunion_cat3 or '' }}" style="min-width:100px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_2" value="{{ f.reunion_cat1_2 or '' }}" style="min-width:100px"></td>
             <td>
               <select name="p_actualizacion_balance" class="plan-select-pill {{ 'plan-prioridad-3' if f.estado == 'completado' else ('plan-prioridad-2' if f.estado == 'en_proceso' else '') }}">
                 <option value="" {{ 'selected' if not f.actualizacion_balance else '' }}></option>
@@ -195,10 +223,6 @@
                 {% endfor %}
               </select>
             </td>
-            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_1" value="{{ f.reunion_cat1_1 or '' }}" style="min-width:100px"></td>
-            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat2" value="{{ f.reunion_cat2 or '' }}" style="min-width:100px"></td>
-            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat3" value="{{ f.reunion_cat3 or '' }}" style="min-width:100px"></td>
-            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_2" value="{{ f.reunion_cat1_2 or '' }}" style="min-width:100px"></td>
             <td><input type="text" name="p_grupo" value="{{ f.grupo or '' }}" style="min-width:100px"></td>
             <td><input type="text" name="p_estado_balance_ultimo_mes" value="{{ f.estado_balance_ultimo_mes or '' }}" style="min-width:140px"></td>
             <td>
@@ -222,6 +246,13 @@
 
 <script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
 <script>
+  var MESES_CAMPOS = ["mes_septiembre", "mes_octubre", "mes_noviembre", "mes_diciembre", "mes_enero", "mes_febrero"];
+  var MESES_TILE_KEY = ["sep", "oct", "nov", "dic", "ene", "feb"];
+
+  function cygPlanCampoDe(tr, nombre) {
+    return tr.querySelector('[name="p_' + nombre + '"]');
+  }
+
   // Expandir pantalla (17-09-2026, pedido por el usuario): con muchas
   // columnas conviene poder esconder el sidebar y usar todo el ancho — se
   // recuerda en localStorage, mismo patrón que el tema claro/oscuro de
@@ -233,7 +264,7 @@
 
     function aplicar(expandido) {
       document.body.classList.toggle("plan-expandido", expandido);
-      label.textContent = expandido ? "Volver al ancho normal" : "Expandir pantalla";
+      label.textContent = expandido ? "Ancho normal" : "Expandir";
     }
 
     var guardado = false;
@@ -247,9 +278,10 @@
     });
   })();
 
-  // Mostrar/ocultar las 4 columnas de "Reunión" (18-09-2026, pedido por
-  // el usuario: se usan poco y sacarlas de encima achica la tabla) — se
-  // recuerda en localStorage, mismo patrón que "Expandir pantalla".
+  // "Mostrar reuniones" REEMPLAZA los meses por las 4 columnas de Reunión
+  // en vez de sumarlas (18-09-2026, pedido por el usuario: antes solo
+  // agregaba columnas, dejando la tabla aún más ancha) — se recuerda en
+  // localStorage, mismo patrón que "Expandir".
   (function () {
     var STORAGE_KEY = "cyg-plan-mostrar-reuniones";
     var btn = document.getElementById("plan-reuniones-btn");
@@ -258,7 +290,7 @@
 
     function aplicar(mostrar) {
       tabla.classList.toggle("plan-mostrar-reuniones", mostrar);
-      label.textContent = mostrar ? "Ocultar reuniones" : "Mostrar reuniones";
+      label.textContent = mostrar ? "Mostrar meses" : "Mostrar reuniones";
     }
 
     var guardado = false;
@@ -272,30 +304,46 @@
     });
   })();
 
+  // Desplegable de "Generar informe PDF" (18-09-2026, pedido por el
+  // usuario): se abre al hacer clic en el botón, se cierra solo al hacer
+  // clic afuera. Los checkboxes de analista se pueblan en vivo (mismos
+  // nombres que ya arma el filtro de Analista, ver más abajo).
+  (function () {
+    var dropdown = document.getElementById("plan-informe-dropdown");
+    var panel = document.getElementById("plan-informe-panel");
+
+    window.cygPlanToggleInforme = function (ev) {
+      ev.stopPropagation();
+      panel.hidden = !panel.hidden;
+    };
+    document.addEventListener("click", function (ev) {
+      if (!dropdown.contains(ev.target)) panel.hidden = true;
+    });
+  })();
+
   // Filtros en vivo (17-09-2026: la tabla más grande del proyecto, ~150-200
   // filas). El texto de cada celda vive en el `value` de un <input>/
   // <select>, no en el textContent de la fila. El filtro de Analista se
   // arma escaneando en vivo TODOS los nombres que aparecen en la columna
   // "Analista" Y en las 6 columnas de mes (una persona puede estar
-  // asignada en un mes sin ser la analista principal de la fila).
+  // asignada en un mes sin ser la analista principal de la fila). Los
+  // KPIs y la franja de meses (18-09-2026, pedido por el usuario) se
+  // recalculan sobre las filas visibles después de cada filtro — "Total"
+  // muestra filtradas/total, el resto recalcula sus % sobre lo filtrado.
   (function () {
-    var MESES = ["mes_septiembre", "mes_octubre", "mes_noviembre", "mes_diciembre", "mes_enero", "mes_febrero"];
     var inputBuscar = document.getElementById("plan-filtro");
     var selectPrioridad = document.getElementById("plan-filtro-prioridad");
     var selectCajaBanco = document.getElementById("plan-filtro-caja-banco");
     var selectAnalista = document.getElementById("plan-filtro-analista");
     var selectMes = document.getElementById("plan-filtro-mes");
-
-    function campoDe(tr, nombre) {
-      return tr.querySelector('[name="p_' + nombre + '"]');
-    }
+    var GRAN_TOTAL = document.querySelectorAll("#tabla-planificacion tbody tr").length;
 
     function nombresDeFila(tr) {
       var nombres = [];
-      var analista = campoDe(tr, "analista");
+      var analista = cygPlanCampoDe(tr, "analista");
       if (analista && analista.value.trim()) nombres.push(analista.value.trim());
-      MESES.forEach(function (mes) {
-        var campo = campoDe(tr, mes);
+      MESES_CAMPOS.forEach(function (mes) {
+        var campo = cygPlanCampoDe(tr, mes);
         if (campo && campo.value.trim()) nombres.push(campo.value.trim());
       });
       return nombres;
@@ -308,6 +356,7 @@
       });
       var nombres = Object.keys(vistos).map(function (k) { return vistos[k]; })
         .sort(function (a, b) { return a.localeCompare(b, "es"); });
+
       var valorPrevio = selectAnalista.value;
       selectAnalista.innerHTML = '<option value="">Todos</option>';
       nombres.forEach(function (n) {
@@ -317,6 +366,68 @@
         selectAnalista.appendChild(opt);
       });
       if (nombres.indexOf(valorPrevio) !== -1) selectAnalista.value = valorPrevio;
+
+      var checkboxes = document.getElementById("plan-informe-checkboxes");
+      var marcados = Array.prototype.filter.call(checkboxes.querySelectorAll(".chk-analista"), function (c) { return c.checked; })
+        .map(function (c) { return c.value; });
+      checkboxes.innerHTML = "";
+      nombres.forEach(function (n) {
+        var label = document.createElement("label");
+        label.className = "chk";
+        var input = document.createElement("input");
+        input.type = "checkbox";
+        input.className = "chk-analista";
+        input.name = "analistas";
+        input.value = n;
+        if (marcados.indexOf(n) !== -1) input.checked = true;
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(" " + n));
+        checkboxes.appendChild(label);
+      });
+    }
+
+    function recalcularKPIs() {
+      var visibles = Array.prototype.filter.call(
+        document.querySelectorAll("#tabla-planificacion tbody tr"),
+        function (tr) { return !tr.hidden; },
+      );
+      var n = visibles.length;
+
+      document.getElementById("plan-kpi-total").textContent = n + "/" + GRAN_TOTAL;
+
+      function contarEstado(clase) {
+        return visibles.filter(function (tr) {
+          var badge = tr.querySelector(".plan-estado");
+          return badge && badge.classList.contains(clase);
+        }).length;
+      }
+      function pct(x) { return n ? Math.round((x / n) * 100) : 0; }
+
+      var completado = contarEstado("plan-estado-completado");
+      var enProceso = contarEstado("plan-estado-en_proceso");
+      var sinAsignar = contarEstado("plan-estado-sin_asignar");
+
+      document.getElementById("plan-kpi-completado").innerHTML = completado + ' <span class="plan-kpi-pct">' + pct(completado) + '%</span>';
+      document.getElementById("plan-kpi-bar-completado").style.width = pct(completado) + "%";
+      document.getElementById("plan-kpi-en-proceso").innerHTML = enProceso + ' <span class="plan-kpi-pct">' + pct(enProceso) + '%</span>';
+      document.getElementById("plan-kpi-bar-en-proceso").style.width = pct(enProceso) + "%";
+      document.getElementById("plan-kpi-sin-asignar").innerHTML = sinAsignar + ' <span class="plan-kpi-pct">' + pct(sinAsignar) + '%</span>';
+      document.getElementById("plan-kpi-bar-sin-asignar").style.width = pct(sinAsignar) + "%";
+
+      document.getElementById("plan-kpi-caja").textContent = visibles.filter(function (tr) {
+        var c = cygPlanCampoDe(tr, "caja_banco"); return c && c.value === "Caja";
+      }).length;
+      document.getElementById("plan-kpi-banco").textContent = visibles.filter(function (tr) {
+        var c = cygPlanCampoDe(tr, "caja_banco"); return c && c.value === "Banco";
+      }).length;
+
+      MESES_CAMPOS.forEach(function (campo, i) {
+        var count = visibles.filter(function (tr) {
+          var c = cygPlanCampoDe(tr, campo); return c && c.value.trim() !== "";
+        }).length;
+        document.getElementById("plan-mes-" + MESES_TILE_KEY[i] + "-value").textContent = count;
+        document.getElementById("plan-mes-" + MESES_TILE_KEY[i] + "-sub").textContent = "de " + n;
+      });
     }
 
     function aplicarFiltros() {
@@ -336,18 +447,18 @@
         }
 
         if (visible && prioridad) {
-          var campoPrioridad = campoDe(tr, "prioridad");
+          var campoPrioridad = cygPlanCampoDe(tr, "prioridad");
           visible = !!campoPrioridad && campoPrioridad.value === prioridad;
         }
 
         if (visible && cajaBanco) {
-          var campoCajaBanco = campoDe(tr, "caja_banco");
+          var campoCajaBanco = cygPlanCampoDe(tr, "caja_banco");
           visible = !!campoCajaBanco && campoCajaBanco.value === cajaBanco;
         }
 
         if (visible && analista && mes) {
           // combinados: esa persona asignada EN ese mes específico
-          var campoMes = campoDe(tr, mes);
+          var campoMes = cygPlanCampoDe(tr, mes);
           visible = !!campoMes && campoMes.value.trim().toLowerCase() === analista;
         } else if (visible && analista) {
           // solo Analista: en la columna Analista o en cualquier mes
@@ -355,12 +466,14 @@
           visible = nombres.indexOf(analista) !== -1;
         } else if (visible && mes) {
           // solo Mes: cualquier fila con alguien asignado ese mes
-          var campoMesSolo = campoDe(tr, mes);
+          var campoMesSolo = cygPlanCampoDe(tr, mes);
           visible = !!campoMesSolo && campoMesSolo.value.trim() !== "";
         }
 
         tr.hidden = !visible;
       });
+
+      recalcularKPIs();
     }
 
     inputBuscar.addEventListener("input", aplicarFiltros);
@@ -369,11 +482,12 @@
     selectAnalista.addEventListener("change", aplicarFiltros);
     selectMes.addEventListener("change", aplicarFiltros);
 
-    // Repuebla el desplegable de Analista si se edita un nombre en vivo
-    // (Analista o cualquier columna de mes), para no tener que recargar.
+    // Repuebla el desplegable de Analista y los checkboxes del informe si
+    // se edita un nombre en vivo (Analista o cualquier columna de mes),
+    // para no tener que recargar.
     document.getElementById("tabla-planificacion").addEventListener("input", function (ev) {
       var nombre = (ev.target.getAttribute("name") || "").replace(/^p_/, "");
-      if (nombre === "analista" || MESES.indexOf(nombre) !== -1) poblarAnalistas();
+      if (nombre === "analista" || MESES_CAMPOS.indexOf(nombre) !== -1) poblarAnalistas();
     });
 
     poblarAnalistas();
@@ -390,7 +504,7 @@
         var badge = tr.querySelector(".plan-estado");
         return badge ? badge.textContent.trim() : "";
       }
-      var campo = tr.querySelector('[name="p_' + key + '"]');
+      var campo = cygPlanCampoDe(tr, key);
       return campo ? campo.value.trim() : "";
     }
 

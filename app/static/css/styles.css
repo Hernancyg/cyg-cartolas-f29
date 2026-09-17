@@ -1085,17 +1085,39 @@ body.plan-expandido .sidebar { display: none; }
 
 .plan-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 .plan-filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.plan-filtros .field { margin-bottom: 0; }
 .plan-filtros .field label { font-size: 0.62rem; margin-bottom: 3px; }
 .plan-filtros select { font-size: 0.78rem; padding: 6px 8px; }
 .plan-search {
   display: flex; align-items: center; gap: 7px; color: var(--text-muted);
   background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 9px;
-  padding: 7px 10px; min-width: 210px;
+  padding: 6px 8px; min-width: 210px;
 }
-.plan-search input { border: none; background: none; outline: none; color: var(--text); font: inherit; font-size: 0.78rem; width: 100%; }
-.plan-toolbar-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.plan-search input { border: none; background: none; outline: none; color: var(--text); font: inherit; font-size: 0.78rem; width: 100%; padding: 0; }
+/* El wrapper + label invisible replican el mismo truco que usa el campo
+   de búsqueda (una etiqueta vacía arriba) para que los botones arranquen
+   a la misma altura que los <select> de los filtros, que sí llevan una
+   etiqueta real encima (18-09-2026, pedido por el usuario — antes los
+   botones quedaban más arriba, sin ese espacio de etiqueta). */
+.plan-toolbar-acciones-wrap { display: flex; flex-direction: column; margin-left: auto; }
+.plan-toolbar-acciones-spacer { display: block; font-size: 0.62rem; line-height: 1; margin-bottom: 3px; visibility: hidden; }
+.plan-toolbar-acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
 .plan-toolbar-acciones .btn { font-size: 0.78rem; padding: 7px 12px; }
 .plan-btn-exportar { background: linear-gradient(135deg, var(--emerald), var(--teal)); }
+
+/* Desplegable de "Generar informe PDF": se abre al hacer clic en el
+   botón y se cierra solo (18-09-2026, pedido por el usuario — los
+   checkboxes de analista no ocupan espacio fijo en la barra). */
+.plan-informe-dropdown { position: relative; }
+.plan-informe-panel {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 190px;
+  background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px;
+  box-shadow: var(--card-shadow-hover); padding: 10px 12px 12px;
+}
+.plan-informe-panel-title { font-size: 0.6rem; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; }
+.plan-informe-panel .chk { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text); padding: 4px 0; cursor: pointer; white-space: nowrap; }
+.plan-informe-panel .chk input { margin: 0; }
+.plan-informe-panel-generar { width: 100%; justify-content: center; margin-top: 8px; }
 
 /* Tabla más compacta en general (17-09-2026, pedido por el usuario) —
    escopado a esta tabla, no afecta las demás .data-table de la app. */
@@ -1142,12 +1164,14 @@ body.plan-expandido .sidebar { display: none; }
 .plan-th-ordenable:hover { color: var(--indigo); }
 .plan-sort-ind { font-size: 0.65rem; color: var(--indigo); }
 
-/* Columnas de "Reunión" ocultas por defecto — se usan poco, sacarlas de
-   encima achica la tabla (18-09-2026, pedido por el usuario: "pueden ir
-   en una vista desplegable aparte"). El botón "Mostrar reuniones" agrega
-   esta clase a la tabla para revelarlas, sin tocar la estructura del
-   formulario (siguen siendo las mismas celdas/inputs, solo escondidas). */
+/* Columnas de mes y de "Reunión" son mutuamente excluyentes: mostrar
+   reuniones esconde los meses en vez de sumarlos (18-09-2026, pedido por
+   el usuario — antes "Mostrar reuniones" solo agregaba columnas, dejando
+   la tabla aún más ancha). El botón agrega/quita `plan-mostrar-reuniones`
+   en la tabla, sin tocar la estructura del formulario (siguen siendo las
+   mismas celdas/inputs, solo escondidas). */
 #tabla-planificacion .plan-col-reunion { display: none; }
+#tabla-planificacion.plan-mostrar-reuniones .plan-col-mes { display: none; }
 #tabla-planificacion.plan-mostrar-reuniones .plan-col-reunion { display: table-cell; }
 
 @media (max-width: 900px) {
