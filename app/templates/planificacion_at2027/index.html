@@ -162,7 +162,7 @@
             <th class="plan-col-reunion">Reunión Cat1 (2°)</th>
             <th data-sort-key="actualizacion_balance">Avance Balance<span class="plan-sort-ind"></span></th>
             <th data-sort-key="grupo">Grupo<span class="plan-sort-ind"></span></th>
-            <th>Estado Balance (último mes trabajado)</th>
+            <th>Último cierre</th>
             <th data-sort-key="estado">Estado<span class="plan-sort-ind"></span></th>
             <th></th>
           </tr>
@@ -181,11 +181,11 @@
              — 17-09-2026, bug real encontrado en verificación visual. #}
           {% for f in (filas if filas else [fila_vacia]) %}
           <tr>
-            <td><input type="number" step="1" name="p_numero" value="{{ f.numero if f.numero is not none else '' }}" style="width:64px"></td>
-            <td><input type="text" name="p_empresa" value="{{ f.empresa or '' }}" style="min-width:200px"></td>
+            <td><input type="number" step="1" name="p_numero" value="{{ f.numero if f.numero is not none else '' }}" class="plan-input-compact" style="width:36px"></td>
+            <td><input type="text" name="p_empresa" value="{{ f.empresa or '' }}" title="{{ f.empresa or '' }}" class="plan-input-compact plan-input-ellipsis" style="min-width:100px; max-width:115px"></td>
             <td>
               <div class="plan-pill"{% if f.analista %} style="--plan-hue:{{ f.analista | hue_de }}"{% endif %}>
-                {{ icon('user', 13) }}
+                {{ icon('user', 11) }}
                 <input type="text" name="p_analista" value="{{ f.analista or '' }}" placeholder="—">
               </div>
             </td>
@@ -198,7 +198,7 @@
               </select>
             </td>
             <td>
-              <select name="p_caja_banco">
+              <select name="p_caja_banco" class="plan-input-compact">
                 <option value="" {{ 'selected' if not f.caja_banco else '' }}></option>
                 <option value="Caja" {{ 'selected' if f.caja_banco == 'Caja' else '' }}>Caja</option>
                 <option value="Banco" {{ 'selected' if f.caja_banco == 'Banco' else '' }}>Banco</option>
@@ -206,15 +206,15 @@
             </td>
             {% for mes in ['mes_septiembre', 'mes_octubre', 'mes_noviembre', 'mes_diciembre', 'mes_enero', 'mes_febrero'] %}
             <td class="plan-col-mes">
-              <div class="plan-pill"{% if f[mes] %} style="--plan-hue:{{ f[mes] | hue_de }}"{% endif %}>
-                <input type="text" name="p_{{ mes }}" value="{{ f[mes] or '' }}" placeholder="—">
+              <div class="plan-pill plan-pill-mes"{% if f[mes] %} style="--plan-hue:{{ f[mes] | hue_de }}"{% endif %}>
+                <input type="text" name="p_{{ mes }}" value="{{ f[mes] or '' }}" title="{{ f[mes] or '' }}" placeholder="—">
               </div>
             </td>
             {% endfor %}
-            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_1" value="{{ f.reunion_cat1_1 or '' }}" style="min-width:100px"></td>
-            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat2" value="{{ f.reunion_cat2 or '' }}" style="min-width:100px"></td>
-            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat3" value="{{ f.reunion_cat3 or '' }}" style="min-width:100px"></td>
-            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_2" value="{{ f.reunion_cat1_2 or '' }}" style="min-width:100px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_1" value="{{ f.reunion_cat1_1 or '' }}" class="plan-input-compact" style="min-width:80px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat2" value="{{ f.reunion_cat2 or '' }}" class="plan-input-compact" style="min-width:80px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat3" value="{{ f.reunion_cat3 or '' }}" class="plan-input-compact" style="min-width:80px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_2" value="{{ f.reunion_cat1_2 or '' }}" class="plan-input-compact" style="min-width:80px"></td>
             <td>
               <select name="p_actualizacion_balance" class="plan-select-pill {{ 'plan-prioridad-3' if f.estado == 'completado' else ('plan-prioridad-2' if f.estado == 'en_proceso' else '') }}">
                 <option value="" {{ 'selected' if not f.actualizacion_balance else '' }}></option>
@@ -223,11 +223,11 @@
                 {% endfor %}
               </select>
             </td>
-            <td><input type="text" name="p_grupo" value="{{ f.grupo or '' }}" style="min-width:100px"></td>
-            <td><input type="text" name="p_estado_balance_ultimo_mes" value="{{ f.estado_balance_ultimo_mes or '' }}" style="min-width:140px"></td>
+            <td><input type="text" name="p_grupo" value="{{ f.grupo or '' }}" title="{{ f.grupo or '' }}" class="plan-input-compact plan-input-ellipsis" style="min-width:45px; max-width:58px"></td>
+            <td><input type="text" name="p_estado_balance_ultimo_mes" value="{{ f.estado_balance_ultimo_mes or '' }}" title="{{ f.estado_balance_ultimo_mes or '' }}" class="plan-input-compact plan-input-ellipsis" style="min-width:62px; max-width:76px"></td>
             <td>
               <span class="plan-estado plan-estado-{{ f.estado }}">
-                {{ icon('check-circle' if f.estado == 'completado' else ('clock' if f.estado == 'en_proceso' else 'alert-circle'), 13) }}
+                {{ icon('check-circle' if f.estado == 'completado' else ('clock' if f.estado == 'en_proceso' else 'alert-circle'), 11) }}
                 {{ 'Completado' if f.estado == 'completado' else ('En proceso' if f.estado == 'en_proceso' else 'Sin asignar') }}
               </span>
             </td>
@@ -261,9 +261,9 @@
   // `_estado_de_fila`/`_ultimo_mes_planificado` en
   // app/planificacion_at2027/routes.py: hay que mantener ambas en sync.
   var CYG_PLAN_ESTADO_INFO = {
-    completado: { icono: {{ icon('check-circle', 13) | tojson }}, texto: "Completado", pill: "plan-prioridad-3" },
-    en_proceso: { icono: {{ icon('clock', 13) | tojson }}, texto: "En proceso", pill: "plan-prioridad-2" },
-    sin_asignar: { icono: {{ icon('alert-circle', 13) | tojson }}, texto: "Sin asignar", pill: "" },
+    completado: { icono: {{ icon('check-circle', 11) | tojson }}, texto: "Completado", pill: "plan-prioridad-3" },
+    en_proceso: { icono: {{ icon('clock', 11) | tojson }}, texto: "En proceso", pill: "plan-prioridad-2" },
+    sin_asignar: { icono: {{ icon('alert-circle', 11) | tojson }}, texto: "Sin asignar", pill: "" },
   };
 
   function cygPlanUltimoMesPlanificado(tr) {

@@ -1119,30 +1119,48 @@ body.plan-expandido .sidebar { display: none; }
 .plan-informe-panel .chk input { margin: 0; }
 .plan-informe-panel-generar { width: 100%; justify-content: center; margin-top: 8px; }
 
-/* Tabla más compacta en general (17-09-2026, pedido por el usuario) —
-   escopado a esta tabla, no afecta las demás .data-table de la app. */
-#tabla-planificacion th { font-size: 0.62rem; padding: 6px 7px; }
-#tabla-planificacion td { padding: 4px 7px; font-size: 0.78rem; }
+/* Tabla más compacta en general (17-09-2026, pedido por el usuario;
+   achicada de nuevo el 19-09-2026 para que quepa sin scroll horizontal
+   con el sidebar visible) — escopado a esta tabla, no afecta las demás
+   .data-table de la app. */
+#tabla-planificacion th { font-size: 0.58rem; padding: 4px 1px; }
+#tabla-planificacion td { padding: 2px 1px; font-size: 0.72rem; }
+
+/* Los campos de texto libre sin pill (Empresa, Grupo, Último cierre,
+   Reunión) y el <select> de Caja/Banco heredan el tamaño más grande de
+   `table.data-table input/select` (styles.css ~línea 479) — este
+   selector con ID les baja el tamaño al mismo nivel que el resto de la
+   tabla. `.plan-input-ellipsis` además recorta con "…" los que más
+   varían de largo, para que un nombre largo no empuje el ancho de toda
+   la tabla (pasar el mouse muestra el texto completo vía `title`, que
+   ya trae el <input> nativo). */
+#tabla-planificacion .plan-input-compact { font-size: 0.7rem; padding: 3px 5px; }
+#tabla-planificacion .plan-input-ellipsis { overflow: hidden; text-overflow: ellipsis; }
 
 /* Pills de nombre (Analista + 6 meses): el color vive en el contenedor,
    el <input> queda transparente encima — celdas vacías no llevan pill,
-   solo el input con placeholder "—". */
+   solo el input con placeholder "—". `.plan-pill-mes` (las 6 columnas de
+   mes) es más angosta que la del Analista principal, que puede necesitar
+   algo más de espacio. */
 .plan-pill {
-  display: flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px;
-  min-height: 24px;
+  display: flex; align-items: center; gap: 3px; border-radius: 999px; padding: 2px 6px;
+  min-height: 20px; max-width: 80px; overflow: hidden;
 }
+.plan-pill-mes { max-width: 44px; }
 .plan-pill[style*="--plan-hue"] { background: hsl(var(--plan-hue), 60%, 90%); color: #1a1a2e; }
 :root[data-theme="dark"] .plan-pill[style*="--plan-hue"] { background: hsl(var(--plan-hue), 35%, 24%); color: var(--text); }
 .plan-pill svg { flex-shrink: 0; opacity: .7; }
 .plan-pill input {
-  border: none; background: none; outline: none; color: inherit; font: inherit; font-size: 0.78rem; font-weight: 600;
-  width: 100%; min-width: 58px; padding: 0;
+  border: none; background: none; outline: none; color: inherit; font: inherit; font-size: 0.72rem; font-weight: 600;
+  width: 100%; min-width: 28px; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .plan-pill input::placeholder { color: var(--text-muted); font-weight: 400; }
 
-/* Prioridad como <select> con forma de pill coloreado por valor. */
+/* Prioridad como <select> con forma de pill coloreado por valor
+   ("Avance Balance" comparte esta clase para el color, pero necesita
+   mostrar el nombre completo del mes — no se le baja el min-width). */
 .plan-select-pill {
-  border: none; border-radius: 999px; padding: 3px 10px; font-weight: 700; font-size: 0.78rem; min-width: 46px;
+  border: none; border-radius: 999px; padding: 2px 7px; font-weight: 700; font-size: 0.72rem; min-width: 30px;
   background: var(--table-th-bg); color: var(--text-muted);
 }
 .plan-select-pill.plan-prioridad-1 { background: rgba(var(--danger-rgb),0.16); color: var(--danger); }
@@ -1152,9 +1170,10 @@ body.plan-expandido .sidebar { display: none; }
 /* Badge de Estado (columna calculada, de solo lectura — no es un campo
    editable como el resto de la fila). */
 .plan-estado {
-  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
-  font-size: 0.7rem; font-weight: 600; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 999px;
+  font-size: 0.62rem; font-weight: 600; white-space: nowrap;
 }
+.plan-estado svg { flex-shrink: 0; }
 .plan-estado-completado { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
 .plan-estado-en_proceso { background: rgba(var(--indigo-rgb),0.16); color: var(--indigo); }
 .plan-estado-sin_asignar { background: rgba(var(--danger-rgb),0.16); color: var(--danger); }

@@ -182,6 +182,10 @@ def test_estado_calculado_resumen_y_exportar():
     check("botón 'Generar informe PDF' presente", 'id="plan-informe-toggle-btn"' in body)
     check("botón 'Expandir' (18-09-2026: texto acortado)", 'id="plan-expandir-label">Expandir<' in body)
     check("filtro de Analista ya no menciona 'cualquier mes' (19-09-2026: solo mira esa columna)", "Analista (o cualquier mes)" not in body)
+    check(
+        "columna 'Estado Balance (último mes trabajado)' se acortó a 'Último cierre' (19-09-2026)",
+        "Último cierre" in body and "Estado Balance (" not in body,
+    )
 
     r = client.get("/planificacion_at2027/exportar")
     check("GET /planificacion_at2027/exportar -> 200", r.status_code == 200)
