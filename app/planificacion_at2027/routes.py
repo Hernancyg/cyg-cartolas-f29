@@ -10,7 +10,10 @@ Administrador → Planificación AT 2027 (ver `app/admin/routes.py`) — ambos
 caminos terminan en `planificacion_at2027_repo.guardar_todos`.
 """
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+import io
+
+from flask import Blueprint, flash, redirect, render_template, request, send_file, url_for
+from openpyxl import Workbook
 
 from app.auth.decorators import pagina_required
 from app.data import planificacion_at2027_repo
@@ -19,14 +22,58 @@ planificacion_at2027_bp = Blueprint(
     "planificacion_at2027", __name__, url_prefix="/planificacion_at2027",
 )
 
+MESES = ["mes_septiembre", "mes_octubre", "mes_noviembre", "mes_diciembre", "mes_enero", "mes_febrero"]
+
 # Columnas de texto libre en el orden en que se muestran (numero/empresa/
 # analista/prioridad/caja_banco se manejan aparte porque tienen su propio
 # tipo o su propio <select>).
-COLUMNAS_TEXTO = [
-    "mes_septiembre", "mes_octubre", "mes_noviembre", "mes_diciembre", "mes_enero", "mes_febrero",
+COLUMNAS_TEXTO = MESES + [
     "actualizacion_balance", "reunion_cat1_1", "reunion_cat2", "reunion_cat3", "reunion_cat1_2",
     "grupo", "estado_balance_ultimo_mes",
 ]
+
+# Mismo orden que usa la carga masiva (app/admin/routes.py:PLANIFICACION_COLUMNAS)
+# y la exportación — para que exportar -> editar en Excel -> volver a
+# cargar sea un viaje de ida y vuelta sin sorpresas.
+COLUMNAS_EXPORTAR = ["numero", "empresa", "analista", "prioridad", "caja_banco"] + MESES + [
+    "actualizacion_balance", "reunion_cat1_1", "reunion_cat2", "reunion_cat3", "reunion_cat1_2",
+    "grupo", "estado_balance_ultimo_mes",
+]
+ENCABEZADOS_EXPORTAR = [
+    "N°", "Empresa", "Analista", "Prioridad", "Caja/Banco",
+    "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero", "Febrero",
+    "Actualización Balance", "Reunión Cat1 (1°)", "Reunión Cat2", "Reunión Cat3",
+    "Reunión Cat1 (2°)", "Grupo", "Estado Balance (Último mes trabajado)",
+]
+
+
+def _estado_de_fila(fila: dict) -> str:
+    """"Sin asignar" (ningún mes tiene a nadie asignado), "Completado"
+    (los 6 meses tienen a alguien) o "En proceso" (lo normal, entre
+    medio) — calculado en vivo a partir de las 6 columnas de mes, sin
+    guardar nada nuevo en la base de datos (17-09-2026, pedido por el
+    usuario junto con las tarjetas de resumen de arriba)."""
+    completados = sum(1 for m in MESES if (fila.get(m) or "").strip())
+    if completados == 0:
+        return "sin_asignar"
+    if completados == len(MESES):
+        return "completado"
+    return "en_proceso"
+
+
+def _resumen_de(filas: list) -> dict:
+    total = len(filas)
+    completado = sum(1 for f in filas if f["estado"] == "completado")
+    en_proceso = sum(1 for f in filas if f["estado"] == "en_proceso")
+    sin_asignar = sum(1 for f in filas if f["estado"] == "sin_asignar")
+
+    def pct(n):
+        return round(n / total * 100) if total else 0
+
+    return {
+        "total": total, "completado": completado, "en_proceso": en_proceso, "sin_asignar": sin_asignar,
+        "completado_pct": pct(completado), "en_proceso_pct": pct(en_proceso), "sin_asignar_pct": pct(sin_asignar),
+    }
 
 
 def _leer_filas_formulario(form) -> list:
@@ -60,7 +107,29 @@ def _leer_filas_formulario(form) -> list:
 @planificacion_at2027_bp.route("/", methods=["GET"])
 @pagina_required("planificacion_at2027.index")
 def index():
-    return render_template("planificacion_at2027/index.html", filas=planificacion_at2027_repo.listar_todos())
+    filas = planificacion_at2027_repo.listar_todos()
+    for f in filas:
+        f["estado"] = _estado_de_fila(f)
+    return render_template("planificacion_at2027/index.html", filas=filas, resumen=_resumen_de(filas))
+
+
+@planificacion_at2027_bp.route("/exportar", methods=["GET"])
+@pagina_required("planificacion_at2027.index")
+def exportar():
+    filas = planificacion_at2027_repo.listar_todos()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Planificación AT 2027"
+    ws.append(ENCABEZADOS_EXPORTAR)
+    for f in filas:
+        ws.append([f.get(c) for c in COLUMNAS_EXPORTAR])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return send_file(
+        buffer, as_attachment=True, download_name="planificacion_at2027.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @planificacion_at2027_bp.route("/guardar", methods=["POST"])

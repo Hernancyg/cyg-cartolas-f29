@@ -3,20 +3,103 @@
 {% block content %}
 {% from "_icons.html" import icon %}
 
-<div class="page-title">Planificación AT 2027</div>
-<div class="page-title-underline"></div>
-<p class="page-subtitle">Seguimiento de empresas: analista asignado por mes, prioridad y estado de balance. Los colores de Analista y de los meses son solo para distinguir a simple vista — mismo nombre, mismo color, siempre.</p>
+<div class="plan-header-row">
+  <div class="plan-header-title">
+    <div class="plan-header-icon">{{ icon('calendar', 22) }}</div>
+    <div>
+      <div class="page-title">Planificación AT 2027</div>
+      <p class="page-subtitle" style="margin:4px 0 0">Seguimiento de empresas: analista asignado por mes, prioridad y estado de balance. Los colores de Analista y de los meses son solo para distinguir a simple vista — mismo nombre, mismo color, siempre.</p>
+    </div>
+  </div>
+
+  <div class="plan-kpis">
+    <div class="plan-kpi">
+      <div class="plan-kpi-icon plan-kpi-icon-neutral">{{ icon('building', 18) }}</div>
+      <div>
+        <div class="plan-kpi-label">Total empresas</div>
+        <div class="plan-kpi-value">{{ resumen.total }}</div>
+      </div>
+    </div>
+    <div class="plan-kpi">
+      <div class="plan-kpi-icon plan-kpi-icon-ok">{{ icon('check-circle', 18) }}</div>
+      <div>
+        <div class="plan-kpi-label">Con plan asignado</div>
+        <div class="plan-kpi-value">{{ resumen.completado }} <span class="plan-kpi-pct">{{ resumen.completado_pct }}%</span></div>
+        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-ok" style="width:{{ resumen.completado_pct }}%"></div></div>
+      </div>
+    </div>
+    <div class="plan-kpi">
+      <div class="plan-kpi-icon plan-kpi-icon-progreso">{{ icon('clock', 18) }}</div>
+      <div>
+        <div class="plan-kpi-label">En proceso</div>
+        <div class="plan-kpi-value">{{ resumen.en_proceso }} <span class="plan-kpi-pct">{{ resumen.en_proceso_pct }}%</span></div>
+        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-progreso" style="width:{{ resumen.en_proceso_pct }}%"></div></div>
+      </div>
+    </div>
+    <div class="plan-kpi">
+      <div class="plan-kpi-icon plan-kpi-icon-alerta">{{ icon('alert-circle', 18) }}</div>
+      <div>
+        <div class="plan-kpi-label">Sin asignar</div>
+        <div class="plan-kpi-value">{{ resumen.sin_asignar }} <span class="plan-kpi-pct">{{ resumen.sin_asignar_pct }}%</span></div>
+        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-alerta" style="width:{{ resumen.sin_asignar_pct }}%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="card">
-  <div class="section-title" style="margin-bottom:10px">{{ filas | length }} empresa{{ 's' if filas | length != 1 else '' }}</div>
+  <div class="section-title" style="margin-bottom:10px">Detalle por empresa</div>
   <p class="muted" style="margin-top:0">
     Para cargar o reemplazar toda la planificación de una vez desde un Excel, ve a
     <a href="{{ url_for('admin.planificacion_at2027') }}">Administrador → Planificación AT 2027</a>.
   </p>
 
-  <div class="field" style="max-width:320px">
-    <label for="plan-filtro">Buscar</label>
-    <input type="text" id="plan-filtro" placeholder="Filtra por empresa, analista, grupo…" autocomplete="off">
+  <div class="plan-toolbar">
+    <div class="plan-filtros">
+      <div class="plan-search">
+        {{ icon('search', 16) }}
+        <input type="text" id="plan-filtro" placeholder="Buscar por empresa, analista, grupo…" autocomplete="off">
+      </div>
+      <div class="field" style="max-width:140px">
+        <label for="plan-filtro-prioridad">Prioridad</label>
+        <select id="plan-filtro-prioridad">
+          <option value="">Todas</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+      <div class="field" style="max-width:160px">
+        <label for="plan-filtro-caja-banco">Caja/Banco</label>
+        <select id="plan-filtro-caja-banco">
+          <option value="">Todas</option>
+          <option value="Caja">Caja</option>
+          <option value="Banco">Banco</option>
+        </select>
+      </div>
+      <div class="field" style="max-width:200px">
+        <label for="plan-filtro-analista">Analista (o cualquier mes)</label>
+        <select id="plan-filtro-analista"><option value="">Todos</option></select>
+      </div>
+      <div class="field" style="max-width:160px">
+        <label for="plan-filtro-mes">Mes</label>
+        <select id="plan-filtro-mes">
+          <option value="">Todos</option>
+          <option value="mes_septiembre">Septiembre</option>
+          <option value="mes_octubre">Octubre</option>
+          <option value="mes_noviembre">Noviembre</option>
+          <option value="mes_diciembre">Diciembre</option>
+          <option value="mes_enero">Enero</option>
+          <option value="mes_febrero">Febrero</option>
+        </select>
+      </div>
+    </div>
+    <div class="plan-toolbar-acciones">
+      <button type="button" class="btn btn-secondary" id="plan-expandir-btn">
+        {{ icon('expand', 16) }} <span id="plan-expandir-label">Expandir pantalla</span>
+      </button>
+      <a class="btn plan-btn-exportar" href="{{ url_for('planificacion_at2027.exportar') }}">{{ icon('download', 16) }} Exportar a Excel</a>
+    </div>
   </div>
 
   <form method="post" action="{{ url_for('planificacion_at2027.guardar') }}" id="form-planificacion">
@@ -25,24 +108,25 @@
       <table class="data-table" id="tabla-planificacion">
         <thead>
           <tr>
-            <th>N°</th>
-            <th>Empresa</th>
-            <th>Analista</th>
-            <th>Prioridad</th>
-            <th>Caja/Banco</th>
-            <th>Septiembre</th>
-            <th>Octubre</th>
-            <th>Noviembre</th>
-            <th>Diciembre</th>
-            <th>Enero</th>
-            <th>Febrero</th>
-            <th>Actualización Balance</th>
+            <th data-sort-key="numero">N°<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="empresa">Empresa<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="analista">Analista<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="prioridad">Prioridad<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="caja_banco">Caja/Banco<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="mes_septiembre">Septiembre<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="mes_octubre">Octubre<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="mes_noviembre">Noviembre<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="mes_diciembre">Diciembre<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="mes_enero">Enero<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="mes_febrero">Febrero<span class="plan-sort-ind"></span></th>
+            <th data-sort-key="actualizacion_balance">Actualización Balance<span class="plan-sort-ind"></span></th>
             <th>Reunión Cat1 (1°)</th>
             <th>Reunión Cat2</th>
             <th>Reunión Cat3</th>
             <th>Reunión Cat1 (2°)</th>
-            <th>Grupo</th>
+            <th data-sort-key="grupo">Grupo<span class="plan-sort-ind"></span></th>
             <th>Estado Balance (último mes trabajado)</th>
+            <th data-sort-key="estado">Estado<span class="plan-sort-ind"></span></th>
             <th></th>
           </tr>
         </thead>
@@ -52,7 +136,7 @@
             'mes_septiembre': '', 'mes_octubre': '', 'mes_noviembre': '', 'mes_diciembre': '',
             'mes_enero': '', 'mes_febrero': '', 'actualizacion_balance': '',
             'reunion_cat1_1': '', 'reunion_cat2': '', 'reunion_cat3': '', 'reunion_cat1_2': '',
-            'grupo': '', 'estado_balance_ultimo_mes': '',
+            'grupo': '', 'estado_balance_ultimo_mes': '', 'estado': 'sin_asignar',
           } %}
           {# Sin esto, una tabla recién estrenada (sin filas guardadas todavía)
              no tiene ninguna <tr> que "Agregar fila" pueda clonar como
@@ -61,12 +145,15 @@
           {% for f in (filas if filas else [fila_vacia]) %}
           <tr>
             <td><input type="number" step="1" name="p_numero" value="{{ f.numero if f.numero is not none else '' }}" style="width:64px"></td>
-            <td><input type="text" name="p_empresa" value="{{ f.empresa or '' }}" style="min-width:220px"></td>
-            <td class="plan-cell-nombre"{% if f.analista %} style="--plan-hue:{{ f.analista | hue_de }}"{% endif %}>
-              <input type="text" name="p_analista" value="{{ f.analista or '' }}" style="min-width:120px">
+            <td><input type="text" name="p_empresa" value="{{ f.empresa or '' }}" style="min-width:200px"></td>
+            <td>
+              <div class="plan-pill"{% if f.analista %} style="--plan-hue:{{ f.analista | hue_de }}"{% endif %}>
+                {{ icon('user', 13) }}
+                <input type="text" name="p_analista" value="{{ f.analista or '' }}" placeholder="—">
+              </div>
             </td>
-            <td class="{{ 'plan-prioridad-' ~ f.prioridad if f.prioridad in (1, 2, 3) else '' }}">
-              <select name="p_prioridad">
+            <td>
+              <select name="p_prioridad" class="plan-select-pill {{ 'plan-prioridad-' ~ f.prioridad if f.prioridad in (1, 2, 3) else '' }}">
                 <option value="" {{ 'selected' if not f.prioridad else '' }}></option>
                 <option value="1" {{ 'selected' if f.prioridad == 1 else '' }}>1</option>
                 <option value="2" {{ 'selected' if f.prioridad == 2 else '' }}>2</option>
@@ -81,8 +168,10 @@
               </select>
             </td>
             {% for mes in ['mes_septiembre', 'mes_octubre', 'mes_noviembre', 'mes_diciembre', 'mes_enero', 'mes_febrero'] %}
-            <td class="plan-cell-nombre"{% if f[mes] %} style="--plan-hue:{{ f[mes] | hue_de }}"{% endif %}>
-              <input type="text" name="p_{{ mes }}" value="{{ f[mes] or '' }}" style="min-width:100px">
+            <td>
+              <div class="plan-pill"{% if f[mes] %} style="--plan-hue:{{ f[mes] | hue_de }}"{% endif %}>
+                <input type="text" name="p_{{ mes }}" value="{{ f[mes] or '' }}" placeholder="—">
+              </div>
             </td>
             {% endfor %}
             <td><input type="text" name="p_actualizacion_balance" value="{{ f.actualizacion_balance or '' }}" style="min-width:120px"></td>
@@ -92,6 +181,12 @@
             <td><input type="text" name="p_reunion_cat1_2" value="{{ f.reunion_cat1_2 or '' }}" style="min-width:100px"></td>
             <td><input type="text" name="p_grupo" value="{{ f.grupo or '' }}" style="min-width:100px"></td>
             <td><input type="text" name="p_estado_balance_ultimo_mes" value="{{ f.estado_balance_ultimo_mes or '' }}" style="min-width:140px"></td>
+            <td>
+              <span class="plan-estado plan-estado-{{ f.estado }}">
+                {{ icon('check-circle' if f.estado == 'completado' else ('clock' if f.estado == 'en_proceso' else 'alert-circle'), 13) }}
+                {{ 'Completado' if f.estado == 'completado' else ('En proceso' if f.estado == 'en_proceso' else 'Sin asignar') }}
+              </span>
+            </td>
             <td><button type="button" class="row-remove" title="Quitar fila">{{ icon('trash', 16) }}</button></td>
           </tr>
           {% endfor %}
@@ -107,37 +202,206 @@
 
 <script src="{{ url_for('static', filename='js/editable_rows.js') }}"></script>
 <script>
-  // Filtro en vivo (17-09-2026: la tabla más grande del proyecto, ~150-200
-  // filas — ninguna otra tabla editable necesitó buscador hasta ahora). El
-  // texto de cada celda vive en el `value` de un <input>/<select> — no en
-  // el textContent de la fila (que para estos controles siempre viene
-  // vacío) — corregido tras encontrarlo en verificación visual: el filtro
-  // ocultaba TODAS las filas siempre, sin encontrar ninguna coincidencia.
-  document.getElementById("plan-filtro").addEventListener("input", function () {
-    var q = this.value.trim().toLowerCase();
-    document.querySelectorAll("#tabla-planificacion tbody tr").forEach(function (tr) {
-      if (!q) { tr.hidden = false; return; }
-      var valores = [];
-      tr.querySelectorAll("input, select").forEach(function (campo) { valores.push(campo.value); });
-      tr.hidden = valores.join(" ").toLowerCase().indexOf(q) === -1;
+  // Expandir pantalla (17-09-2026, pedido por el usuario): con muchas
+  // columnas conviene poder esconder el sidebar y usar todo el ancho — se
+  // recuerda en localStorage, mismo patrón que el tema claro/oscuro de
+  // base.html.
+  (function () {
+    var STORAGE_KEY = "cyg-plan-expandido";
+    var btn = document.getElementById("plan-expandir-btn");
+    var label = document.getElementById("plan-expandir-label");
+
+    function aplicar(expandido) {
+      document.body.classList.toggle("plan-expandido", expandido);
+      label.textContent = expandido ? "Volver al ancho normal" : "Expandir pantalla";
+    }
+
+    var guardado = false;
+    try { guardado = localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) {}
+    aplicar(guardado);
+
+    btn.addEventListener("click", function () {
+      var nuevo = !document.body.classList.contains("plan-expandido");
+      try { localStorage.setItem(STORAGE_KEY, nuevo ? "1" : "0"); } catch (e) {}
+      aplicar(nuevo);
     });
-  });
+  })();
+
+  // Filtros en vivo (17-09-2026: la tabla más grande del proyecto, ~150-200
+  // filas). El texto de cada celda vive en el `value` de un <input>/
+  // <select>, no en el textContent de la fila. El filtro de Analista se
+  // arma escaneando en vivo TODOS los nombres que aparecen en la columna
+  // "Analista" Y en las 6 columnas de mes (una persona puede estar
+  // asignada en un mes sin ser la analista principal de la fila).
+  (function () {
+    var MESES = ["mes_septiembre", "mes_octubre", "mes_noviembre", "mes_diciembre", "mes_enero", "mes_febrero"];
+    var inputBuscar = document.getElementById("plan-filtro");
+    var selectPrioridad = document.getElementById("plan-filtro-prioridad");
+    var selectCajaBanco = document.getElementById("plan-filtro-caja-banco");
+    var selectAnalista = document.getElementById("plan-filtro-analista");
+    var selectMes = document.getElementById("plan-filtro-mes");
+
+    function campoDe(tr, nombre) {
+      return tr.querySelector('[name="p_' + nombre + '"]');
+    }
+
+    function nombresDeFila(tr) {
+      var nombres = [];
+      var analista = campoDe(tr, "analista");
+      if (analista && analista.value.trim()) nombres.push(analista.value.trim());
+      MESES.forEach(function (mes) {
+        var campo = campoDe(tr, mes);
+        if (campo && campo.value.trim()) nombres.push(campo.value.trim());
+      });
+      return nombres;
+    }
+
+    function poblarAnalistas() {
+      var vistos = {};
+      document.querySelectorAll("#tabla-planificacion tbody tr").forEach(function (tr) {
+        nombresDeFila(tr).forEach(function (n) { vistos[n.toLowerCase()] = n; });
+      });
+      var nombres = Object.keys(vistos).map(function (k) { return vistos[k]; })
+        .sort(function (a, b) { return a.localeCompare(b, "es"); });
+      var valorPrevio = selectAnalista.value;
+      selectAnalista.innerHTML = '<option value="">Todos</option>';
+      nombres.forEach(function (n) {
+        var opt = document.createElement("option");
+        opt.value = n;
+        opt.textContent = n;
+        selectAnalista.appendChild(opt);
+      });
+      if (nombres.indexOf(valorPrevio) !== -1) selectAnalista.value = valorPrevio;
+    }
+
+    function aplicarFiltros() {
+      var q = inputBuscar.value.trim().toLowerCase();
+      var prioridad = selectPrioridad.value;
+      var cajaBanco = selectCajaBanco.value;
+      var analista = selectAnalista.value.trim().toLowerCase();
+      var mes = selectMes.value;
+
+      document.querySelectorAll("#tabla-planificacion tbody tr").forEach(function (tr) {
+        var visible = true;
+
+        if (q) {
+          var valores = [];
+          tr.querySelectorAll("input, select").forEach(function (campo) { valores.push(campo.value); });
+          visible = valores.join(" ").toLowerCase().indexOf(q) !== -1;
+        }
+
+        if (visible && prioridad) {
+          var campoPrioridad = campoDe(tr, "prioridad");
+          visible = !!campoPrioridad && campoPrioridad.value === prioridad;
+        }
+
+        if (visible && cajaBanco) {
+          var campoCajaBanco = campoDe(tr, "caja_banco");
+          visible = !!campoCajaBanco && campoCajaBanco.value === cajaBanco;
+        }
+
+        if (visible && analista && mes) {
+          // combinados: esa persona asignada EN ese mes específico
+          var campoMes = campoDe(tr, mes);
+          visible = !!campoMes && campoMes.value.trim().toLowerCase() === analista;
+        } else if (visible && analista) {
+          // solo Analista: en la columna Analista o en cualquier mes
+          var nombres = nombresDeFila(tr).map(function (n) { return n.toLowerCase(); });
+          visible = nombres.indexOf(analista) !== -1;
+        } else if (visible && mes) {
+          // solo Mes: cualquier fila con alguien asignado ese mes
+          var campoMesSolo = campoDe(tr, mes);
+          visible = !!campoMesSolo && campoMesSolo.value.trim() !== "";
+        }
+
+        tr.hidden = !visible;
+      });
+    }
+
+    inputBuscar.addEventListener("input", aplicarFiltros);
+    selectPrioridad.addEventListener("change", aplicarFiltros);
+    selectCajaBanco.addEventListener("change", aplicarFiltros);
+    selectAnalista.addEventListener("change", aplicarFiltros);
+    selectMes.addEventListener("change", aplicarFiltros);
+
+    // Repuebla el desplegable de Analista si se edita un nombre en vivo
+    // (Analista o cualquier columna de mes), para no tener que recargar.
+    document.getElementById("tabla-planificacion").addEventListener("input", function (ev) {
+      var nombre = (ev.target.getAttribute("name") || "").replace(/^p_/, "");
+      if (nombre === "analista" || MESES.indexOf(nombre) !== -1) poblarAnalistas();
+    });
+
+    poblarAnalistas();
+  })();
+
+  // Ordenar al hacer clic en el encabezado de una columna (17-09-2026,
+  // pedido por el usuario) — reordena las <tr> según el valor actual del
+  // input/select/badge de esa columna, sin ida y vuelta al servidor.
+  (function () {
+    var thsOrdenables = document.querySelectorAll("#tabla-planificacion th[data-sort-key]");
+
+    function valorCelda(tr, key) {
+      if (key === "estado") {
+        var badge = tr.querySelector(".plan-estado");
+        return badge ? badge.textContent.trim() : "";
+      }
+      var campo = tr.querySelector('[name="p_' + key + '"]');
+      return campo ? campo.value.trim() : "";
+    }
+
+    thsOrdenables.forEach(function (th) {
+      th.classList.add("plan-th-ordenable");
+      th.addEventListener("click", function () {
+        var key = th.dataset.sortKey;
+        var asc = th.dataset.sortDir !== "asc";
+        thsOrdenables.forEach(function (t) {
+          delete t.dataset.sortDir;
+          t.querySelector(".plan-sort-ind").textContent = "";
+        });
+        th.dataset.sortDir = asc ? "asc" : "desc";
+        th.querySelector(".plan-sort-ind").textContent = asc ? " ▲" : " ▼";
+
+        var tbody = document.querySelector("#tabla-planificacion tbody");
+        var filas = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+        var numerico = key === "numero" || key === "prioridad";
+        filas.sort(function (a, b) {
+          var va = valorCelda(a, key), vb = valorCelda(b, key);
+          if (numerico) {
+            var na = va === "" ? null : parseFloat(va);
+            var nb = vb === "" ? null : parseFloat(vb);
+            if (na === null && nb === null) return 0;
+            if (na === null) return asc ? 1 : -1;
+            if (nb === null) return asc ? -1 : 1;
+            return asc ? na - nb : nb - na;
+          }
+          return asc ? va.localeCompare(vb, "es") : vb.localeCompare(va, "es");
+        });
+        filas.forEach(function (tr) { tbody.appendChild(tr); });
+      });
+    });
+  })();
 
   // Al agregar una fila (editable_rows.js clona la primera fila real y
   // limpia inputs/selects, pero no toca el color de fondo por nombre que
-  // esa fila ya tenía) — se limpia acá para que una fila recién agregada
-  // no aparezca con un color heredado de otra persona.
+  // esa fila ya tenía, ni la clase/pill de prioridad, ni el badge de
+  // Estado) — se limpia acá para que una fila recién agregada no aparezca
+  // con datos heredados de otra empresa.
   document.getElementById("btn-add-row").addEventListener("click", function () {
     setTimeout(function () {
       var tbody = document.querySelector("#tabla-planificacion tbody");
       var ultima = tbody && tbody.lastElementChild;
       if (!ultima) return;
-      ultima.querySelectorAll(".plan-cell-nombre").forEach(function (td) {
-        td.style.removeProperty("--plan-hue");
+      ultima.querySelectorAll(".plan-pill").forEach(function (pill) {
+        pill.style.removeProperty("--plan-hue");
       });
-      ultima.querySelectorAll("[class*='plan-prioridad-']").forEach(function (td) {
-        td.className = td.className.replace(/\bplan-prioridad-\d\b/g, "").trim();
+      ultima.querySelectorAll(".plan-select-pill").forEach(function (sel) {
+        sel.className = sel.className.replace(/\bplan-prioridad-\d\b/g, "").trim();
       });
+      var badge = ultima.querySelector(".plan-estado");
+      if (badge) {
+        badge.className = "plan-estado plan-estado-sin_asignar";
+        badge.innerHTML = {{ icon('alert-circle', 13) | tojson }} + " Sin asignar";
+      }
     }, 0);
   });
 </script>

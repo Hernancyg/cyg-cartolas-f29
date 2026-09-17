@@ -12,7 +12,7 @@ import io
 import sys
 from pathlib import Path
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -131,12 +131,55 @@ def test_carga_masiva_con_errores_no_guarda_nada():
     check("nada se guardó: sigue la carga válida anterior, no la de esta prueba", "ALIMENTOS SAN LUCAS" in body and "SARAVIA Y GUZMAN SPA" not in body)
 
 
+def test_estado_calculado_resumen_y_exportar():
+    client = flask_app.test_client()
+    _login_admin(client)
+
+    # 3 filas: 0, 3 y 6 de los 6 meses con alguien asignado -> sin_asignar / en_proceso / completado.
+    xlsx = _xlsx_planificacion([
+        [1, "SIN NADA ASIGNADO SPA", "David", 2, "Caja", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        [2, "A MEDIO CAMINO SPA", "Javier", 1, "Banco", "Javier", "Javier", "Javier", "", "", "", "", "", "", "", "", "", ""],
+        [3, "TODO ASIGNADO SPA", "Catalina", 3, "Caja", "Catalina", "Catalina", "Catalina", "Catalina", "Catalina", "Catalina", "", "", "", "", "", "", ""],
+    ])
+    client.post(
+        "/admin/planificacion_at2027/cargar",
+        data={"archivo": (io.BytesIO(xlsx), "planificacion.xlsx")},
+        content_type="multipart/form-data",
+    )
+
+    r = client.get("/planificacion_at2027/")
+    body = r.get_data(as_text=True)
+    check("fila sin meses -> badge 'Sin asignar'", 'plan-estado-sin_asignar">' in body)
+    check("fila con 3/6 meses -> badge 'En proceso'", 'plan-estado-en_proceso">' in body)
+    check("fila con 6/6 meses -> badge 'Completado'", 'plan-estado-completado">' in body)
+    check("tarjeta 'Total empresas' = 3", ">3<" in body and "Total empresas" in body)
+    check("tarjeta 'Con plan asignado' cuenta 1 (33%)", "33%" in body)
+
+    r = client.get("/planificacion_at2027/exportar")
+    check("GET /planificacion_at2027/exportar -> 200", r.status_code == 200)
+    check(
+        "exportar entrega un .xlsx (Content-Type correcto)",
+        "spreadsheetml.sheet" in (r.headers.get("Content-Type") or ""),
+    )
+    wb = load_workbook(io.BytesIO(r.data))
+    ws = wb.active
+    encabezados = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    check("exportar: encabezado 'Empresa' en la columna 2", encabezados[1] == "Empresa")
+    empresas_exportadas = [row[1].value for row in ws.iter_rows(min_row=2)]
+    check("exportar: trae las 3 empresas cargadas", set(empresas_exportadas) == {
+        "SIN NADA ASIGNADO SPA", "A MEDIO CAMINO SPA", "TODO ASIGNADO SPA",
+    })
+
+
 def test_trabajador_sin_acceso():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
 
     r = client.get("/planificacion_at2027/")
     check("trabajador NO puede ver Planificación AT 2027 (403)", r.status_code == 403)
+
+    r = client.get("/planificacion_at2027/exportar")
+    check("trabajador NO puede exportar a Excel (403)", r.status_code == 403)
 
     r = client.get("/admin/planificacion_at2027")
     check("trabajador NO puede ver la carga masiva en Administrador (403)", r.status_code == 403)
@@ -149,6 +192,7 @@ def main():
     test_pagina_y_guardado_manual()
     test_carga_masiva_valida()
     test_carga_masiva_con_errores_no_guarda_nada()
+    test_estado_calculado_resumen_y_exportar()
     test_trabajador_sin_acceso()
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")

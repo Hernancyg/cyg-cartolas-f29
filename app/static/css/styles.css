@@ -1014,14 +1014,112 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
   outline: none; background: var(--input-bg); border-color: var(--indigo);
 }
 
-/* Planificación AT 2027 (17-09-2026): colores solo estéticos, sin
-   significado de estado — el mismo nombre de analista siempre cae en el
-   mismo tono (hue calculado en `app/__init__.py:_hue_de`, guardado en la
-   variable `--plan-hue` de cada celda), y la prioridad usa los mismos
-   3 colores semánticos que el resto de la app (peligro/ámbar/esmeralda). */
-.plan-cell-nombre[style*="--plan-hue"] { background: hsl(var(--plan-hue), 55%, 90%); }
-:root[data-theme="dark"] .plan-cell-nombre[style*="--plan-hue"] { background: hsl(var(--plan-hue), 40%, 22%); }
+/* Planificación AT 2027 (17-09-2026, rediseñado a partir de un mockup de
+   referencia del usuario): colores de Analista/mes solo estéticos, sin
+   significado de estado — el mismo nombre siempre cae en el mismo tono
+   (hue calculado en `app/__init__.py:_hue_de`, guardado en la variable
+   `--plan-hue` de cada pill). Prioridad y Estado sí son semánticos y usan
+   los mismos 3 colores del resto de la app (peligro/ámbar-índigo/
+   esmeralda). */
 
-.plan-prioridad-1 { background: rgba(var(--danger-rgb),0.14); }
-.plan-prioridad-2 { background: rgba(var(--amber-rgb),0.16); }
-.plan-prioridad-3 { background: rgba(var(--emerald-rgb),0.14); }
+/* 18+ columnas necesitan más ancho que el resto de la app — el resto de
+   las páginas no se ve afectado. */
+.main:has(#tabla-planificacion) { max-width: 1600px; }
+
+/* "Expandir pantalla": esconde el sidebar y suelta el tope de ancho del
+   contenido, solo mientras el usuario lo active (recordado en
+   localStorage) — no cambia nada en el resto de la app. */
+body.plan-expandido .sidebar { display: none; }
+body.plan-expandido .main { max-width: none; }
+
+.plan-header-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
+  flex-wrap: wrap; margin-bottom: 20px;
+}
+.plan-header-title { display: flex; align-items: flex-start; gap: 14px; max-width: 480px; }
+.plan-header-icon {
+  flex-shrink: 0; width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--indigo), var(--teal)); color: #fff;
+}
+.plan-header-title .page-title { margin: 0; }
+.plan-header-title .page-title-underline { display: none; }
+
+.plan-kpis { display: flex; gap: 12px; flex-wrap: wrap; }
+.plan-kpi {
+  display: flex; align-items: flex-start; gap: 10px; min-width: 150px;
+  background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--r-md);
+  padding: 12px 14px; box-shadow: var(--card-shadow);
+}
+.plan-kpi-icon {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+}
+.plan-kpi-icon-neutral { background: rgba(var(--indigo-rgb),0.14); color: var(--indigo); }
+.plan-kpi-icon-ok { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
+.plan-kpi-icon-progreso { background: rgba(var(--indigo-rgb),0.16); color: var(--indigo); }
+.plan-kpi-icon-alerta { background: rgba(var(--danger-rgb),0.16); color: var(--danger); }
+.plan-kpi-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+.plan-kpi-value { font-size: 1.15rem; font-weight: 800; color: var(--navy-2); line-height: 1.5; }
+.plan-kpi-pct { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
+.plan-kpi-bar { width: 100%; height: 4px; border-radius: 999px; background: var(--table-td-border); margin-top: 4px; overflow: hidden; }
+.plan-kpi-bar-fill { height: 100%; border-radius: 999px; }
+.plan-kpi-bar-ok { background: var(--emerald); }
+.plan-kpi-bar-progreso { background: var(--indigo); }
+.plan-kpi-bar-alerta { background: var(--danger); }
+
+.plan-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+.plan-filtros { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+.plan-search {
+  display: flex; align-items: center; gap: 8px; color: var(--text-muted);
+  background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 10px;
+  padding: 9px 12px; min-width: 240px;
+}
+.plan-search input { border: none; background: none; outline: none; color: var(--text); font: inherit; width: 100%; }
+.plan-toolbar-acciones { display: flex; gap: 10px; flex-wrap: wrap; }
+.plan-btn-exportar { background: linear-gradient(135deg, var(--emerald), var(--teal)); }
+
+/* Pills de nombre (Analista + 6 meses): el color vive en el contenedor,
+   el <input> queda transparente encima — celdas vacías no llevan pill,
+   solo el input con placeholder "—". */
+.plan-pill {
+  display: flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 10px;
+  min-height: 30px;
+}
+.plan-pill[style*="--plan-hue"] { background: hsl(var(--plan-hue), 60%, 90%); color: #1a1a2e; }
+:root[data-theme="dark"] .plan-pill[style*="--plan-hue"] { background: hsl(var(--plan-hue), 35%, 24%); color: var(--text); }
+.plan-pill svg { flex-shrink: 0; opacity: .7; }
+.plan-pill input {
+  border: none; background: none; outline: none; color: inherit; font: inherit; font-weight: 600;
+  width: 100%; min-width: 70px; padding: 0;
+}
+.plan-pill input::placeholder { color: var(--text-muted); font-weight: 400; }
+
+/* Prioridad como <select> con forma de pill coloreado por valor. */
+.plan-select-pill {
+  border: none; border-radius: 999px; padding: 5px 12px; font-weight: 700; min-width: 56px;
+  background: var(--table-th-bg); color: var(--text-muted);
+}
+.plan-select-pill.plan-prioridad-1 { background: rgba(var(--danger-rgb),0.16); color: var(--danger); }
+.plan-select-pill.plan-prioridad-2 { background: rgba(var(--amber-rgb),0.20); color: var(--amber); }
+.plan-select-pill.plan-prioridad-3 { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
+
+/* Badge de Estado (columna calculada, de solo lectura — no es un campo
+   editable como el resto de la fila). */
+.plan-estado {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600; white-space: nowrap;
+}
+.plan-estado-completado { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
+.plan-estado-en_proceso { background: rgba(var(--indigo-rgb),0.16); color: var(--indigo); }
+.plan-estado-sin_asignar { background: rgba(var(--danger-rgb),0.16); color: var(--danger); }
+
+/* Encabezados ordenables por clic. */
+.plan-th-ordenable { cursor: pointer; user-select: none; }
+.plan-th-ordenable:hover { color: var(--indigo); }
+.plan-sort-ind { font-size: 0.7rem; color: var(--indigo); }
+
+@media (max-width: 900px) {
+  .plan-header-row { flex-direction: column; }
+  .plan-toolbar { flex-direction: column; align-items: stretch; }
+}
