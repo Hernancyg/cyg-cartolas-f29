@@ -1142,6 +1142,14 @@ body.plan-expandido .sidebar { display: none; }
 .plan-th-ordenable:hover { color: var(--indigo); }
 .plan-sort-ind { font-size: 0.65rem; color: var(--indigo); }
 
+/* Columnas de "Reunión" ocultas por defecto — se usan poco, sacarlas de
+   encima achica la tabla (18-09-2026, pedido por el usuario: "pueden ir
+   en una vista desplegable aparte"). El botón "Mostrar reuniones" agrega
+   esta clase a la tabla para revelarlas, sin tocar la estructura del
+   formulario (siguen siendo las mismas celdas/inputs, solo escondidas). */
+#tabla-planificacion .plan-col-reunion { display: none; }
+#tabla-planificacion.plan-mostrar-reuniones .plan-col-reunion { display: table-cell; }
+
 @media (max-width: 900px) {
   .plan-header-row { flex-direction: column; }
   .plan-toolbar { flex-direction: column; align-items: stretch; }

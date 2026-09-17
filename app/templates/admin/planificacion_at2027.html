@@ -26,8 +26,10 @@
   </div>
   <p class="muted" style="margin-top:0">
     Primera fila con los encabezados (N°, Empresa, Analista, Prioridad, Caja/Banco, Septiembre…Febrero,
-    Actualización Balance, Reunión Cat1 (1°), Reunión Cat2, Reunión Cat3, Reunión Cat1 (2°), Grupo,
+    Avance Balance, Reunión Cat1 (1°), Reunión Cat2, Reunión Cat3, Reunión Cat1 (2°), Grupo,
     Estado Balance) y los datos desde la segunda fila — mismo orden de columnas que la tabla en pantalla.
+    "Avance Balance" es hasta qué mes del ciclo está al día el balance (uno de Septiembre…Febrero, tal cual) —
+    cuando dice "Febrero" esa empresa queda como "Completado".
   </p>
   <form method="post" action="{{ url_for('admin.planificacion_at2027_cargar') }}" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

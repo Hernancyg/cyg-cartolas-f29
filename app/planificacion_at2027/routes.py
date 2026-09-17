@@ -1,8 +1,8 @@
 """
 "Planificación AT 2027": tabla editable de seguimiento de empresas
-(analista asignado por mes, prioridad, frecuencia de actualización del
-balance, etc.) — reemplaza el Excel manual que llevaba el usuario
-(17-09-2026). Se edita fila por fila en pantalla (mismo patrón
+(analista asignado por mes, prioridad, avance del balance, etc.) —
+reemplaza el Excel manual que llevaba el usuario (17-09-2026). Se edita
+fila por fila en pantalla (mismo patrón
 "clonar fila + guardar todo el formulario" que `depreciacion/categorias.
 html` / `admin/tipos_documento.html`, ver `app/static/js/editable_rows.
 js`), y también se puede recargar completa subiendo un Excel desde
@@ -42,23 +42,31 @@ COLUMNAS_EXPORTAR = ["numero", "empresa", "analista", "prioridad", "caja_banco"]
 ENCABEZADOS_EXPORTAR = [
     "N°", "Empresa", "Analista", "Prioridad", "Caja/Banco",
     "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero", "Febrero",
-    "Actualización Balance", "Reunión Cat1 (1°)", "Reunión Cat2", "Reunión Cat3",
+    "Avance Balance", "Reunión Cat1 (1°)", "Reunión Cat2", "Reunión Cat3",
     "Reunión Cat1 (2°)", "Grupo", "Estado Balance (Último mes trabajado)",
 ]
 
 
+# "Actualización Balance" (18-09-2026, redefinido por el usuario): ya no
+# es la frecuencia del balance (Mensual/Trimestral/...) sino el AVANCE —
+# hasta qué mes del ciclo Septiembre→Febrero está al día el balance de esa
+# empresa. Es un <select> con estos 6 valores exactos (ver el template).
+ORDEN_AVANCE = ["Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero", "Febrero"]
+_ORDEN_AVANCE_LOWER = [m.lower() for m in ORDEN_AVANCE]
+
+
 def _estado_de_fila(fila: dict) -> str:
-    """"Sin asignar" (ningún mes tiene a nadie asignado), "Completado"
-    (los 6 meses tienen a alguien) o "En proceso" (lo normal, entre
-    medio) — calculado en vivo a partir de las 6 columnas de mes, sin
-    guardar nada nuevo en la base de datos (17-09-2026, pedido por el
-    usuario junto con las tarjetas de resumen de arriba)."""
-    completados = sum(1 for m in MESES if (fila.get(m) or "").strip())
-    if completados == 0:
+    """"Sin asignar" (sin avance registrado), "Completado" (avance =
+    Febrero, el último mes del ciclo) o "En proceso" (cualquier mes
+    intermedio) — calculado en vivo a partir de "Actualización Balance",
+    sin guardar nada nuevo en la base de datos (18-09-2026, redefinido a
+    partir de cómo el usuario usa esa columna: antes se derivaba de
+    cuántos de los 6 meses tenían a alguien asignado, pero eso refleja
+    quién quedó a cargo, no si el balance de ese mes ya se hizo)."""
+    avance = (fila.get("actualizacion_balance") or "").strip().lower()
+    if not avance or avance not in _ORDEN_AVANCE_LOWER:
         return "sin_asignar"
-    if completados == len(MESES):
-        return "completado"
-    return "en_proceso"
+    return "completado" if avance == _ORDEN_AVANCE_LOWER[-1] else "en_proceso"
 
 
 MESES_LABEL = {

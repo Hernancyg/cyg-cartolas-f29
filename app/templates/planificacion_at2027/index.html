@@ -105,6 +105,9 @@
       </div>
     </div>
     <div class="plan-toolbar-acciones">
+      <button type="button" class="btn btn-secondary" id="plan-reuniones-btn">
+        {{ icon('calendar', 16) }} <span id="plan-reuniones-label">Mostrar reuniones</span>
+      </button>
       <button type="button" class="btn btn-secondary" id="plan-expandir-btn">
         {{ icon('expand', 16) }} <span id="plan-expandir-label">Expandir pantalla</span>
       </button>
@@ -129,11 +132,11 @@
             <th data-sort-key="mes_diciembre">Diciembre<span class="plan-sort-ind"></span></th>
             <th data-sort-key="mes_enero">Enero<span class="plan-sort-ind"></span></th>
             <th data-sort-key="mes_febrero">Febrero<span class="plan-sort-ind"></span></th>
-            <th data-sort-key="actualizacion_balance">Actualización Balance<span class="plan-sort-ind"></span></th>
-            <th>Reunión Cat1 (1°)</th>
-            <th>Reunión Cat2</th>
-            <th>Reunión Cat3</th>
-            <th>Reunión Cat1 (2°)</th>
+            <th data-sort-key="actualizacion_balance">Avance Balance<span class="plan-sort-ind"></span></th>
+            <th class="plan-col-reunion">Reunión Cat1 (1°)</th>
+            <th class="plan-col-reunion">Reunión Cat2</th>
+            <th class="plan-col-reunion">Reunión Cat3</th>
+            <th class="plan-col-reunion">Reunión Cat1 (2°)</th>
             <th data-sort-key="grupo">Grupo<span class="plan-sort-ind"></span></th>
             <th>Estado Balance (último mes trabajado)</th>
             <th data-sort-key="estado">Estado<span class="plan-sort-ind"></span></th>
@@ -184,11 +187,18 @@
               </div>
             </td>
             {% endfor %}
-            <td><input type="text" name="p_actualizacion_balance" value="{{ f.actualizacion_balance or '' }}" style="min-width:120px"></td>
-            <td><input type="text" name="p_reunion_cat1_1" value="{{ f.reunion_cat1_1 or '' }}" style="min-width:100px"></td>
-            <td><input type="text" name="p_reunion_cat2" value="{{ f.reunion_cat2 or '' }}" style="min-width:100px"></td>
-            <td><input type="text" name="p_reunion_cat3" value="{{ f.reunion_cat3 or '' }}" style="min-width:100px"></td>
-            <td><input type="text" name="p_reunion_cat1_2" value="{{ f.reunion_cat1_2 or '' }}" style="min-width:100px"></td>
+            <td>
+              <select name="p_actualizacion_balance" class="plan-select-pill {{ 'plan-prioridad-3' if f.estado == 'completado' else ('plan-prioridad-2' if f.estado == 'en_proceso' else '') }}">
+                <option value="" {{ 'selected' if not f.actualizacion_balance else '' }}></option>
+                {% for mes_label in ['Septiembre', 'Octubre', 'Noviembre', 'Diciembre', 'Enero', 'Febrero'] %}
+                <option value="{{ mes_label }}" {{ 'selected' if (f.actualizacion_balance or '').strip().lower() == mes_label.lower() else '' }}>{{ mes_label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_1" value="{{ f.reunion_cat1_1 or '' }}" style="min-width:100px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat2" value="{{ f.reunion_cat2 or '' }}" style="min-width:100px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat3" value="{{ f.reunion_cat3 or '' }}" style="min-width:100px"></td>
+            <td class="plan-col-reunion"><input type="text" name="p_reunion_cat1_2" value="{{ f.reunion_cat1_2 or '' }}" style="min-width:100px"></td>
             <td><input type="text" name="p_grupo" value="{{ f.grupo or '' }}" style="min-width:100px"></td>
             <td><input type="text" name="p_estado_balance_ultimo_mes" value="{{ f.estado_balance_ultimo_mes or '' }}" style="min-width:140px"></td>
             <td>
@@ -232,6 +242,31 @@
 
     btn.addEventListener("click", function () {
       var nuevo = !document.body.classList.contains("plan-expandido");
+      try { localStorage.setItem(STORAGE_KEY, nuevo ? "1" : "0"); } catch (e) {}
+      aplicar(nuevo);
+    });
+  })();
+
+  // Mostrar/ocultar las 4 columnas de "Reunión" (18-09-2026, pedido por
+  // el usuario: se usan poco y sacarlas de encima achica la tabla) — se
+  // recuerda en localStorage, mismo patrón que "Expandir pantalla".
+  (function () {
+    var STORAGE_KEY = "cyg-plan-mostrar-reuniones";
+    var btn = document.getElementById("plan-reuniones-btn");
+    var label = document.getElementById("plan-reuniones-label");
+    var tabla = document.getElementById("tabla-planificacion");
+
+    function aplicar(mostrar) {
+      tabla.classList.toggle("plan-mostrar-reuniones", mostrar);
+      label.textContent = mostrar ? "Ocultar reuniones" : "Mostrar reuniones";
+    }
+
+    var guardado = false;
+    try { guardado = localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) {}
+    aplicar(guardado);
+
+    btn.addEventListener("click", function () {
+      var nuevo = !tabla.classList.contains("plan-mostrar-reuniones");
       try { localStorage.setItem(STORAGE_KEY, nuevo ? "1" : "0"); } catch (e) {}
       aplicar(nuevo);
     });
