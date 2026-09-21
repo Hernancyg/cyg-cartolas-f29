@@ -8,11 +8,13 @@ Uso:
     python tests/test_depreciacion.py
 """
 
+import io
 import sys
 from datetime import date, datetime
 from pathlib import Path
 
 import xlrd
+from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -751,6 +753,142 @@ def test_categorias_guardar():
     FAKE.table("depreciacion_categorias").delete().neq("descripcion", "__never__").execute()
 
 
+def _xlsx_depreciacion_periodos(filas):
+    """`filas`: lista de [empresa, activo, fecha_periodo, meses_utilizados, factor_ccmm]
+    (5 valores), mismo orden que DEPRECIACION_PERIODOS_ENCABEZADOS en
+    app/admin/routes.py."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Empresa", "Activo", "Fecha período", "Meses utilizados", "Factor CCMM"])
+    for fila in filas:
+        ws.append(fila)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_depreciacion_carga_masiva():
+    """Carga masiva de "años anteriores" (21-09-2026, pedido por el
+    usuario) — `admin/depreciacion_periodos*` en app/admin/routes.py.
+    Reemplaza, POR ACTIVO, todo su kardex con lo que traiga el Excel."""
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+    client.post("/depreciacion/empresas/crear", data={"rut": "", "nombre": "CARGA MASIVA SPA"}, follow_redirects=True)
+    empresa = [e for e in FAKE.table("depreciacion_empresas").select("*").execute().data if e["nombre"] == "CARGA MASIVA SPA"][0]
+    empresa_id = empresa["id"]
+
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/crear",
+        data={
+            "nombre_activo": "Grua Antigua", "fecha_adquisicion": "2015-01-01",
+            "valor_adquisicion": "12000000", "vida_util_anios": "10", "categoria_id": "", "grupo_contable_codigo": "",
+        },
+        follow_redirects=True,
+    )
+    activo = [a for a in FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data if a["nombre_activo"] == "Grua Antigua"][0]
+    activo_id = activo["id"]
+
+    r = client.get("/admin/depreciacion/periodos")
+    check("GET /admin/depreciacion/periodos -> 200", r.status_code == 200)
+
+    r = client.get("/admin/depreciacion/periodos/plantilla")
+    check(
+        "GET plantilla -> 200 xlsx",
+        r.status_code == 200 and "spreadsheetml" in (r.headers.get("Content-Type") or ""),
+    )
+    filas_plantilla = list(load_workbook(io.BytesIO(r.data)).active.iter_rows(min_row=2, values_only=True))
+    check(
+        "la plantilla trae ya listados la empresa y el activo recién creados",
+        any(f[0] == "CARGA MASIVA SPA" and f[1] == "Grua Antigua" for f in filas_plantilla),
+    )
+
+    # Carga válida: 2 períodos (años anteriores) para el mismo activo.
+    xlsx = _xlsx_depreciacion_periodos([
+        ["CARGA MASIVA SPA", "Grua Antigua", "2015-12-31", 12, ""],
+        ["CARGA MASIVA SPA", "Grua Antigua", "2016-12-31", 12, 1.05],
+    ])
+    r = client.post(
+        "/admin/depreciacion/periodos/cargar",
+        data={"archivo": (io.BytesIO(xlsx), "carga.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("carga válida -> 200", r.status_code == 200)
+    body = r.get_data(as_text=True)
+    check("avisa cuántos períodos/activos se cargaron", "2 período" in body and "1 activo" in body)
+
+    periodos = FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data
+    check("quedaron los 2 períodos guardados", len(periodos) == 2)
+    p_2015 = next(p for p in periodos if p["fecha"] == "2015-12-31")
+    p_2016 = next(p for p in periodos if p["fecha"] == "2016-12-31")
+    check("factor CCMM vacío -> default 1", p_2015["factor_ccmm"] == 1.0)
+    check("factor CCMM explícito se respeta", p_2016["factor_ccmm"] == 1.05)
+
+    # Re-cargar con UN solo período reemplaza los 2 anteriores (mismo criterio
+    # "todo o nada" de `depreciacion_periodos_repo.guardar_todos`, ahora por activo).
+    xlsx2 = _xlsx_depreciacion_periodos([["CARGA MASIVA SPA", "Grua Antigua", "2017-12-31", 12, ""]])
+    client.post(
+        "/admin/depreciacion/periodos/cargar",
+        data={"archivo": (io.BytesIO(xlsx2), "carga2.xlsx")},
+        content_type="multipart/form-data",
+    )
+    periodos_v2 = FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data
+    check(
+        "la segunda carga REEMPLAZÓ el kardex anterior (queda solo 1 período)",
+        len(periodos_v2) == 1 and periodos_v2[0]["fecha"] == "2017-12-31",
+    )
+
+    # Empresa inexistente -> error, no toca nada (todo o nada).
+    xlsx_empresa_mala = _xlsx_depreciacion_periodos([["EMPRESA QUE NO EXISTE SPA", "Grua Antigua", "2018-12-31", 12, ""]])
+    r = client.post(
+        "/admin/depreciacion/periodos/cargar",
+        data={"archivo": (io.BytesIO(xlsx_empresa_mala), "malo.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("empresa inexistente -> avisa el error", "no existe en Depreciación" in r.get_data(as_text=True))
+    check(
+        "no se tocó el kardex existente",
+        len(FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data) == 1,
+    )
+
+    # Activo inexistente en una empresa que sí existe -> error.
+    xlsx_activo_malo = _xlsx_depreciacion_periodos([["CARGA MASIVA SPA", "Activo Que No Existe", "2018-12-31", 12, ""]])
+    r = client.post(
+        "/admin/depreciacion/periodos/cargar",
+        data={"archivo": (io.BytesIO(xlsx_activo_malo), "malo2.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("activo inexistente -> avisa el error", "no existe en la empresa" in r.get_data(as_text=True))
+
+    # Meses inválidos -> error, todo o nada (ni siquiera guarda las filas válidas del mismo archivo).
+    xlsx_meses_malos = _xlsx_depreciacion_periodos([["CARGA MASIVA SPA", "Grua Antigua", "2019-12-31", "no-es-numero", ""]])
+    r = client.post(
+        "/admin/depreciacion/periodos/cargar",
+        data={"archivo": (io.BytesIO(xlsx_meses_malos), "malo3.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("meses inválidos -> avisa el error", "Meses utilizados" in r.get_data(as_text=True))
+    check(
+        "no se tocó el kardex existente tras el error de meses",
+        len(FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data) == 1,
+    )
+
+
+def test_trabajador_no_puede_cargar_depreciacion_masiva():
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
+    r = client.get("/admin/depreciacion/periodos")
+    check("trabajador NO puede ver la carga masiva de Depreciación (403)", r.status_code == 403)
+    r = client.get("/admin/depreciacion/periodos/plantilla")
+    check("trabajador NO puede descargar la plantilla (403)", r.status_code == 403)
+    r = client.post("/admin/depreciacion/periodos/cargar", data={}, content_type="multipart/form-data")
+    check("trabajador NO puede cargar el Excel (403)", r.status_code == 403)
+
+
 def test_trabajador_no_puede_ver_depreciacion():
     client = flask_app.test_client()
     r = client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
@@ -772,6 +910,8 @@ def main():
     test_asientos_flujo()
     test_activo_baja_flujo()
     test_categorias_guardar()
+    test_depreciacion_carga_masiva()
+    test_trabajador_no_puede_cargar_depreciacion_masiva()
     test_trabajador_no_puede_ver_depreciacion()
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")
