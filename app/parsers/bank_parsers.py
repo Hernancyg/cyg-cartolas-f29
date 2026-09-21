@@ -1,6 +1,7 @@
 """
 Motor de extracción de movimientos desde cartolas bancarias (PDF o Excel)
-de distintos bancos chilenos (Banco de Chile, BancoEstado, Santander, BCI).
+de distintos bancos chilenos (Banco de Chile, BancoEstado, Santander, BCI,
+Mercado Pago).
 
 Estrategia general para PDF:
   1. Se extraen las palabras de cada página con sus coordenadas (pdfplumber).
@@ -20,15 +21,26 @@ Esto es intencionalmente genérico (no hay una función distinta "por banco")
 porque las cuatro cartolas objetivo comparten el mismo esquema tabular
 (fecha | descripción | cargo | abono | saldo), aunque el texto exacto del
 encabezado varía. La detección de banco (detect_bank) es solo informativa /
-para mostrar en la UI, no cambia la lógica de extracción.
+para mostrar en la UI, no cambia la lógica de extracción salvo para Mercado
+Pago (ver más abajo).
 
 Validado con una cartola real de BCI. Para BancoEstado, Santander y Banco de
 Chile la lógica es la misma pero no ha sido probada contra un PDF real de
 esos bancos — si el resultado no calza, conviene revisar los sinónimos de
 encabezado más abajo o enviar un PDF de ejemplo para calibrar.
+
+Mercado Pago es la ÚNICA excepción a "un solo parser genérico": su tabla
+trae una sola columna de monto CON SIGNO (no cargo/abono lado a lado), así
+que tiene su propio camino de extracción (`_parse_mercado_pago_pdf` y
+funciones auxiliares alrededor), activado en `parse_pdf` cuando
+`detect_bank` devuelve "Mercado Pago". Calibrado a partir de una captura de
+pantalla de una cartola real (no un PDF real) que aportó el usuario — si el
+resultado no calza con un PDF real, conviene revisar `MERCADO_PAGO_COLUMNAS`
+y `_parse_mercado_pago_rows` más abajo, o pedir un PDF de ejemplo.
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 import pdfplumber
@@ -169,6 +181,7 @@ BANK_MARKERS = {
         "SANTANDER",
         "CARTOLAS HISTÓRICAS DE CTA.CTE", "CARTOLAS HISTORICAS DE CTA.CTE",
     ],
+    "Mercado Pago": ["MERCADO PAGO", "MERCADOPAGO"],
 }
 
 DATE_RE = re.compile(r"^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$")
@@ -514,6 +527,154 @@ def _process_page_transactions(words, columns):
     return txs
 
 
+# ---------------------------------------------------------------------------
+# Mercado Pago: esquema de tabla completamente distinto al de los bancos de
+# arriba (una sola columna de monto, con signo, en vez de columnas separadas
+# de cargo/abono lado a lado) — no encaja con la heurística genérica de
+# "clasificar el monto según en qué columna x cae", así que se procesa aparte.
+# Cada fila de la tabla trae: FECHA DE ACREDITACIÓN (con hora), TIPO DE
+# MOVIMIENTO (Abono/Cargo — usado solo como respaldo, el signo del monto ya
+# indica lo mismo), TIPO DE TRANSACCIÓN (esto es lo que va en "detalle" de la
+# salida), ID DE TRANSACCIÓN, MONEDA, MONTO DE TRANSACCIÓN, OTROS CONCEPTOS y
+# NOMBRE DEL COMERCIO (estas últimas tres no se usan en la plantilla de
+# salida). Validado con una cartola real de Mercado Pago.
+# ---------------------------------------------------------------------------
+
+def _sin_tildes(texto: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn"
+    )
+
+
+TIME_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
+
+# Frases exactas (ya sin tildes) de cada encabezado de columna — se buscan
+# como secuencia de palabras consecutivas dentro de una fila, no palabra por
+# palabra, porque varias comparten palabras sueltas ("TIPO DE MOVIMIENTO" vs.
+# "TIPO DE TRANSACCION", "ID DE TRANSACCION" vs. "MONTO DE TRANSACCION").
+MERCADO_PAGO_COLUMNAS = {
+    "fecha": ["FECHA", "DE", "ACREDITACION"],
+    "tipo_movimiento": ["TIPO", "DE", "MOVIMIENTO"],
+    "tipo_transaccion": ["TIPO", "DE", "TRANSACCION"],
+    "id_transaccion": ["ID", "DE", "TRANSACCION"],
+    "moneda": ["MONEDA"],
+    "monto": ["MONTO", "DE", "TRANSACCION"],
+    "otros_conceptos": ["OTROS", "CONCEPTOS"],
+    "nombre_comercio": ["NOMBRE", "DEL", "COMERCIO"],
+}
+
+
+def _find_phrase_words(row, phrase):
+    """Busca `phrase` (lista de palabras, ya sin tildes/mayúsculas) como
+    secuencia consecutiva dentro de `row` y devuelve las palabras que
+    calzaron (para sacar su caja delimitadora), o None si no aparece."""
+    tokens = [_sin_tildes(w["text"]).upper().rstrip(":") for w in row]
+    n = len(phrase)
+    for i in range(len(tokens) - n + 1):
+        if tokens[i:i + n] == phrase:
+            return row[i:i + n]
+    return None
+
+
+def _find_mercado_pago_header(rows):
+    """Busca, entre las filas de una página, la fila que contiene el
+    encabezado real de la tabla de movimientos ("FECHA DE ACREDITACIÓN" +
+    "MONTO DE TRANSACCIÓN" en la misma fila) — los bloques de resumen que
+    aparecen antes en la página (DESDE/HASTA/... y BALANCE INICIAL/
+    DEPÓSITOS/...) usan encabezados de una sola palabra que no calzan con
+    estas frases de 3 palabras, así que no hay riesgo de confundirlos."""
+    for idx, row in enumerate(rows):
+        columnas_fila = {}
+        for rol, frase in MERCADO_PAGO_COLUMNAS.items():
+            palabras = _find_phrase_words(row, frase)
+            if palabras:
+                columnas_fila[rol] = palabras
+        if "fecha" in columnas_fila and "monto" in columnas_fila:
+            columns = {
+                rol: (min(w["x0"] for w in ws), max(w["x1"] for w in ws))
+                for rol, ws in columnas_fila.items()
+            }
+            header_bottom = max(w["bottom"] for w in row)
+            return columns, header_bottom
+    return None, None
+
+
+def _closest_column(x0, columns):
+    """A diferencia de `_classify_amount_column`, acá TODA palabra de una
+    fila de datos pertenece a alguna de las 8 columnas conocidas (no hay
+    texto "suelto" tipo glosa libre) — se le asigna siempre la columna más
+    cercana, sin descartar por distancia."""
+    best_role, best_dist = None, float("inf")
+    for role, (lo, hi) in columns.items():
+        dist = 0.0 if lo <= x0 <= hi else min(abs(x0 - lo), abs(x0 - hi))
+        if dist < best_dist:
+            best_role, best_dist = role, dist
+    return best_role
+
+
+def _parse_mercado_pago_rows(rows, columns):
+    """Cada fila de datos es un movimiento completo en una sola línea (a
+    diferencia de los otros bancos, acá no hay glosas que se parten en
+    varias líneas), así que se procesa fila por fila en vez de con la
+    heurística de "palabra más cercana verticalmente"."""
+    txs = []
+    for row in rows:
+        role_words = {}
+        fecha_texto = None
+        for w in row:
+            token = w["text"]
+            if TIME_RE.match(token):
+                continue  # la hora de la fecha no se usa en la salida
+            role = _closest_column(w["x0"], columns)
+            if role == "fecha" and DATE_RE.match(token):
+                fecha_texto = token
+                continue
+            role_words.setdefault(role, []).append(token)
+
+        if fecha_texto is None:
+            continue  # fila sin fecha real: no es un movimiento (encabezado repetido, pie de página, etc.)
+
+        tipo_movimiento = " ".join(role_words.get("tipo_movimiento", [])).strip().lower()
+        tipo_transaccion = " ".join(role_words.get("tipo_transaccion", [])).strip()
+        montos = [
+            t for t in role_words.get("monto", [])
+            if AMOUNT_RE.match(t) and any(ch.isdigit() for ch in t)
+        ]
+        monto = _parse_amount(montos[0]) if montos else 0.0
+
+        tx = Transaction(fecha=fecha_texto, descripcion=tipo_transaccion)
+        if tipo_movimiento.startswith("cargo") or monto < 0:
+            tx.cargo = abs(monto)
+        else:
+            tx.abono = abs(monto)
+        txs.append(tx)
+    return txs
+
+
+def _parse_mercado_pago_pdf(pdf) -> list:
+    transactions = []
+    columns = None
+    for page in pdf.pages:
+        words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+        if not words:
+            continue
+        rows = _group_words_into_rows(words)
+
+        page_columns, header_bottom = _find_mercado_pago_header(rows)
+        if page_columns:
+            columns = page_columns
+        else:
+            header_bottom = 0
+
+        if columns is None:
+            continue
+
+        data_rows = [row for row in rows if row and row[0]["top"] > header_bottom]
+        transactions.extend(_parse_mercado_pago_rows(data_rows, columns))
+
+    return transactions
+
+
 def parse_pdf(file_path_or_buffer) -> ParseResult:
     result = ParseResult()
     transactions = []
@@ -524,72 +685,78 @@ def parse_pdf(file_path_or_buffer) -> ParseResult:
         result.banco_detectado = detect_bank(full_text.upper())
         month_year_map = _extract_month_year_map(full_text)
 
-        columns = None
+        if result.banco_detectado == "Mercado Pago":
+            # Esquema de tabla completamente distinto (una sola columna de
+            # monto con signo) — no pasa por la heurística genérica de
+            # columnas cargo/abono lado a lado, ver `_parse_mercado_pago_pdf`.
+            transactions = _parse_mercado_pago_pdf(pdf)
+        else:
+            columns = None
 
-        for page in pdf.pages:
-            words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
-            if not words:
-                continue
-            rows = _group_words_into_rows(words)
+            for page in pdf.pages:
+                words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+                if not words:
+                    continue
+                rows = _group_words_into_rows(words)
 
-            page_columns, header_idx = _find_header_columns(rows)
-            if page_columns:
-                columns = page_columns
-                header_bottom = max(w["bottom"] for w in rows[header_idx])
-            else:
-                header_bottom = 0
+                page_columns, header_idx = _find_header_columns(rows)
+                if page_columns:
+                    columns = page_columns
+                    header_bottom = max(w["bottom"] for w in rows[header_idx])
+                else:
+                    header_bottom = 0
 
-            if columns is None:
-                continue
+                if columns is None:
+                    continue
 
-            cutoff_top = _find_cutoff_top(words)
-            footer_top = _find_phrase_top(rows, FOOTER_STOP_PHRASES)
-            hard_stop_top = _find_hard_stop_top(rows)
-            upper_bounds = [
-                t for t in (cutoff_top, footer_top, hard_stop_top) if t is not None
-            ]
-            upper_bound = min(upper_bounds) if upper_bounds else None
-            data_words = [
-                w for w in words
-                if w["top"] > header_bottom
-                and (upper_bound is None or w["top"] < upper_bound)
-            ]
-
-            # Continuación de glosa entre páginas: si la última línea de la
-            # descripción de un movimiento queda justo en el borde inferior
-            # de una página, esa línea puede aparecer recién al comienzo de
-            # la página siguiente, ANTES de la fecha del primer movimiento
-            # de esa página (p.ej. "transaccionales ca" en una cartola real
-            # de BancoEstado). Sin este ajuste, la heurística de "fecha más
-            # cercana" la asignaría erróneamente al primer movimiento de la
-            # página nueva en lugar de al último de la página anterior.
-            date_words_page = _date_words_in_column(data_words, columns)
-            if date_words_page and transactions:
-                first_date_top = min(w["top"] for w in date_words_page)
-                desc_x0, desc_x1_bound = _desc_bounds(columns)
-                orphan_words = [
-                    w for w in data_words
-                    if w["top"] < first_date_top
-                    and any(ch.isalnum() for ch in w["text"])
-                    and desc_x0 <= w["x0"] < desc_x1_bound
-                    and not (AMOUNT_RE.match(w["text"]) and any(ch.isdigit() for ch in w["text"]))
+                cutoff_top = _find_cutoff_top(words)
+                footer_top = _find_phrase_top(rows, FOOTER_STOP_PHRASES)
+                hard_stop_top = _find_hard_stop_top(rows)
+                upper_bounds = [
+                    t for t in (cutoff_top, footer_top, hard_stop_top) if t is not None
                 ]
-                if orphan_words:
-                    extra = " ".join(w["text"] for w in orphan_words).strip()
-                    if extra:
-                        transactions[-1].descripcion = (
-                            transactions[-1].descripcion + " " + extra
-                        ).strip()
-                    orphan_ids = {id(w) for w in orphan_words}
-                    data_words = [w for w in data_words if id(w) not in orphan_ids]
+                upper_bound = min(upper_bounds) if upper_bounds else None
+                data_words = [
+                    w for w in words
+                    if w["top"] > header_bottom
+                    and (upper_bound is None or w["top"] < upper_bound)
+                ]
 
-            transactions.extend(_process_page_transactions(data_words, columns))
+                # Continuación de glosa entre páginas: si la última línea de la
+                # descripción de un movimiento queda justo en el borde inferior
+                # de una página, esa línea puede aparecer recién al comienzo de
+                # la página siguiente, ANTES de la fecha del primer movimiento
+                # de esa página (p.ej. "transaccionales ca" en una cartola real
+                # de BancoEstado). Sin este ajuste, la heurística de "fecha más
+                # cercana" la asignaría erróneamente al primer movimiento de la
+                # página nueva en lugar de al último de la página anterior.
+                date_words_page = _date_words_in_column(data_words, columns)
+                if date_words_page and transactions:
+                    first_date_top = min(w["top"] for w in date_words_page)
+                    desc_x0, desc_x1_bound = _desc_bounds(columns)
+                    orphan_words = [
+                        w for w in data_words
+                        if w["top"] < first_date_top
+                        and any(ch.isalnum() for ch in w["text"])
+                        and desc_x0 <= w["x0"] < desc_x1_bound
+                        and not (AMOUNT_RE.match(w["text"]) and any(ch.isdigit() for ch in w["text"]))
+                    ]
+                    if orphan_words:
+                        extra = " ".join(w["text"] for w in orphan_words).strip()
+                        if extra:
+                            transactions[-1].descripcion = (
+                                transactions[-1].descripcion + " " + extra
+                            ).strip()
+                        orphan_ids = {id(w) for w in orphan_words}
+                        data_words = [w for w in data_words if id(w) not in orphan_ids]
 
-            if hard_stop_top is not None:
-                # A partir de aquí la(s) página(s) restantes son otra tabla
-                # (p.ej. "Saldos diarios"), no más movimientos: se detiene
-                # el procesamiento por completo.
-                break
+                transactions.extend(_process_page_transactions(data_words, columns))
+
+                if hard_stop_top is not None:
+                    # A partir de aquí la(s) página(s) restantes son otra tabla
+                    # (p.ej. "Saldos diarios"), no más movimientos: se detiene
+                    # el procesamiento por completo.
+                    break
 
     # Filtrar filas de saldo (no son movimientos reales) y completar el año
     # de las fechas que vinieron sin él (p.ej. Banco de Chile).

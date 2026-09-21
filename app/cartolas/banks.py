@@ -11,6 +11,7 @@ BANKS = [
     {"key": "itau", "name": "Itaú", "color": "#004A93", "logo": "itau.png"},
     {"key": "scotiabank", "name": "Scotiabank", "color": "#EC111A", "logo": "scotiabank.png"},
     {"key": "security", "name": "Security", "color": "#4A4A4A", "logo": "security.png"},
+    {"key": "mercado_pago", "name": "Mercado Pago", "color": "#00AAEF", "logo": None},
 ]
 
 # Mapea el nombre de la tarjeta elegida al nombre que devuelve detect_bank()
@@ -20,6 +21,7 @@ BANK_DISPLAY_TO_DETECTED = {
     "Banco Estado": "BancoEstado",
     "Bci": "BCI",
     "Santander": "Santander",
+    "Mercado Pago": "Mercado Pago",
 }
 
 
