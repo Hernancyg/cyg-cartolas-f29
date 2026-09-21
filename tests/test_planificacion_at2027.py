@@ -12,6 +12,7 @@ import io
 import sys
 from pathlib import Path
 
+import pdfplumber
 from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -207,6 +208,21 @@ def test_informe_pdf():
     client = flask_app.test_client()
     _login_admin(client)
 
+    # Fila propia con "Avance Balance" y "Último cierre" bien distintos
+    # (21-09-2026, pedido por el usuario: la columna "AVANCE" del informe
+    # debe mostrar "estado_balance_ultimo_mes", no "actualizacion_balance")
+    # — un upload propio en vez de depender de lo que dejó la prueba
+    # anterior, para no acoplar ambas pruebas.
+    xlsx = _xlsx_planificacion([
+        [10, "EMPRESA JAVIER TEST SPA", "Javier", 1, "Caja", "Javier", "", "", "", "", "", "Septiembre", "", "", "", "", "", "Cierre 31-08-2026"],
+        [11, "EMPRESA CATALINA TEST SPA", "Catalina", 2, "Banco", "", "Catalina", "", "", "", "", "Octubre", "", "", "", "", "", "Cierre 30-09-2026"],
+    ])
+    client.post(
+        "/admin/planificacion_at2027/cargar",
+        data={"archivo": (io.BytesIO(xlsx), "informe.xlsx")},
+        content_type="multipart/form-data",
+    )
+
     r = client.post("/planificacion_at2027/informe", data={}, follow_redirects=True)
     check("informe sin analistas elegidos -> 200 (re-muestra la página con el error)", r.status_code == 200)
     check("avisa que hay que elegir al menos un analista", "Selecciona al menos un analista" in r.get_data(as_text=True))
@@ -215,6 +231,15 @@ def test_informe_pdf():
     check("informe de un analista -> 200", r.status_code == 200)
     check("informe entrega un .pdf (Content-Type correcto)", (r.headers.get("Content-Type") or "") == "application/pdf")
     check("informe: el PDF no viene vacío", len(r.data) > 500)
+
+    with pdfplumber.open(io.BytesIO(r.data)) as pdf:
+        texto_pdf = "\n".join(pagina.extract_text() or "" for pagina in pdf.pages)
+    check("informe: la columna muestra el valor de 'Último cierre'", "Cierre 31-08-2026" in texto_pdf)
+    check(
+        "informe: NO muestra el valor de 'Avance Balance' (21-09-2026: se reemplazó por Último cierre)",
+        "Septiembre" not in texto_pdf,
+    )
+    check("informe: el encabezado de esa columna dice 'ÚLTIMO CIERRE'", "ÚLTIMO CIERRE" in texto_pdf)
 
     r = client.post("/planificacion_at2027/informe", data={"analistas": ["Javier", "Catalina"]})
     check("informe de varios analistas a la vez -> 200", r.status_code == 200)

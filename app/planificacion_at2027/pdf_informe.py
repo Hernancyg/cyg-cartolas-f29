@@ -145,6 +145,10 @@ class _Builder:
         self.y -= 10 * mm
 
     def tabla_empresas(self, filas):
+        # `col_avance` muestra "estado_balance_ultimo_mes" ("Último
+        # cierre" en pantalla), no "actualizacion_balance" ("Avance
+        # Balance") — 21-09-2026, pedido por el usuario, para que
+        # coincida con lo que ya se ve en la tabla real.
         c = self.c
         col_empresa = self.x0
         col_prioridad = self.x0 + self.width * 0.48
@@ -160,7 +164,7 @@ class _Builder:
             c.drawString(col_empresa + 2 * mm, self.y - 4 * mm, "EMPRESA")
             c.drawString(col_prioridad, self.y - 4 * mm, "PRIOR.")
             c.drawString(col_caja, self.y - 4 * mm, "CAJA/BANCO")
-            c.drawString(col_avance, self.y - 4 * mm, "AVANCE")
+            c.drawString(col_avance, self.y - 4 * mm, "ÚLTIMO CIERRE")
             c.drawRightString(self.x1 - 2 * mm, self.y - 4 * mm, "ESTADO")
             self.y -= 6 * mm
 
@@ -185,7 +189,7 @@ class _Builder:
             c.drawString(col_empresa + 2 * mm, base_y, (f.get("empresa") or "")[:52])
             c.drawString(col_prioridad, base_y, str(f.get("prioridad")) if f.get("prioridad") else "—")
             c.drawString(col_caja, base_y, f.get("caja_banco") or "—")
-            c.drawString(col_avance, base_y, f.get("actualizacion_balance") or "—")
+            c.drawString(col_avance, base_y, f.get("estado_balance_ultimo_mes") or "—")
             estado = f.get("estado") or "sin_asignar"
             c.setFillColor(ESTADO_COLOR.get(estado, TEXT_MUTED))
             c.setFont("Helvetica-Bold", 7.5)

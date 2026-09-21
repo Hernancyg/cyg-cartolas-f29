@@ -1140,13 +1140,25 @@ body.plan-expandido .sidebar { display: none; }
 /* Pills de nombre (Analista + 6 meses): el color vive en el contenedor,
    el <input> queda transparente encima — celdas vacías no llevan pill,
    solo el input con placeholder "—". `.plan-pill-mes` (las 6 columnas de
-   mes) es más angosta que la del Analista principal, que puede necesitar
-   algo más de espacio. */
+   mes) es más angosta que la del Analista principal. `.plan-pill-analista`
+   (21-09-2026, corrección del usuario sobre el ajuste anterior: el
+   nombre del analista principal SIEMPRE debe verse completo, sin "…" —
+   a diferencia de los pills de mes, que sí pueden recortarse) le saca el
+   tope de ancho y el recorte a la pill de la columna "Analista". */
 .plan-pill {
   display: flex; align-items: center; gap: 3px; border-radius: 999px; padding: 2px 6px;
   min-height: 20px; max-width: 80px; overflow: hidden;
 }
-.plan-pill-mes { max-width: 44px; }
+.plan-pill-mes { max-width: 64px; }
+/* `overflow: visible` NO alcanza acá: no hace crecer la columna, solo
+   deja que el texto se pinte encima de la celda de al lado (bug real
+   encontrado en verificación, 21-09-2026) — el <input> necesita un
+   ancho FIJO explícito (no el `width:100%` heredado de `.plan-pill
+   input`, que cae en una referencia circular dentro de un contenedor
+   flex sin ancho propio y termina colapsando) para que la tabla
+   (table-layout: auto) recién ahí ensanche la columna de verdad. */
+.plan-pill-analista { max-width: none; }
+.plan-pill.plan-pill-analista input { width: 180px; min-width: 180px; }
 .plan-pill[style*="--plan-hue"] { background: hsl(var(--plan-hue), 60%, 90%); color: #1a1a2e; }
 :root[data-theme="dark"] .plan-pill[style*="--plan-hue"] { background: hsl(var(--plan-hue), 35%, 24%); color: var(--text); }
 .plan-pill svg { flex-shrink: 0; opacity: .7; }
@@ -1157,21 +1169,29 @@ body.plan-expandido .sidebar { display: none; }
 .plan-pill input::placeholder { color: var(--text-muted); font-weight: 400; }
 
 /* Prioridad como <select> con forma de pill coloreado por valor
-   ("Avance Balance" comparte esta clase para el color, pero necesita
-   mostrar el nombre completo del mes — no se le baja el min-width). */
+   ("Avance Balance" comparte esta clase para el color; su ancho real lo
+   define el nombre del mes seleccionado, no este min-width — bajarlo
+   solo achica a Prioridad, cuyo contenido es más corto que el piso
+   anterior). */
 .plan-select-pill {
-  border: none; border-radius: 999px; padding: 2px 7px; font-weight: 700; font-size: 0.72rem; min-width: 30px;
+  border: none; border-radius: 999px; padding: 1px 5px; font-weight: 700; font-size: 0.72rem; min-width: 20px;
   background: var(--table-th-bg); color: var(--text-muted);
 }
 .plan-select-pill.plan-prioridad-1 { background: rgba(var(--danger-rgb),0.16); color: var(--danger); }
 .plan-select-pill.plan-prioridad-2 { background: rgba(var(--amber-rgb),0.20); color: var(--amber); }
 .plan-select-pill.plan-prioridad-3 { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
 
+/* Caja/Banco: valores fijos y cortos ("Caja"/"Banco"), no necesita el
+   tamaño del resto de los campos de texto libre — 21-09-2026, pedido por
+   el usuario, separado de `.plan-input-compact` porque esa clase ahora
+   también la usan Empresa/Grupo, que van para el otro lado (más grandes). */
+#tabla-planificacion .plan-caja-banco { font-size: 0.66rem; padding: 1px 3px; }
+
 /* Badge de Estado (columna calculada, de solo lectura — no es un campo
    editable como el resto de la fila). */
 .plan-estado {
-  display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 999px;
-  font-size: 0.62rem; font-weight: 600; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 2px; padding: 1px 5px; border-radius: 999px;
+  font-size: 0.58rem; font-weight: 600; white-space: nowrap;
 }
 .plan-estado svg { flex-shrink: 0; }
 .plan-estado-completado { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
@@ -1192,6 +1212,17 @@ body.plan-expandido .sidebar { display: none; }
 #tabla-planificacion .plan-col-reunion { display: none; }
 #tabla-planificacion.plan-mostrar-reuniones .plan-col-mes { display: none; }
 #tabla-planificacion.plan-mostrar-reuniones .plan-col-reunion { display: table-cell; }
+
+/* Septiembre y Noviembre angostas, Octubre/Diciembre/Enero/Febrero más
+   anchas (21-09-2026, pedido por el usuario sobre una captura concreta
+   de la tabla) — recupera parte del ancho que ganó `.plan-pill-mes` al
+   ensancharse, sin volver a truncar los 4 meses que sí lo necesitaban.
+   Los índices son de posición fija en la fila (N°=1 … Febrero=11), no
+   cambian al mostrar/ocultar Reunión. */
+#tabla-planificacion td:nth-child(6) .plan-pill-mes,
+#tabla-planificacion td:nth-child(8) .plan-pill-mes {
+  max-width: 44px;
+}
 
 @media (max-width: 900px) {
   .plan-header-row { flex-direction: column; }

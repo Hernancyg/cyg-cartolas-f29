@@ -181,10 +181,10 @@
              — 17-09-2026, bug real encontrado en verificación visual. #}
           {% for f in (filas if filas else [fila_vacia]) %}
           <tr>
-            <td><input type="number" step="1" name="p_numero" value="{{ f.numero if f.numero is not none else '' }}" class="plan-input-compact" style="width:36px"></td>
-            <td><input type="text" name="p_empresa" value="{{ f.empresa or '' }}" title="{{ f.empresa or '' }}" class="plan-input-compact plan-input-ellipsis" style="min-width:100px; max-width:115px"></td>
+            <td><input type="number" step="1" name="p_numero" value="{{ f.numero if f.numero is not none else '' }}" class="plan-input-compact" style="width:44px"></td>
+            <td><input type="text" name="p_empresa" value="{{ f.empresa or '' }}" title="{{ f.empresa or '' }}" class="plan-input-compact plan-input-ellipsis" style="min-width:120px; max-width:140px"></td>
             <td>
-              <div class="plan-pill"{% if f.analista %} style="--plan-hue:{{ f.analista | hue_de }}"{% endif %}>
+              <div class="plan-pill plan-pill-analista"{% if f.analista %} style="--plan-hue:{{ f.analista | hue_de }}"{% endif %}>
                 {{ icon('user', 11) }}
                 <input type="text" name="p_analista" value="{{ f.analista or '' }}" placeholder="—">
               </div>
@@ -198,7 +198,7 @@
               </select>
             </td>
             <td>
-              <select name="p_caja_banco" class="plan-input-compact">
+              <select name="p_caja_banco" class="plan-caja-banco">
                 <option value="" {{ 'selected' if not f.caja_banco else '' }}></option>
                 <option value="Caja" {{ 'selected' if f.caja_banco == 'Caja' else '' }}>Caja</option>
                 <option value="Banco" {{ 'selected' if f.caja_banco == 'Banco' else '' }}>Banco</option>
@@ -223,7 +223,7 @@
                 {% endfor %}
               </select>
             </td>
-            <td><input type="text" name="p_grupo" value="{{ f.grupo or '' }}" title="{{ f.grupo or '' }}" class="plan-input-compact plan-input-ellipsis" style="min-width:45px; max-width:58px"></td>
+            <td><input type="text" name="p_grupo" value="{{ f.grupo or '' }}" title="{{ f.grupo or '' }}" class="plan-input-compact plan-input-ellipsis" style="min-width:58px; max-width:72px"></td>
             <td><input type="text" name="p_estado_balance_ultimo_mes" value="{{ f.estado_balance_ultimo_mes or '' }}" title="{{ f.estado_balance_ultimo_mes or '' }}" class="plan-input-compact plan-input-ellipsis" style="min-width:62px; max-width:76px"></td>
             <td>
               <span class="plan-estado plan-estado-{{ f.estado }}">
