@@ -431,6 +431,44 @@ def planificacion_at2027_cargar():
 DEPRECIACION_PERIODOS_ALLOWED_EXT = (".xlsx", ".xlsm")
 DEPRECIACION_PERIODOS_ENCABEZADOS = ["Empresa", "Activo", "Fecha período", "Meses utilizados", "Factor CCMM"]
 
+# Sinónimos de encabezado por rol (21-09-2026, pedido por el usuario): se
+# ubica cada columna por NOMBRE, no por posición, para aceptar tanto la
+# plantilla simple de 5 columnas como una exportación más ancha del kardex
+# completo (Costo Total/Valor Actualizado/Vida Útil Antes/Depreciación del
+# Ejercicio/Deprec. Acum. .../Valor Libro, tal cual se ve en la ficha del
+# activo) — esas columnas de más se IGNORAN, `calcular_kardex` las vuelve a
+# derivar solas a partir de fecha/meses/factor, así que no hace falta
+# borrarlas antes de subir el archivo. Si "Factor CCMM" aparece dos veces
+# (la ficha del activo la muestra dos veces, una por cada multiplicación en
+# que interviene), se usa la primera — ambas traen siempre el mismo valor.
+DEPRECIACION_PERIODOS_ROLES = {
+    "empresa": ["EMPRESA"],
+    "activo": ["ACTIVO"],
+    "fecha": ["FECHA PERÍODO", "FECHA PERIODO", "FECHA"],
+    "meses_utilizados": ["MESES UTILIZADOS", "MESES_UTILIZADOS"],
+    "factor_ccmm": ["FACTOR CCMM", "FACTOR_CCMM"],
+}
+DEPRECIACION_PERIODOS_ROLES_OBLIGATORIOS = ("empresa", "activo", "fecha", "meses_utilizados")
+DEPRECIACION_PERIODOS_ETIQUETAS = {
+    "empresa": "Empresa", "activo": "Activo", "fecha": "Fecha (período)", "meses_utilizados": "Meses utilizados",
+}
+
+
+def _mapear_columnas_depreciacion(fila_encabezado):
+    """Devuelve (indices, faltan): `indices` es {rol: posición_columna}
+    para los roles que se encontraron en la fila de encabezado; `faltan`
+    es la lista de roles obligatorios que no se encontraron."""
+    indices = {}
+    for idx, celda in enumerate(fila_encabezado):
+        token = str(celda).strip().upper() if celda is not None else ""
+        if not token:
+            continue
+        for rol, sinonimos in DEPRECIACION_PERIODOS_ROLES.items():
+            if rol not in indices and token in sinonimos:
+                indices[rol] = idx
+    faltan = [rol for rol in DEPRECIACION_PERIODOS_ROLES_OBLIGATORIOS if rol not in indices]
+    return indices, faltan
+
 
 def _fecha_celda_a_iso(valor):
     """Convierte el valor de una celda de fecha (datetime/date que entrega
@@ -463,6 +501,18 @@ def _leer_excel_depreciacion_periodos(file_storage):
         return None, [f"No se pudo abrir el archivo: {exc}"]
     ws = wb.active
 
+    filas_todas = list(ws.iter_rows(values_only=True))
+    if not filas_todas:
+        return None, ["El archivo está vacío."]
+
+    indices, faltan = _mapear_columnas_depreciacion(filas_todas[0])
+    if faltan:
+        etiquetas = ", ".join(DEPRECIACION_PERIODOS_ETIQUETAS[rol] for rol in faltan)
+        return None, [
+            f"Al archivo le faltan columnas obligatorias: {etiquetas}. Usa esos mismos nombres de "
+            "columna (puedes agregar columnas de más, como Costo Total o Valor Libro — se ignoran)."
+        ]
+
     empresas = depreciacion_empresas_repo.listar_empresas()
     empresas_por_nombre = {(e.get("nombre") or "").strip().lower(): e for e in empresas}
     activos_por_empresa = {
@@ -473,18 +523,18 @@ def _leer_excel_depreciacion_periodos(file_storage):
         for e in empresas
     }
 
-    total_columnas = len(DEPRECIACION_PERIODOS_ENCABEZADOS)
+    def _valor(fila, rol):
+        idx = indices.get(rol)
+        return fila[idx] if idx is not None and idx < len(fila) else None
+
     grupos = {}
     errores = []
-    for numero_fila, fila_excel in enumerate(
-        ws.iter_rows(min_row=2, max_col=total_columnas, values_only=True), start=2,
-    ):
-        valores = list(fila_excel) + [None] * (total_columnas - len(fila_excel))
-        if all(v is None or str(v).strip() == "" for v in valores):
+    for numero_fila, fila_excel in enumerate(filas_todas[1:], start=2):
+        if all(v is None or str(v).strip() == "" for v in fila_excel):
             continue  # fila vacía (ej. sobrante de la plantilla) — se ignora sin avisar
 
-        empresa_nombre = str(valores[0]).strip() if valores[0] is not None else ""
-        activo_nombre = str(valores[1]).strip() if valores[1] is not None else ""
+        empresa_nombre = str(_valor(fila_excel, "empresa")).strip() if _valor(fila_excel, "empresa") is not None else ""
+        activo_nombre = str(_valor(fila_excel, "activo")).strip() if _valor(fila_excel, "activo") is not None else ""
 
         empresa = empresas_por_nombre.get(empresa_nombre.lower())
         if not empresa_nombre or not empresa:
@@ -501,20 +551,20 @@ def _leer_excel_depreciacion_periodos(file_storage):
             )
             continue
 
-        fecha_iso = _fecha_celda_a_iso(valores[2])
+        fecha_iso = _fecha_celda_a_iso(_valor(fila_excel, "fecha"))
         if not fecha_iso:
-            errores.append(f"Fila {numero_fila}: 'Fecha período' no es una fecha válida.")
+            errores.append(f"Fila {numero_fila}: 'Fecha' no es una fecha válida.")
             continue
 
         try:
-            meses_int = int(valores[3])
+            meses_int = int(_valor(fila_excel, "meses_utilizados"))
             if meses_int <= 0:
                 raise ValueError
         except (TypeError, ValueError):
             errores.append(f"Fila {numero_fila}: 'Meses utilizados' debe ser un número entero mayor a 0.")
             continue
 
-        factor_raw = valores[4]
+        factor_raw = _valor(fila_excel, "factor_ccmm")
         try:
             factor_float = float(str(factor_raw).replace(",", ".")) if factor_raw not in (None, "") else 1.0
             if factor_float <= 0:

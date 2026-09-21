@@ -878,6 +878,95 @@ def test_depreciacion_carga_masiva():
     )
 
 
+def test_depreciacion_carga_masiva_formato_ancho():
+    """21-09-2026, pedido por el usuario: además de la plantilla simple de
+    5 columnas, la carga masiva debe aceptar el kardex COMPLETO tal cual
+    se ve en la ficha del activo (Costo Total, Valor Actualizado, Vida
+    Útil Antes, Depreciación del Ejercicio, Deprec. Acum. ..., Valor
+    Libro, con "Factor CCMM" repetido dos veces) con solo Empresa/Activo
+    agregadas al principio — las columnas de más se ignoran, se
+    recalculan solas a partir de Fecha/Meses Utilizados/Factor CCMM."""
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+    client.post("/depreciacion/empresas/crear", data={"rut": "", "nombre": "FORMATO ANCHO SPA"}, follow_redirects=True)
+    empresa = [e for e in FAKE.table("depreciacion_empresas").select("*").execute().data if e["nombre"] == "FORMATO ANCHO SPA"][0]
+    empresa_id = empresa["id"]
+
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/crear",
+        data={
+            "nombre_activo": "Maquinaria X", "fecha_adquisicion": "2018-12-01",
+            "valor_adquisicion": "7308292", "vida_util_anios": "5", "categoria_id": "", "grupo_contable_codigo": "",
+        },
+        follow_redirects=True,
+    )
+    activo = [a for a in FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data if a["nombre_activo"] == "Maquinaria X"][0]
+    activo_id = activo["id"]
+
+    # Mismo layout ancho que la captura del usuario (14 columnas, "Factor
+    # CCMM" dos veces) — columnas de más ignoradas a propósito.
+    wb = Workbook()
+    ws = wb.active
+    ws.append([
+        "Empresa", "Activo", "Fecha", "Meses Utilizados", "Costo Total", "Factor CCMM", "Valor Actualizado",
+        "Vida Útil Antes (meses)", "Depreciación del Ejercicio", "Deprec. Acum. (apertura)", "Factor CCMM",
+        "Deprec. Acum. (Actualizado)", "Deprec. Acum. (cierre)", "Valor Libro",
+    ])
+    ws.append([
+        "FORMATO ANCHO SPA", "Maquinaria X", "2023-12-31", 12, 7_308_292, 1.0, 7_308_292,
+        60, 1_461_658, 0, 1.0, 0, 1_461_658, 5_846_634,
+    ])
+    ws.append([
+        "FORMATO ANCHO SPA", "Maquinaria X", "2024-12-31", 12, 7_308_292, 1.0, 7_308_292,
+        48, 1_461_658, 1_461_658, 1.0, 1_461_658, 2_923_317, 4_384_975,
+    ])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    r = client.post(
+        "/admin/depreciacion/periodos/cargar",
+        data={"archivo": (io.BytesIO(buf.getvalue()), "kardex_ancho.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("carga en formato ancho -> 200", r.status_code == 200)
+    check("avisa 2 períodos en 1 activo", "2 período" in r.get_data(as_text=True) and "1 activo" in r.get_data(as_text=True))
+
+    periodos = FAKE.table("depreciacion_periodos").select("*").eq("activo_id", activo_id).execute().data
+    check("solo se guardaron fecha/meses/factor (columnas de más ignoradas)", len(periodos) == 2)
+    p1 = next(p for p in periodos if p["fecha"] == "2023-12-31")
+    check("fecha/meses/factor quedaron bien tomados de la columna correcta (no de una columna vecina)", p1["meses_utilizados"] == 12 and p1["factor_ccmm"] == 1.0)
+
+    # El motor de cálculo recalcula solo el resto — confirma que reproduce
+    # los mismos valores que ya traía la columna "de más" del Excel (o sea,
+    # que no hacía falta traerlos: son 100% derivables de fecha/meses/factor).
+    kardex_calculado = calcular_kardex(activo, sorted(periodos, key=lambda p: p["fecha"]))
+    check(
+        "el motor recalcula el mismo 'Depreciación del Ejercicio' que traía el Excel ancho (1.461.658)",
+        kardex_calculado[0]["depreciacion_ejercicio"] == 1_461_658,
+    )
+    check(
+        "el motor recalcula el mismo 'Valor Libro' de la 2ª fila que traía el Excel ancho (4.384.975)",
+        kardex_calculado[1]["valor_libro"] == 4_384_975,
+    )
+
+    # Faltan columnas obligatorias (ej. "Activo") -> error claro, no una excepción.
+    wb_sin_activo = Workbook()
+    ws_sin_activo = wb_sin_activo.active
+    ws_sin_activo.append(["Empresa", "Fecha", "Meses Utilizados"])
+    ws_sin_activo.append(["FORMATO ANCHO SPA", "2025-12-31", 12])
+    buf_sin_activo = io.BytesIO()
+    wb_sin_activo.save(buf_sin_activo)
+    r = client.post(
+        "/admin/depreciacion/periodos/cargar",
+        data={"archivo": (io.BytesIO(buf_sin_activo.getvalue()), "sin_activo.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("sin la columna 'Activo' -> avisa qué columna falta, no revienta", "faltan columnas obligatorias" in r.get_data(as_text=True).lower() and "Activo" in r.get_data(as_text=True))
+
+
 def test_trabajador_no_puede_cargar_depreciacion_masiva():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
@@ -911,6 +1000,7 @@ def main():
     test_activo_baja_flujo()
     test_categorias_guardar()
     test_depreciacion_carga_masiva()
+    test_depreciacion_carga_masiva_formato_ancho()
     test_trabajador_no_puede_cargar_depreciacion_masiva()
     test_trabajador_no_puede_ver_depreciacion()
 

@@ -43,9 +43,13 @@
     <div class="section-title">2. Sube el Excel completo</div>
   </div>
   <p class="muted" style="margin-top:0">
-    Encabezados: Empresa, Activo, Fecha período, Meses utilizados, Factor CCMM. Si un activo aparece varias
-    veces (un período por año), se guardan todas sus filas juntas — pero OJO: esto reemplaza por completo el
-    kardex que ese activo ya tuviera cargado, no lo complementa.
+    Columnas obligatorias (por nombre, no importa el orden): Empresa, Activo, Fecha (o "Fecha período"),
+    Meses Utilizados, y opcionalmente Factor CCMM. También puedes subir directamente el kardex completo tal
+    cual se ve en la ficha de un activo (con Costo Total, Valor Actualizado, Depreciación del Ejercicio,
+    Deprec. Acum., Valor Libro, etc.) agregándole solo las columnas Empresa y Activo al principio — el resto
+    de las columnas se ignora, se vuelve a calcular solo. Si un activo aparece varias veces (un período por
+    año), se guardan todas sus filas juntas — pero OJO: esto reemplaza por completo el kardex que ese activo
+    ya tuviera cargado, no lo complementa.
   </p>
   <form method="post" action="{{ url_for('admin.depreciacion_periodos_cargar') }}" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
