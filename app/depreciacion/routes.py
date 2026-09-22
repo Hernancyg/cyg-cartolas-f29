@@ -54,6 +54,7 @@ import io
 from datetime import date, datetime
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
+from openpyxl import Workbook, load_workbook
 
 from app.auth.decorators import pagina_required
 from app.conciliacion.plan_cuentas import CUENTAS_POR_CODIGO, PLAN_CUENTAS
@@ -824,3 +825,240 @@ def categorias_guardar():
             "No se pudo guardar (¿falta ejecutar migration/006_depreciacion.sql en Supabase?).", "error",
         )
     return redirect(url_for("depreciacion.categorias"))
+
+
+# ---------------------------------------------------------------------------
+# Carga masiva de "años anteriores" (21-09-2026, pedido por el usuario) —
+# reemplaza, POR ACTIVO, todo su kardex de períodos (`depreciacion_periodos`)
+# con lo que traiga el Excel, usando la misma `depreciacion_periodos_repo.
+# guardar_todos` que ya respalda la edición manual del kardex en la ficha
+# del activo (ver `periodos_guardar` más arriba). No crea empresas ni
+# activos nuevos: cada fila debe calzar por nombre (sin distinguir
+# mayúsculas) con una empresa y un activo YA creados en esta pestaña — si
+# no calzan, se avisa fila por fila y no se guarda nada ("todo o nada").
+# Vivió primero como página de Administrador (admin_required); se movió
+# acá para que quede accesible directo desde la propia pestaña
+# Depreciación, con el mismo acceso que "Empresas"/"Categorías SII"
+# (pagina_required — admin por defecto, pero configurable en Pestañas).
+# ---------------------------------------------------------------------------
+
+DEPRECIACION_PERIODOS_ALLOWED_EXT = (".xlsx", ".xlsm")
+DEPRECIACION_PERIODOS_ENCABEZADOS = ["Empresa", "Activo", "Fecha período", "Meses utilizados", "Factor CCMM"]
+
+# Sinónimos de encabezado por rol: se ubica cada columna por NOMBRE, no por
+# posición, para aceptar tanto la plantilla simple de 5 columnas como una
+# exportación más ancha del kardex completo (Costo Total/Valor Actualizado/
+# Vida Útil Antes/Depreciación del Ejercicio/Deprec. Acum. .../Valor Libro,
+# tal cual se ve en la ficha del activo) — esas columnas de más se IGNORAN,
+# `calcular_kardex` las vuelve a derivar solas a partir de fecha/meses/
+# factor, así que no hace falta borrarlas antes de subir el archivo. Si
+# "Factor CCMM" aparece dos veces (la ficha del activo la muestra dos
+# veces, una por cada multiplicación en que interviene), se usa la primera
+# — ambas traen siempre el mismo valor.
+DEPRECIACION_PERIODOS_ROLES = {
+    "empresa": ["EMPRESA"],
+    "activo": ["ACTIVO"],
+    "fecha": ["FECHA PERÍODO", "FECHA PERIODO", "FECHA"],
+    "meses_utilizados": ["MESES UTILIZADOS", "MESES_UTILIZADOS"],
+    "factor_ccmm": ["FACTOR CCMM", "FACTOR_CCMM"],
+}
+DEPRECIACION_PERIODOS_ROLES_OBLIGATORIOS = ("empresa", "activo", "fecha", "meses_utilizados")
+DEPRECIACION_PERIODOS_ETIQUETAS = {
+    "empresa": "Empresa", "activo": "Activo", "fecha": "Fecha (período)", "meses_utilizados": "Meses utilizados",
+}
+
+
+def _mapear_columnas_depreciacion(fila_encabezado):
+    """Devuelve (indices, faltan): `indices` es {rol: posición_columna}
+    para los roles que se encontraron en la fila de encabezado; `faltan`
+    es la lista de roles obligatorios que no se encontraron."""
+    indices = {}
+    for idx, celda in enumerate(fila_encabezado):
+        token = str(celda).strip().upper() if celda is not None else ""
+        if not token:
+            continue
+        for rol, sinonimos in DEPRECIACION_PERIODOS_ROLES.items():
+            if rol not in indices and token in sinonimos:
+                indices[rol] = idx
+    faltan = [rol for rol in DEPRECIACION_PERIODOS_ROLES_OBLIGATORIOS if rol not in indices]
+    return indices, faltan
+
+
+def _fecha_celda_a_iso(valor):
+    """Convierte el valor de una celda de fecha (datetime/date que entrega
+    openpyxl para una celda con formato de fecha, o texto en
+    aaaa-mm-dd/dd-mm-aaaa/dd/mm/aaaa) a 'YYYY-MM-DD'. Devuelve None si no
+    se pudo interpretar."""
+    if valor is None or str(valor).strip() == "":
+        return None
+    if hasattr(valor, "strftime"):
+        return valor.strftime("%Y-%m-%d")
+    texto = str(valor).strip()
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(texto, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def _leer_excel_depreciacion_periodos(file_storage):
+    """Devuelve (grupos, errores). `grupos` es
+    `{activo_id: {"nombre": ..., "empresa": ..., "filas": [...]}}` — cada
+    fila ya lista para `depreciacion_periodos_repo.guardar_todos`
+    (`{"fecha": "YYYY-MM-DD", "meses_utilizados": int, "factor_ccmm": float}`).
+    Si `errores` no está vacía, `grupos` es `None` (todo o nada, mismo
+    criterio que `admin/routes.py:_leer_excel_planificacion`)."""
+    try:
+        wb = load_workbook(io.BytesIO(file_storage.read()), data_only=True)
+    except Exception as exc:  # noqa: BLE001
+        return None, [f"No se pudo abrir el archivo: {exc}"]
+    ws = wb.active
+
+    filas_todas = list(ws.iter_rows(values_only=True))
+    if not filas_todas:
+        return None, ["El archivo está vacío."]
+
+    indices, faltan = _mapear_columnas_depreciacion(filas_todas[0])
+    if faltan:
+        etiquetas = ", ".join(DEPRECIACION_PERIODOS_ETIQUETAS[rol] for rol in faltan)
+        return None, [
+            f"Al archivo le faltan columnas obligatorias: {etiquetas}. Usa esos mismos nombres de "
+            "columna (puedes agregar columnas de más, como Costo Total o Valor Libro — se ignoran)."
+        ]
+
+    empresas = depreciacion_empresas_repo.listar_empresas()
+    empresas_por_nombre = {(e.get("nombre") or "").strip().lower(): e for e in empresas}
+    activos_por_empresa = {
+        e["id"]: {
+            (a.get("nombre_activo") or "").strip().lower(): a
+            for a in depreciacion_activos_repo.listar_por_empresa(e["id"])
+        }
+        for e in empresas
+    }
+
+    def _valor(fila, rol):
+        idx = indices.get(rol)
+        return fila[idx] if idx is not None and idx < len(fila) else None
+
+    grupos = {}
+    errores = []
+    for numero_fila, fila_excel in enumerate(filas_todas[1:], start=2):
+        if all(v is None or str(v).strip() == "" for v in fila_excel):
+            continue  # fila vacía (ej. sobrante de la plantilla) — se ignora sin avisar
+
+        empresa_nombre = str(_valor(fila_excel, "empresa")).strip() if _valor(fila_excel, "empresa") is not None else ""
+        activo_nombre = str(_valor(fila_excel, "activo")).strip() if _valor(fila_excel, "activo") is not None else ""
+
+        empresa = empresas_por_nombre.get(empresa_nombre.lower())
+        if not empresa_nombre or not empresa:
+            errores.append(
+                f"Fila {numero_fila}: la empresa '{empresa_nombre}' no existe en Depreciación → Empresas."
+            )
+            continue
+
+        activo = activos_por_empresa.get(empresa["id"], {}).get(activo_nombre.lower())
+        if not activo_nombre or not activo:
+            errores.append(
+                f"Fila {numero_fila}: el activo '{activo_nombre}' no existe en la empresa "
+                f"'{empresa['nombre']}' — créalo primero en su ficha."
+            )
+            continue
+
+        fecha_iso = _fecha_celda_a_iso(_valor(fila_excel, "fecha"))
+        if not fecha_iso:
+            errores.append(f"Fila {numero_fila}: 'Fecha' no es una fecha válida.")
+            continue
+
+        try:
+            meses_int = int(_valor(fila_excel, "meses_utilizados"))
+            if meses_int <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            errores.append(f"Fila {numero_fila}: 'Meses utilizados' debe ser un número entero mayor a 0.")
+            continue
+
+        factor_raw = _valor(fila_excel, "factor_ccmm")
+        try:
+            factor_float = float(str(factor_raw).replace(",", ".")) if factor_raw not in (None, "") else 1.0
+            if factor_float <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            errores.append(
+                f"Fila {numero_fila}: 'Factor CCMM' debe ser un número mayor a 0 (déjalo vacío para 1)."
+            )
+            continue
+
+        grupo = grupos.setdefault(
+            activo["id"], {"nombre": activo["nombre_activo"], "empresa": empresa["nombre"], "filas": []},
+        )
+        grupo["filas"].append({"fecha": fecha_iso, "meses_utilizados": meses_int, "factor_ccmm": factor_float})
+
+    if errores:
+        return None, errores
+    return grupos, []
+
+
+@depreciacion_bp.route("/periodos", methods=["GET"])
+@pagina_required("depreciacion.empresas")
+def periodos_carga_masiva():
+    return render_template("depreciacion/periodos_carga_masiva.html")
+
+
+@depreciacion_bp.route("/periodos/plantilla", methods=["GET"])
+@pagina_required("depreciacion.empresas")
+def periodos_plantilla():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Depreciación años anteriores"
+    ws.append(DEPRECIACION_PERIODOS_ENCABEZADOS)
+    for empresa in depreciacion_empresas_repo.listar_empresas():
+        for activo in depreciacion_activos_repo.listar_por_empresa(empresa["id"]):
+            ws.append([empresa["nombre"], activo["nombre_activo"], None, None, None])
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return send_file(
+        buffer, as_attachment=True, download_name="depreciacion_anos_anteriores_plantilla.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@depreciacion_bp.route("/periodos/cargar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def periodos_cargar():
+    archivo = request.files.get("archivo")
+    if not archivo or not archivo.filename:
+        flash("Sube un archivo Excel para continuar.", "error")
+        return redirect(url_for("depreciacion.periodos_carga_masiva"))
+    if not archivo.filename.lower().endswith(DEPRECIACION_PERIODOS_ALLOWED_EXT):
+        flash("Formato no permitido. Sube un archivo .xlsx o .xlsm.", "error")
+        return redirect(url_for("depreciacion.periodos_carga_masiva"))
+
+    grupos, errores = _leer_excel_depreciacion_periodos(archivo)
+    if errores:
+        for mensaje in errores:
+            flash(mensaje, "error")
+        return redirect(url_for("depreciacion.periodos_carga_masiva"))
+    if not grupos:
+        flash("El archivo no trae ninguna fila con datos.", "error")
+        return redirect(url_for("depreciacion.periodos_carga_masiva"))
+
+    total_periodos = 0
+    try:
+        for activo_id, grupo in grupos.items():
+            filas = sorted(grupo["filas"], key=lambda f: f["fecha"])
+            depreciacion_periodos_repo.guardar_todos(activo_id, filas)
+            total_periodos += len(filas)
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning("No se pudo guardar depreciacion_periodos (carga masiva): %s", exc)
+        flash("No se pudo guardar: hubo un problema de conexión con la base de datos.", "error")
+        return redirect(url_for("depreciacion.periodos_carga_masiva"))
+
+    flash(
+        f"Depreciación cargada: {total_periodos} período(s) en {len(grupos)} activo(s). "
+        "Esto reemplazó todo el kardex previo de cada uno de esos activos.",
+        "success",
+    )
+    return redirect(url_for("depreciacion.periodos_carga_masiva"))

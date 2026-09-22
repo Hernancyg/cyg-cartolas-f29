@@ -1,24 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Depreciación · Administrador · C&amp;G Group{% endblock %}
+{% block title %}Depreciación · Carga de años anteriores · C&amp;G Group{% endblock %}
 {% block content %}
 {% from "_icons.html" import icon %}
 
-<div class="page-title">⚙ Panel de Administrador</div>
+<div class="page-title">Depreciación</div>
 <div class="page-title-underline"></div>
 <p class="page-subtitle">
   Carga masiva de la depreciación de años anteriores para activos que ya vienen depreciándose desde antes de
-  usar <a href="{{ url_for('depreciacion.empresas') }}">Depreciación</a> — reemplaza, POR ACTIVO, todo el
-  kardex de cada activo que aparezca en el Excel. No crea empresas ni activos nuevos: cada fila debe calzar
-  por nombre con una empresa y un activo YA creados ahí.
+  usar esta pestaña — reemplaza, POR ACTIVO, todo el kardex de cada activo que aparezca en el Excel. No crea
+  empresas ni activos nuevos: cada fila debe calzar por nombre con una empresa y un activo YA creados acá.
 </p>
 
 <div class="nav subnav">
-  <a href="{{ url_for('admin.cuentas') }}" class="nav-item">Cuentas F29</a>
-  <a href="{{ url_for('admin.usuarios') }}" class="nav-item">Usuarios</a>
-  <a href="{{ url_for('admin.pestanas') }}" class="nav-item">Pestañas</a>
-  <a href="{{ url_for('admin.tipos_documento') }}" class="nav-item">Tipos de Documento</a>
-  <a href="{{ url_for('admin.planificacion_at2027') }}" class="nav-item">Planificación AT 2027</a>
-  <a href="{{ url_for('admin.depreciacion_periodos') }}" class="nav-item active">Depreciación</a>
+  <a href="{{ url_for('depreciacion.empresas') }}" class="nav-item">Empresas</a>
+  <a href="{{ url_for('depreciacion.categorias') }}" class="nav-item">Categorías SII</a>
+  <a href="{{ url_for('depreciacion.periodos_carga_masiva') }}" class="nav-item active">Cargar años anteriores</a>
 </div>
 
 <div class="card mergeable">
@@ -32,7 +28,7 @@
     si corresponde, "Factor CCMM" (déjalo vacío para 1). Si un activo tuvo varios años de depreciación
     anterior, duplica su fila tantas veces como años necesites (una fila = un período).
   </p>
-  <a href="{{ url_for('admin.depreciacion_periodos_plantilla') }}" class="btn btn-secondary">
+  <a href="{{ url_for('depreciacion.periodos_plantilla') }}" class="btn btn-secondary">
     {{ icon('download', 16) }} Descargar plantilla
   </a>
 </div>
@@ -51,7 +47,7 @@
     año), se guardan todas sus filas juntas — pero OJO: esto reemplaza por completo el kardex que ese activo
     ya tuviera cargado, no lo complementa.
   </p>
-  <form method="post" action="{{ url_for('admin.depreciacion_periodos_cargar') }}" enctype="multipart/form-data">
+  <form method="post" action="{{ url_for('depreciacion.periodos_cargar') }}" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="dropzone" id="dropzone-depreciacion">
       <div class="dropzone-left">

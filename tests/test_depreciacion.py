@@ -789,10 +789,10 @@ def test_depreciacion_carga_masiva():
     activo = [a for a in FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data if a["nombre_activo"] == "Grua Antigua"][0]
     activo_id = activo["id"]
 
-    r = client.get("/admin/depreciacion/periodos")
-    check("GET /admin/depreciacion/periodos -> 200", r.status_code == 200)
+    r = client.get("/depreciacion/periodos")
+    check("GET /depreciacion/periodos -> 200", r.status_code == 200)
 
-    r = client.get("/admin/depreciacion/periodos/plantilla")
+    r = client.get("/depreciacion/periodos/plantilla")
     check(
         "GET plantilla -> 200 xlsx",
         r.status_code == 200 and "spreadsheetml" in (r.headers.get("Content-Type") or ""),
@@ -809,7 +809,7 @@ def test_depreciacion_carga_masiva():
         ["CARGA MASIVA SPA", "Grua Antigua", "2016-12-31", 12, 1.05],
     ])
     r = client.post(
-        "/admin/depreciacion/periodos/cargar",
+        "/depreciacion/periodos/cargar",
         data={"archivo": (io.BytesIO(xlsx), "carga.xlsx")},
         content_type="multipart/form-data",
         follow_redirects=True,
@@ -829,7 +829,7 @@ def test_depreciacion_carga_masiva():
     # "todo o nada" de `depreciacion_periodos_repo.guardar_todos`, ahora por activo).
     xlsx2 = _xlsx_depreciacion_periodos([["CARGA MASIVA SPA", "Grua Antigua", "2017-12-31", 12, ""]])
     client.post(
-        "/admin/depreciacion/periodos/cargar",
+        "/depreciacion/periodos/cargar",
         data={"archivo": (io.BytesIO(xlsx2), "carga2.xlsx")},
         content_type="multipart/form-data",
     )
@@ -842,7 +842,7 @@ def test_depreciacion_carga_masiva():
     # Empresa inexistente -> error, no toca nada (todo o nada).
     xlsx_empresa_mala = _xlsx_depreciacion_periodos([["EMPRESA QUE NO EXISTE SPA", "Grua Antigua", "2018-12-31", 12, ""]])
     r = client.post(
-        "/admin/depreciacion/periodos/cargar",
+        "/depreciacion/periodos/cargar",
         data={"archivo": (io.BytesIO(xlsx_empresa_mala), "malo.xlsx")},
         content_type="multipart/form-data",
         follow_redirects=True,
@@ -856,7 +856,7 @@ def test_depreciacion_carga_masiva():
     # Activo inexistente en una empresa que sí existe -> error.
     xlsx_activo_malo = _xlsx_depreciacion_periodos([["CARGA MASIVA SPA", "Activo Que No Existe", "2018-12-31", 12, ""]])
     r = client.post(
-        "/admin/depreciacion/periodos/cargar",
+        "/depreciacion/periodos/cargar",
         data={"archivo": (io.BytesIO(xlsx_activo_malo), "malo2.xlsx")},
         content_type="multipart/form-data",
         follow_redirects=True,
@@ -866,7 +866,7 @@ def test_depreciacion_carga_masiva():
     # Meses inválidos -> error, todo o nada (ni siquiera guarda las filas válidas del mismo archivo).
     xlsx_meses_malos = _xlsx_depreciacion_periodos([["CARGA MASIVA SPA", "Grua Antigua", "2019-12-31", "no-es-numero", ""]])
     r = client.post(
-        "/admin/depreciacion/periodos/cargar",
+        "/depreciacion/periodos/cargar",
         data={"archivo": (io.BytesIO(xlsx_meses_malos), "malo3.xlsx")},
         content_type="multipart/form-data",
         follow_redirects=True,
@@ -925,7 +925,7 @@ def test_depreciacion_carga_masiva_formato_ancho():
     wb.save(buf)
 
     r = client.post(
-        "/admin/depreciacion/periodos/cargar",
+        "/depreciacion/periodos/cargar",
         data={"archivo": (io.BytesIO(buf.getvalue()), "kardex_ancho.xlsx")},
         content_type="multipart/form-data",
         follow_redirects=True,
@@ -959,7 +959,7 @@ def test_depreciacion_carga_masiva_formato_ancho():
     buf_sin_activo = io.BytesIO()
     wb_sin_activo.save(buf_sin_activo)
     r = client.post(
-        "/admin/depreciacion/periodos/cargar",
+        "/depreciacion/periodos/cargar",
         data={"archivo": (io.BytesIO(buf_sin_activo.getvalue()), "sin_activo.xlsx")},
         content_type="multipart/form-data",
         follow_redirects=True,
@@ -970,11 +970,11 @@ def test_depreciacion_carga_masiva_formato_ancho():
 def test_trabajador_no_puede_cargar_depreciacion_masiva():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
-    r = client.get("/admin/depreciacion/periodos")
+    r = client.get("/depreciacion/periodos")
     check("trabajador NO puede ver la carga masiva de Depreciación (403)", r.status_code == 403)
-    r = client.get("/admin/depreciacion/periodos/plantilla")
+    r = client.get("/depreciacion/periodos/plantilla")
     check("trabajador NO puede descargar la plantilla (403)", r.status_code == 403)
-    r = client.post("/admin/depreciacion/periodos/cargar", data={}, content_type="multipart/form-data")
+    r = client.post("/depreciacion/periodos/cargar", data={}, content_type="multipart/form-data")
     check("trabajador NO puede cargar el Excel (403)", r.status_code == 403)
 
 
