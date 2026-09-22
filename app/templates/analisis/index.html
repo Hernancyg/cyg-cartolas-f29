@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Análisis · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">Análisis</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  Genera el Excel de análisis mensual (Estado de Situación Financiera Clasificado) a partir de
+  los datos que ya trajo el puente Nubox → repositorio. Completa el nombre y RUT de la empresa
+  y descarga el archivo listo para abrir en Excel.
+</p>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">{{ icon('trending', 16) }} Empresas / períodos disponibles</div>
+  {% if disponibles %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Código empresa</th><th>Período</th><th>Nombre empresa</th><th>RUT</th><th></th></tr></thead>
+      <tbody>
+        {% for d in disponibles %}
+        <tr>
+          <td>{{ d.alias }}</td>
+          <td>{{ d.periodo_label }}</td>
+          <td>
+            <input type="text" form="form-generar-{{ loop.index }}" name="empresa_nombre" placeholder="Razón social" style="min-width:220px">
+          </td>
+          <td>
+            <input type="text" form="form-generar-{{ loop.index }}" name="empresa_rut" placeholder="76.xxx.xxx-x" style="min-width:130px">
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('analisis.generar') }}" id="form-generar-{{ loop.index }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="alias" value="{{ d.alias }}">
+              <input type="hidden" name="periodo" value="{{ d.periodo }}">
+              <button type="submit" class="btn btn-secondary">{{ icon('download', 16) }} Generar Excel</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">
+    Todavía no hay datos de Nubox importados en <code>nubox_importado/</code> — primero hay que
+    correr el puente Nubox → repo para alguna empresa y período.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

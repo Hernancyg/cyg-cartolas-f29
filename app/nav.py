@@ -23,6 +23,7 @@ PAGINAS = [
     {"endpoint": "sii.contribuyente", "icon": "shield", "label": "Consulta SII", "admin_only": True, "configurable": True},
     {"endpoint": "depreciacion.empresas", "icon": "calculator", "label": "Depreciación", "admin_only": True, "configurable": True},
     {"endpoint": "planificacion_at2027.index", "icon": "calendar", "label": "Planificación AT 2027", "admin_only": True, "configurable": True},
+    {"endpoint": "analisis.index", "icon": "trending", "label": "Análisis", "admin_only": True, "configurable": True},
     {"endpoint": "admin.cuentas", "icon": "gear", "label": "Administrador", "admin_only": True, "configurable": False},
 ]
 

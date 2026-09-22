@@ -120,6 +120,7 @@ def create_app():
     from app.sii.routes import sii_bp
     from app.depreciacion.routes import depreciacion_bp
     from app.planificacion_at2027.routes import planificacion_at2027_bp
+    from app.analisis.routes import analisis_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(cartolas_bp)
@@ -133,6 +134,7 @@ def create_app():
     app.register_blueprint(sii_bp)
     app.register_blueprint(depreciacion_bp)
     app.register_blueprint(planificacion_at2027_bp)
+    app.register_blueprint(analisis_bp)
 
     @app.route("/")
     def raiz():
