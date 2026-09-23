@@ -18,6 +18,7 @@ from openpyxl import Workbook
 from app.auth.decorators import pagina_required
 from app.data import planificacion_at2027_repo
 from app.planificacion_at2027.pdf_informe import generar_pdf_informe
+from app.planificacion_at2027.pdf_calendario import generar_pdf_calendario
 
 planificacion_at2027_bp = Blueprint(
     "planificacion_at2027", __name__, url_prefix="/planificacion_at2027",
@@ -203,6 +204,32 @@ def informe():
     pdf = generar_pdf_informe(secciones)
     return send_file(
         pdf, as_attachment=True, download_name="informe_planificacion_at2027.pdf", mimetype="application/pdf",
+    )
+
+
+@planificacion_at2027_bp.route("/informe/calendario", methods=["POST"])
+@pagina_required("planificacion_at2027.index")
+def calendario_reuniones():
+    """Calendario de reuniones por analista (22-09-2026, pedido por el
+    usuario): junta las 4 columnas de reunión de cada empresa (cada una
+    guarda el mes en que le toca esa reunión) en un calendario de 2 filas
+    x 3 meses por analista — ver app/planificacion_at2027/pdf_calendario.py.
+    Comparte los mismos checkboxes de analista que "Generar informe PDF"
+    (mismo <form>, otro botón con `formaction`)."""
+    analistas_elegidos = [a.strip() for a in request.form.getlist("analistas") if a.strip()]
+    if not analistas_elegidos:
+        flash("Selecciona al menos un analista para el calendario.", "error")
+        return redirect(url_for("planificacion_at2027.index"))
+
+    filas = planificacion_at2027_repo.listar_todos()
+    secciones = [
+        {"analista": analista, "filas": [f for f in filas if (f.get("analista") or "").strip() == analista]}
+        for analista in analistas_elegidos
+    ]
+
+    pdf = generar_pdf_calendario(secciones)
+    return send_file(
+        pdf, as_attachment=True, download_name="calendario_reuniones_planificacion_at2027.pdf", mimetype="application/pdf",
     )
 
 

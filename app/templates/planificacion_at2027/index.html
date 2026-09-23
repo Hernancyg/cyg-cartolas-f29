@@ -111,13 +111,14 @@
       <div class="plan-toolbar-acciones">
         <div class="plan-informe-dropdown" id="plan-informe-dropdown">
           <button type="button" class="btn btn-secondary" id="plan-informe-toggle-btn" onclick="cygPlanToggleInforme(event)">
-            {{ icon('invoice', 16) }} Generar informe PDF
+            {{ icon('invoice', 16) }} Informes PDF
           </button>
           <form method="post" action="{{ url_for('planificacion_at2027.informe') }}" class="plan-informe-panel" id="plan-informe-panel" hidden>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="plan-informe-panel-title">Elige uno o varios analistas</div>
             <div id="plan-informe-checkboxes"></div>
-            <button type="submit" class="btn plan-btn-exportar plan-informe-panel-generar">Generar informe</button>
+            <button type="submit" class="btn plan-btn-exportar plan-informe-panel-generar">Informe por analista</button>
+            <button type="submit" formaction="{{ url_for('planificacion_at2027.calendario_reuniones') }}" class="btn btn-secondary plan-informe-panel-generar">{{ icon('calendar', 16) }} Calendario de reuniones</button>
           </form>
         </div>
         <button type="button" class="btn btn-secondary" id="plan-reuniones-btn">

@@ -246,6 +246,47 @@ def test_informe_pdf():
     check("informe entrega un .pdf (Content-Type correcto)", (r.headers.get("Content-Type") or "") == "application/pdf")
 
 
+def test_calendario_reuniones_pdf():
+    client = flask_app.test_client()
+    _login_admin(client)
+
+    # Una empresa con 2 categorías el mismo mes (Diciembre) para probar
+    # que ambas etiquetas se muestran sin chocar, y otra con reuniones en
+    # meses separados.
+    xlsx = _xlsx_planificacion([
+        [20, "EMPRESA CALENDARIO UNO SPA", "Pedro", 1, "Caja", "Pedro", "", "", "", "", "", "", "Diciembre", "Diciembre", "", "", "", ""],
+        [21, "EMPRESA CALENDARIO DOS SPA", "Pedro", 2, "Banco", "", "Pedro", "", "", "", "", "", "", "", "Marzo-nunca", "Enero", "", ""],
+    ])
+    client.post(
+        "/admin/planificacion_at2027/cargar",
+        data={"archivo": (io.BytesIO(xlsx), "calendario.xlsx")},
+        content_type="multipart/form-data",
+    )
+
+    r = client.post("/planificacion_at2027/informe/calendario", data={}, follow_redirects=True)
+    check("calendario sin analistas elegidos -> 200 (re-muestra la página con el error)", r.status_code == 200)
+    check("avisa que hay que elegir al menos un analista", "Selecciona al menos un analista" in r.get_data(as_text=True))
+
+    r = client.post("/planificacion_at2027/informe/calendario", data={"analistas": ["Pedro"]})
+    check("calendario de un analista -> 200", r.status_code == 200)
+    check("calendario entrega un .pdf (Content-Type correcto)", (r.headers.get("Content-Type") or "") == "application/pdf")
+    check("calendario: el PDF no viene vacío", len(r.data) > 500)
+
+    with pdfplumber.open(io.BytesIO(r.data)) as pdf:
+        texto_pdf = "\n".join(pagina.extract_text() or "" for pagina in pdf.pages)
+    check("calendario: título del PDF presente", "CALENDARIO DE REUNIONES" in texto_pdf)
+    check("calendario: nombre del analista presente", "Pedro" in texto_pdf)
+    check("calendario: empresa con reunión en Diciembre aparece", "EMPRESA CALENDARIO UNO SPA" in texto_pdf)
+    check("calendario: empresa con reunión en Enero aparece", "EMPRESA CALENDARIO DOS SPA" in texto_pdf)
+    check("calendario: etiqueta de Cat.1 (1ª vez) presente", "1ª" in texto_pdf)
+    check("calendario: etiqueta de Cat.2 presente", "2" in texto_pdf)
+    check("calendario: etiqueta de Cat.1 (2ª vez) presente", "1ª·2" in texto_pdf)
+    check(
+        "calendario: un mes fuera del ciclo Sep-Feb (dato sucio) no revienta, solo se ignora",
+        "Marzo-nunca" not in texto_pdf,
+    )
+
+
 def test_trabajador_sin_acceso():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
@@ -258,6 +299,9 @@ def test_trabajador_sin_acceso():
 
     r = client.post("/planificacion_at2027/informe", data={"analistas": ["Javier"]})
     check("trabajador NO puede generar el informe PDF (403)", r.status_code == 403)
+
+    r = client.post("/planificacion_at2027/informe/calendario", data={"analistas": ["Javier"]})
+    check("trabajador NO puede generar el calendario de reuniones (403)", r.status_code == 403)
 
     r = client.get("/admin/planificacion_at2027")
     check("trabajador NO puede ver la carga masiva en Administrador (403)", r.status_code == 403)
@@ -272,6 +316,7 @@ def main():
     test_carga_masiva_con_errores_no_guarda_nada()
     test_estado_calculado_resumen_y_exportar()
     test_informe_pdf()
+    test_calendario_reuniones_pdf()
     test_trabajador_sin_acceso()
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")
