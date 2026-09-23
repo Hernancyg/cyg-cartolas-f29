@@ -112,6 +112,10 @@ def _resumen_de(filas: list) -> dict:
     ]
 
     return {
+        # "completado"/"completado_pct" ya no se muestran en la tarjeta KPI
+        # de la página (22-09-2026, pedido por el usuario: quitarla) pero
+        # siguen aquí porque `pdf_informe.py` reutiliza este mismo resumen
+        # por analista para la fila "Completado" del informe PDF.
         "total": total, "completado": completado, "en_proceso": en_proceso, "sin_asignar": sin_asignar,
         "completado_pct": pct(completado), "en_proceso_pct": pct(en_proceso), "sin_asignar_pct": pct(sin_asignar),
         "caja": caja, "banco": banco,

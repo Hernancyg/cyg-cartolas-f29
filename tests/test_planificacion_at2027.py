@@ -172,7 +172,7 @@ def test_estado_calculado_resumen_y_exportar():
         body.count('plan-estado-completado">') == 2,
     )
     check("tarjeta 'Total' = 4/4 (formato filtradas/total)", 'id="plan-kpi-total">4/4<' in body)
-    check("tarjeta 'Completado' cuenta 2 (50%)", 'id="plan-kpi-completado">2 <span class="plan-kpi-pct">50%' in body)
+    check("tarjeta 'Completado' ya no se muestra (22-09-2026, pedido por el usuario: quitarla)", 'id="plan-kpi-completado"' not in body)
     check("tarjeta 'En proceso' cuenta 1 (25%)", 'id="plan-kpi-en-proceso">1 <span class="plan-kpi-pct">25%' in body)
     check("tarjeta 'Sin asignar' cuenta 1 (25%)", 'id="plan-kpi-sin-asignar">1 <span class="plan-kpi-pct">25%' in body)
     check("tarjeta 'Caja / Banco' presente", 'id="plan-kpi-caja"' in body and 'id="plan-kpi-banco"' in body)

@@ -21,14 +21,6 @@
       </div>
     </div>
     <div class="plan-kpi">
-      <div class="plan-kpi-icon plan-kpi-icon-ok">{{ icon('check-circle', 18) }}</div>
-      <div>
-        <div class="plan-kpi-label">Con plan asignado</div>
-        <div class="plan-kpi-value" id="plan-kpi-completado">{{ resumen.completado }} <span class="plan-kpi-pct">{{ resumen.completado_pct }}%</span></div>
-        <div class="plan-kpi-bar"><div class="plan-kpi-bar-fill plan-kpi-bar-ok" id="plan-kpi-bar-completado" style="width:{{ resumen.completado_pct }}%"></div></div>
-      </div>
-    </div>
-    <div class="plan-kpi">
       <div class="plan-kpi-icon plan-kpi-icon-progreso">{{ icon('clock', 18) }}</div>
       <div>
         <div class="plan-kpi-label">En proceso</div>
@@ -186,7 +178,7 @@
             <td>
               <div class="plan-pill plan-pill-analista"{% if f.analista %} style="--plan-hue:{{ f.analista | hue_de }}"{% endif %}>
                 {{ icon('user', 11) }}
-                <input type="text" name="p_analista" value="{{ f.analista or '' }}" placeholder="—">
+                <input type="text" name="p_analista" value="{{ (f.analista or '').strip() }}" placeholder="—">
               </div>
             </td>
             <td>
@@ -207,7 +199,7 @@
             {% for mes in ['mes_septiembre', 'mes_octubre', 'mes_noviembre', 'mes_diciembre', 'mes_enero', 'mes_febrero'] %}
             <td class="plan-col-mes">
               <div class="plan-pill plan-pill-mes"{% if f[mes] %} style="--plan-hue:{{ f[mes] | hue_de }}"{% endif %}>
-                <input type="text" name="p_{{ mes }}" value="{{ f[mes] or '' }}" title="{{ f[mes] or '' }}" placeholder="—">
+                <input type="text" name="p_{{ mes }}" value="{{ (f[mes] or '').strip() }}" title="{{ f[mes] or '' }}" placeholder="—">
               </div>
             </td>
             {% endfor %}
@@ -297,6 +289,53 @@
       if (info.pill) select.classList.add(info.pill);
     }
   }
+
+  // Ancho real del pill de Analista/meses (22-09-2026, pedido por el
+  // usuario sobre datos reales ya cargados: se veían más anchos de lo
+  // que sugería el nombre — `field-sizing: content` en CSS depende del
+  // navegador, y datos guardados hace tiempo pueden traer espacios
+  // sueltos al final que igual ocupan ancho). Medir el texto de verdad
+  // con un <canvas> oculto y fijar `style.width` en px puntuales es la
+  // única forma de garantizar el ancho exacto sin importar ninguna de
+  // las dos cosas — se ejecuta al cargar la página (para las filas ya
+  // guardadas) y de nuevo en cada tecla que el usuario escribe.
+  (function () {
+    var medidor = document.createElement("canvas").getContext("2d");
+
+    function autoancho(input) {
+      // `getComputedStyle(input).font` (el shorthand) puede volver vacío en
+      // <input> en algunos navegadores — construirlo a mano desde las
+      // propiedades sueltas es lo único confiable (bug real encontrado en
+      // verificación, 22-09-2026: con el shorthand vacío, canvas se queda
+      // con su fuente por defecto, mide un ancho mucho menor al real, y el
+      // texto termina recortado dentro del propio <input>, invisible sin
+      // que nada avise).
+      var cs = getComputedStyle(input);
+      medidor.font = cs.fontStyle + " " + cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
+      var texto = input.value || input.placeholder || "";
+      // Suma el padding/border que el <input> tenga de verdad (no asume
+      // padding:0 — otra regla más específica en algún momento podría
+      // volver a ganarle, como pasó una vez, ver el comentario en
+      // styles.css junto a `#tabla-planificacion .plan-pill input`).
+      var relleno = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight)
+        + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+      input.style.width = Math.max(14, Math.ceil(medidor.measureText(texto).width + relleno) + 4) + "px";
+    }
+
+    // Si la fuente ("Public Sans", cargada por @import en el CSS) todavía
+    // no terminó de cargar cuando corre este script, canvas mide con una
+    // de reemplazo más angosta — el texto real (ya con la fuente
+    // definitiva) termina más ancho que lo medido y se recorta dentro del
+    // <input> sin ningún aviso (bug real encontrado en verificación,
+    // 22-09-2026: "David" medía 33px acá pero necesitaba 49px de verdad).
+    // `document.fonts.ready` asegura que ya está disponible antes de medir.
+    document.fonts.ready.then(function () {
+      document.querySelectorAll(".plan-pill input").forEach(autoancho);
+    });
+    document.getElementById("tabla-planificacion").addEventListener("input", function (ev) {
+      if (ev.target.matches(".plan-pill input")) autoancho(ev.target);
+    });
+  })();
 
   // Expandir pantalla (17-09-2026, pedido por el usuario): con muchas
   // columnas conviene poder esconder el sidebar y usar todo el ancho — se
@@ -442,12 +481,9 @@
       }
       function pct(x) { return n ? Math.round((x / n) * 100) : 0; }
 
-      var completado = contarEstado("plan-estado-completado");
       var enProceso = contarEstado("plan-estado-en_proceso");
       var sinAsignar = contarEstado("plan-estado-sin_asignar");
 
-      document.getElementById("plan-kpi-completado").innerHTML = completado + ' <span class="plan-kpi-pct">' + pct(completado) + '%</span>';
-      document.getElementById("plan-kpi-bar-completado").style.width = pct(completado) + "%";
       document.getElementById("plan-kpi-en-proceso").innerHTML = enProceso + ' <span class="plan-kpi-pct">' + pct(enProceso) + '%</span>';
       document.getElementById("plan-kpi-bar-en-proceso").style.width = pct(enProceso) + "%";
       document.getElementById("plan-kpi-sin-asignar").innerHTML = sinAsignar + ' <span class="plan-kpi-pct">' + pct(sinAsignar) + '%</span>';

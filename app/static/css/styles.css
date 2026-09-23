@@ -1059,7 +1059,6 @@ body.plan-expandido .sidebar { display: none; }
   display: flex; align-items: center; justify-content: center;
 }
 .plan-kpi-icon-neutral { background: rgba(var(--indigo-rgb),0.14); color: var(--indigo); }
-.plan-kpi-icon-ok { background: rgba(var(--emerald-rgb),0.16); color: var(--emerald); }
 .plan-kpi-icon-progreso { background: rgba(var(--indigo-rgb),0.16); color: var(--indigo); }
 .plan-kpi-icon-alerta { background: rgba(var(--danger-rgb),0.16); color: var(--danger); }
 .plan-kpi-label { font-size: 0.62rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
@@ -1067,7 +1066,6 @@ body.plan-expandido .sidebar { display: none; }
 .plan-kpi-pct { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); }
 .plan-kpi-bar { width: 100%; height: 3px; border-radius: 999px; background: var(--table-td-border); margin-top: 3px; overflow: hidden; }
 .plan-kpi-bar-fill { height: 100%; border-radius: 999px; }
-.plan-kpi-bar-ok { background: var(--emerald); }
 .plan-kpi-bar-progreso { background: var(--indigo); }
 .plan-kpi-bar-alerta { background: var(--danger); }
 
@@ -1159,17 +1157,25 @@ body.plan-expandido .sidebar { display: none; }
 .plan-pill svg { flex-shrink: 0; opacity: .7; }
 .plan-pill input {
   border: none; background: none; outline: none; color: inherit; font: inherit; font-size: 0.72rem; font-weight: 600;
-  field-sizing: content; min-width: 28px; max-width: 220px; padding: 0; white-space: nowrap;
+  field-sizing: content; min-width: 28px; max-width: 220px; white-space: nowrap;
 }
+/* `table.data-table input { padding: 6px 8px }` (arriba en esta misma
+   hoja) es más específica que `.plan-pill input` sola y le ganaba a su
+   `padding: 0` — quedaban ~16px de relleno invisible que el ancho medido
+   por JS no contaba, recortando el texto dentro del <input> (bug real
+   encontrado en verificación, 22-09-2026). */
+#tabla-planificacion .plan-pill input { padding: 0; }
 .plan-pill input::placeholder { color: var(--text-muted); font-weight: 400; }
 
 /* Prioridad como <select> con forma de pill coloreado por valor
-   ("Avance Balance" comparte esta clase para el color). La regla
-   genérica `table.data-table select { min-width: 100px }` (arriba en
-   esta misma hoja) es más específica que `.plan-select-pill` sola, así
-   que sin el prefijo `#tabla-planificacion` de abajo ese min-width de
-   100px seguía ganando y ambas columnas quedaban más anchas de lo
-   necesario (22-09-2026, bug real detrás del pedido del usuario). */
+   ("Avance Balance" comparte esta clase para el color Y el tamaño —
+   22-09-2026, pedido por el usuario: deben verse igual de alto/ancho
+   que el resto de los campos de la fila, sin un tamaño especial propio).
+   La regla genérica `table.data-table select { min-width: 100px }`
+   (arriba en esta misma hoja) es más específica que `.plan-select-pill`
+   sola, así que sin el prefijo `#tabla-planificacion` de abajo ese
+   min-width de 100px seguía ganando y ambas columnas quedaban más
+   anchas de lo necesario (bug real detrás del pedido original). */
 .plan-select-pill {
   border: none; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
   background: var(--table-th-bg); color: var(--text-muted);
@@ -1183,11 +1189,6 @@ body.plan-expandido .sidebar { display: none; }
    mínimo justo para que no se vea apretado (22-09-2026, ajuste pedido
    por el usuario sobre una primera vuelta demasiado angosta). */
 #tabla-planificacion select[name="p_prioridad"] { min-width: 32px; text-align: center; }
-
-/* Avance Balance: mismo <select> que Prioridad pero un poco más chico
-   (22-09-2026, pedido por el usuario) — su ancho real lo sigue
-   definiendo el nombre del mes elegido, esto solo achica letra/relleno. */
-#tabla-planificacion select[name="p_actualizacion_balance"] { font-size: 0.68rem; padding: 1px 5px; }
 
 /* Caja/Banco: valores fijos y cortos ("Caja"/"Banco"), no necesita el
    tamaño del resto de los campos de texto libre — 21-09-2026, pedido por
