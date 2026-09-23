@@ -22,7 +22,7 @@ from tests.run_verification import flask_app, FAKE, seed_data  # noqa: E402
 from app.depreciacion import comprobantes, comprobantes_baja  # noqa: E402
 from app.depreciacion.calculo import calcular_fila, calcular_kardex, calcular_tabla, fusionar_kardex_por_anio  # noqa: E402
 from app.depreciacion.export_writer import build_comprobantes_workbook  # noqa: E402
-from app.data import depreciacion_activos_repo, depreciacion_categorias_repo  # noqa: E402
+from app.data import depreciacion_activos_repo, depreciacion_categorias_repo, depreciacion_grupos_contables_repo  # noqa: E402
 
 PASSED, FAILED = [], []
 
@@ -967,6 +967,161 @@ def test_depreciacion_carga_masiva_formato_ancho():
     check("sin la columna 'Activo' -> avisa qué columna falta, no revienta", "faltan columnas obligatorias" in r.get_data(as_text=True).lower() and "Activo" in r.get_data(as_text=True))
 
 
+def _xlsx_activos(filas):
+    """`filas`: lista de [nombre_activo, categoria, fecha_adquisicion, valor_adquisicion,
+    vida_util_anios, grupo_contable], mismo orden que DEPRECIACION_ACTIVOS_ENCABEZADOS
+    en app/depreciacion/routes.py."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Nombre Activo", "Categoría", "Fecha Adquisición", "Valor Adquisición", "Vida Útil (Años)", "Grupo Contable"])
+    for fila in filas:
+        ws.append(fila)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_activos_carga_masiva():
+    """Carga masiva de activos POR EMPRESA (22-09-2026, pedido por el
+    usuario: una opción de carga masiva junto a "Agregar activo") — a
+    diferencia de la carga masiva de "años anteriores", esta SUMA activos
+    nuevos a una empresa puntual, sin columna "Empresa" en el Excel."""
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
+
+    client.post("/depreciacion/empresas/crear", data={"rut": "", "nombre": "CARGA ACTIVOS SPA"}, follow_redirects=True)
+    empresa = [e for e in FAKE.table("depreciacion_empresas").select("*").execute().data if e["nombre"] == "CARGA ACTIVOS SPA"][0]
+    empresa_id = empresa["id"]
+
+    depreciacion_grupos_contables_repo.guardar(empresa_id, "1204-01", "6104-01", "1204-02", None)
+
+    r = client.get(f"/depreciacion/empresas/{empresa_id}/activos/plantilla")
+    check(
+        "GET plantilla de activos -> 200 xlsx",
+        r.status_code == 200 and "spreadsheetml" in (r.headers.get("Content-Type") or ""),
+    )
+    wb_plantilla = load_workbook(io.BytesIO(r.data))
+    check("la plantilla trae la hoja de referencia de Categorías", "Categorías (referencia)" in wb_plantilla.sheetnames)
+    filas_cat = list(wb_plantilla["Categorías (referencia)"].iter_rows(min_row=2, values_only=True))
+    check(
+        "la hoja de Categorías trae el texto exacto a copiar",
+        any(f[0] == "A.- Activos genéricos: Camiones de uso general." for f in filas_cat),
+    )
+    check("la plantilla trae la hoja de referencia de Grupos Contables", "Grupos contables (referencia)" in wb_plantilla.sheetnames)
+    filas_grp = list(wb_plantilla["Grupos contables (referencia)"].iter_rows(min_row=2, values_only=True))
+    check("la hoja de Grupos Contables trae el grupo recién configurado", any(f[0] == "1204-01" for f in filas_grp))
+
+    # Carga válida: una fila con categoría (autocompleta vida útil), una
+    # con vida útil manual (sin categoría) y grupo contable, y una tercera
+    # con vida útil manual que además pisa la de su categoría.
+    xlsx = _xlsx_activos([
+        ["Camioneta Hilux", "A.- Activos genéricos: Camiones de uso general.", "2024-01-15", "10.000.000", "", ""],
+        ["Escritorio Gerencia", "", "2023-06-01", 350000, 10, "1204-01"],
+        ["Grua Vieja", "A.- Activos genéricos: Camiones de uso general.", "2020-03-01", 5000000, 3, ""],
+    ])
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/cargar",
+        data={"archivo": (io.BytesIO(xlsx), "activos.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("carga válida -> 200", r.status_code == 200)
+    check("avisa cuántos activos se agregaron", "3 activo" in r.get_data(as_text=True))
+
+    activos = FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data
+    check("quedaron los 3 activos guardados", len(activos) == 3)
+
+    # Nota: en este entorno de prueba `depreciacion_categorias` está vacía,
+    # así que `listar_categorias()` cae a `DEFAULTS` (sin "id" real, ver
+    # app/data/depreciacion_categorias_repo.py) — por eso solo se verifica
+    # el efecto visible (autocompletar la vida útil), no `categoria_id`.
+    hilux = next(a for a in activos if a["nombre_activo"] == "Camioneta Hilux")
+    check("la categoría autocompletó la vida útil (7 años, sin escribirla)", hilux["vida_util_anios"] == 7)
+
+    escritorio = next(a for a in activos if a["nombre_activo"] == "Escritorio Gerencia")
+    check("sin categoría, la vida útil manual se respeta", escritorio["vida_util_anios"] == 10)
+    check("el valor numérico real de Excel (350000, no texto) se lee bien", escritorio["valor_adquisicion"] == 350000.0)
+    check("el grupo contable se asoció", escritorio["grupo_contable_codigo"] == "1204-01")
+
+    grua = next(a for a in activos if a["nombre_activo"] == "Grua Vieja")
+    check("la vida útil manual pisa la de la categoría (3, no 7)", grua["vida_util_anios"] == 3)
+
+    # Re-cargar SUMA (no reemplaza) — a diferencia de la carga de períodos.
+    xlsx2 = _xlsx_activos([["Otro Activo Mas", "", "2022-01-01", "1.000.000", "5", ""]])
+    client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/cargar",
+        data={"archivo": (io.BytesIO(xlsx2), "mas.xlsx")},
+        content_type="multipart/form-data",
+    )
+    check(
+        "la segunda carga SUMA (quedan los 3 anteriores + el nuevo = 4)",
+        len(FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data) == 4,
+    )
+
+    # Categoría que no existe -> error, todo o nada (ni siquiera guarda las filas válidas del mismo archivo).
+    xlsx_cat_mala = _xlsx_activos([["Activo Cat Mala", "Categoría Que No Existe", "2022-01-01", "1.000.000", "", ""]])
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/cargar",
+        data={"archivo": (io.BytesIO(xlsx_cat_mala), "malo.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("categoría inexistente -> avisa el error", "la categoría" in r.get_data(as_text=True).lower())
+    check(
+        "no se agregó nada tras el error de categoría",
+        len(FAKE.table("depreciacion_activos").select("*").eq("empresa_id", empresa_id).execute().data) == 4,
+    )
+
+    # Grupo contable no configurado para esta empresa -> error.
+    xlsx_grupo_malo = _xlsx_activos([["Activo Grupo Malo", "", "2022-01-01", "1.000.000", "5", "9999-99"]])
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/cargar",
+        data={"archivo": (io.BytesIO(xlsx_grupo_malo), "malo2.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("grupo contable no configurado -> avisa el error", "grupo contable" in r.get_data(as_text=True).lower())
+
+    # Sin categoría y sin vida útil manual -> error (no hay de dónde sacarla).
+    xlsx_sin_vida_util = _xlsx_activos([["Activo Sin Vida Util", "", "2022-01-01", "1.000.000", "", ""]])
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/cargar",
+        data={"archivo": (io.BytesIO(xlsx_sin_vida_util), "malo3.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check("sin categoría y sin vida útil manual -> avisa el error", "vida útil" in r.get_data(as_text=True).lower())
+
+    # Falta la columna obligatoria "Valor Adquisición".
+    wb_sin_valor = Workbook()
+    wb_sin_valor.active.append(["Nombre Activo", "Categoría", "Fecha Adquisición", "Vida Útil (Años)", "Grupo Contable"])
+    wb_sin_valor.active.append(["Activo X", "", "2022-01-01", "5", ""])
+    buf_sin_valor = io.BytesIO()
+    wb_sin_valor.save(buf_sin_valor)
+    r = client.post(
+        f"/depreciacion/empresas/{empresa_id}/activos/cargar",
+        data={"archivo": (io.BytesIO(buf_sin_valor.getvalue()), "sin_valor.xlsx")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    check(
+        "sin la columna 'Valor Adquisición' -> avisa qué columna falta, no revienta",
+        "faltan columnas obligatorias" in r.get_data(as_text=True).lower(),
+    )
+
+
+def test_trabajador_no_puede_cargar_activos_masivo():
+    # `pagina_required` bloquea antes de que la ruta llegue a buscar la
+    # empresa, así que ni hace falta que exista de verdad (mismo criterio
+    # que el resto de los 403 de este archivo).
+    client = flask_app.test_client()
+    client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
+    r = client.get("/depreciacion/empresas/cualquier-id/activos/plantilla")
+    check("trabajador NO puede descargar la plantilla de activos (403)", r.status_code == 403)
+    r = client.post("/depreciacion/empresas/cualquier-id/activos/cargar", data={}, content_type="multipart/form-data")
+    check("trabajador NO puede cargar activos masivamente (403)", r.status_code == 403)
+
+
 def test_trabajador_no_puede_cargar_depreciacion_masiva():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
@@ -1001,6 +1156,8 @@ def main():
     test_categorias_guardar()
     test_depreciacion_carga_masiva()
     test_depreciacion_carga_masiva_formato_ancho()
+    test_activos_carga_masiva()
+    test_trabajador_no_puede_cargar_activos_masivo()
     test_trabajador_no_puede_cargar_depreciacion_masiva()
     test_trabajador_no_puede_ver_depreciacion()
 

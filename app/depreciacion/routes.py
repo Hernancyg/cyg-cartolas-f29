@@ -215,6 +215,252 @@ def activos_crear(empresa_id):
     return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
 
 
+# ---------------------------------------------------------------------------
+# Carga masiva de activos, POR EMPRESA (22-09-2026, pedido por el usuario: una
+# opción de carga masiva junto a "Agregar activo") — a diferencia de la carga
+# masiva de "años anteriores" más abajo (que reemplaza el kardex de activos
+# YA creados, buscándolos por nombre en CUALQUIER empresa), esta SUMA activos
+# nuevos a la empresa cuya ficha se está viendo — no hace falta columna
+# "Empresa" en el Excel porque ya se sabe de cuál se trata por la URL.
+# ---------------------------------------------------------------------------
+
+DEPRECIACION_ACTIVOS_ALLOWED_EXT = (".xlsx", ".xlsm")
+DEPRECIACION_ACTIVOS_ENCABEZADOS = [
+    "Nombre Activo", "Categoría", "Fecha Adquisición", "Valor Adquisición", "Vida Útil (Años)", "Grupo Contable",
+]
+
+# Mismo criterio que `_mapear_columnas_depreciacion` (más abajo): las columnas
+# se ubican por NOMBRE, no por posición.
+DEPRECIACION_ACTIVOS_ROLES = {
+    "nombre": ["NOMBRE ACTIVO", "NOMBRE DEL ACTIVO", "ACTIVO"],
+    "categoria": ["CATEGORÍA", "CATEGORIA"],
+    "fecha": ["FECHA ADQUISICIÓN", "FECHA ADQUISICION", "FECHA"],
+    "valor": ["VALOR ADQUISICIÓN", "VALOR ADQUISICION", "VALOR"],
+    "vida_util": ["VIDA ÚTIL (AÑOS)", "VIDA UTIL (AÑOS)", "VIDA ÚTIL", "VIDA UTIL"],
+    "grupo_contable": ["GRUPO CONTABLE", "GRUPO_CONTABLE"],
+}
+DEPRECIACION_ACTIVOS_ROLES_OBLIGATORIOS = ("nombre", "fecha", "valor")
+DEPRECIACION_ACTIVOS_ETIQUETAS = {
+    "nombre": "Nombre Activo", "fecha": "Fecha Adquisición", "valor": "Valor Adquisición",
+}
+
+
+def _mapear_columnas_depreciacion_activos(fila_encabezado):
+    indices = {}
+    for idx, celda in enumerate(fila_encabezado):
+        token = str(celda).strip().upper() if celda is not None else ""
+        if not token:
+            continue
+        for rol, sinonimos in DEPRECIACION_ACTIVOS_ROLES.items():
+            if rol not in indices and token in sinonimos:
+                indices[rol] = idx
+    faltan = [rol for rol in DEPRECIACION_ACTIVOS_ROLES_OBLIGATORIOS if rol not in indices]
+    return indices, faltan
+
+
+def _valor_adquisicion_de_celda(valor):
+    """Acepta tanto un número real de Excel (celda con formato numérico)
+    como texto con separador de miles chileno ("1.500.000")."""
+    if valor is None:
+        return None
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).strip()
+    if not texto:
+        return None
+    try:
+        return float(texto.replace(".", "").replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _leer_excel_depreciacion_activos(file_storage, empresa_id):
+    """Devuelve (filas, errores) — `filas` son dicts listos para
+    `depreciacion_activos_repo.crear_activos_masivo` (sin `empresa_id`
+    todavía, se agrega en la ruta). Todo o nada: si `errores` no está
+    vacía, `filas` es `None`, igual que `_leer_excel_depreciacion_periodos`."""
+    try:
+        wb = load_workbook(io.BytesIO(file_storage.read()), data_only=True)
+    except Exception as exc:  # noqa: BLE001
+        return None, [f"No se pudo abrir el archivo: {exc}"]
+    ws = wb.active
+
+    filas_todas = list(ws.iter_rows(values_only=True))
+    if not filas_todas:
+        return None, ["El archivo está vacío."]
+
+    indices, faltan = _mapear_columnas_depreciacion_activos(filas_todas[0])
+    if faltan:
+        etiquetas = ", ".join(DEPRECIACION_ACTIVOS_ETIQUETAS[rol] for rol in faltan)
+        return None, [
+            f"Al archivo le faltan columnas obligatorias: {etiquetas}. Usa esos mismos nombres de columna."
+        ]
+
+    categorias = depreciacion_categorias_repo.listar_categorias()
+    categorias_por_label = {f"{c['seccion']}: {c['descripcion']}".strip().lower(): c for c in categorias}
+    grupos_por_codigo = {
+        (g.get("codigo") or "").strip().lower(): g
+        for g in depreciacion_grupos_contables_repo.listar_por_empresa(empresa_id)
+    }
+
+    def _valor(fila, rol):
+        idx = indices.get(rol)
+        return fila[idx] if idx is not None and idx < len(fila) else None
+
+    filas_listas = []
+    errores = []
+    for numero_fila, fila_excel in enumerate(filas_todas[1:], start=2):
+        if all(v is None or str(v).strip() == "" for v in fila_excel):
+            continue  # fila vacía — se ignora sin avisar
+
+        nombre_activo = str(_valor(fila_excel, "nombre") or "").strip()
+        if not nombre_activo:
+            errores.append(f"Fila {numero_fila}: falta el nombre del activo.")
+            continue
+
+        fecha_iso = _fecha_celda_a_iso(_valor(fila_excel, "fecha"))
+        if not fecha_iso:
+            errores.append(f"Fila {numero_fila}: 'Fecha Adquisición' no es una fecha válida.")
+            continue
+
+        valor_adquisicion = _valor_adquisicion_de_celda(_valor(fila_excel, "valor"))
+        if valor_adquisicion is None or valor_adquisicion <= 0:
+            errores.append(f"Fila {numero_fila}: 'Valor Adquisición' debe ser un número mayor a 0.")
+            continue
+
+        categoria_id = None
+        categoria_vida_util = None
+        categoria_texto = str(_valor(fila_excel, "categoria") or "").strip()
+        if categoria_texto:
+            categoria = categorias_por_label.get(categoria_texto.lower())
+            if not categoria:
+                errores.append(
+                    f"Fila {numero_fila}: la categoría '{categoria_texto}' no existe — usa el mismo texto "
+                    "que aparece en el desplegable de 'Agregar activo' (o la hoja 'Categorías' de la plantilla)."
+                )
+                continue
+            # `.get("id")`, no `["id"]`: si `depreciacion_categorias` está
+            # vacía en Supabase, `listar_categorias()` cae de vuelta a
+            # `DEFAULTS`, que no trae "id" (igual que en la plantilla del
+            # formulario "Agregar activo", `c.id` — ahí Jinja lo resuelve
+            # silencioso a "", acá hay que hacerlo a mano para no reventar).
+            categoria_id = categoria.get("id")
+            categoria_vida_util = categoria.get("vida_util_anios")
+
+        vida_util_celda = _valor(fila_excel, "vida_util")
+        if vida_util_celda is None or str(vida_util_celda).strip() == "":
+            vida_util_anios = categoria_vida_util
+        else:
+            try:
+                vida_util_anios = int(vida_util_celda)
+            except (TypeError, ValueError):
+                errores.append(f"Fila {numero_fila}: 'Vida Útil (Años)' no es un número entero válido.")
+                continue
+        if not vida_util_anios or vida_util_anios <= 0:
+            errores.append(
+                f"Fila {numero_fila}: falta la vida útil — elige una 'Categoría' con vida útil fija o "
+                "complétala a mano en 'Vida Útil (Años)'."
+            )
+            continue
+
+        grupo_contable_codigo = None
+        grupo_texto = str(_valor(fila_excel, "grupo_contable") or "").strip()
+        if grupo_texto:
+            grupo_codigo_solo = grupo_texto.split(" ", 1)[0]  # por si viene "1204-01 VEHICULOS"
+            grupo = grupos_por_codigo.get(grupo_codigo_solo.lower())
+            if not grupo:
+                errores.append(
+                    f"Fila {numero_fila}: el grupo contable '{grupo_texto}' no está configurado para esta "
+                    "empresa — configúralo primero en Grupos Contables."
+                )
+                continue
+            grupo_contable_codigo = grupo["codigo"]
+
+        filas_listas.append({
+            "nombre_activo": nombre_activo,
+            "categoria_id": categoria_id,
+            "fecha_adquisicion": fecha_iso,
+            "valor_adquisicion": valor_adquisicion,
+            "vida_util_anios": vida_util_anios,
+            "grupo_contable_codigo": grupo_contable_codigo,
+        })
+
+    if errores:
+        return None, errores
+    return filas_listas, []
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/plantilla", methods=["GET"])
+@pagina_required("depreciacion.empresas")
+def activos_plantilla(empresa_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    if not empresa:
+        flash("Esa empresa ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresas"))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Activos"
+    ws.append(DEPRECIACION_ACTIVOS_ENCABEZADOS)
+
+    ws_cat = wb.create_sheet("Categorías (referencia)")
+    ws_cat.append(["Texto a copiar en 'Categoría'", "Vida útil (años)"])
+    for c in depreciacion_categorias_repo.listar_categorias():
+        ws_cat.append([f"{c['seccion']}: {c['descripcion']}", c.get("vida_util_anios")])
+
+    ws_grp = wb.create_sheet("Grupos contables (referencia)")
+    ws_grp.append(["Código a copiar en 'Grupo Contable'", "Cuenta de gasto", "Cuenta acumulada"])
+    for g in depreciacion_grupos_contables_repo.listar_por_empresa(empresa_id):
+        ws_grp.append([g.get("codigo"), g.get("cuenta_gasto_codigo"), g.get("cuenta_acumulada_codigo")])
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return send_file(
+        buffer, as_attachment=True,
+        download_name=f"activos_{(empresa['nombre'] or 'empresa').strip().replace(' ', '_')}_plantilla.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@depreciacion_bp.route("/empresas/<empresa_id>/activos/cargar", methods=["POST"])
+@pagina_required("depreciacion.empresas")
+def activos_cargar(empresa_id):
+    empresa = depreciacion_empresas_repo.obtener_empresa(empresa_id)
+    if not empresa:
+        flash("Esa empresa ya no existe.", "error")
+        return redirect(url_for("depreciacion.empresas"))
+
+    archivo = request.files.get("archivo")
+    if not archivo or not archivo.filename:
+        flash("Sube un archivo Excel para continuar.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+    if not archivo.filename.lower().endswith(DEPRECIACION_ACTIVOS_ALLOWED_EXT):
+        flash("Formato no permitido. Sube un archivo .xlsx o .xlsm.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    filas, errores = _leer_excel_depreciacion_activos(archivo, empresa_id)
+    if errores:
+        for mensaje in errores:
+            flash(mensaje, "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+    if not filas:
+        flash("El archivo no trae ninguna fila con datos.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    for f in filas:
+        f["empresa_id"] = empresa_id
+    try:
+        creados = depreciacion_activos_repo.crear_activos_masivo(filas)
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning("No se pudo guardar activos (carga masiva): %s", exc)
+        flash("No se pudo guardar: hubo un problema de conexión con la base de datos.", "error")
+        return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+    flash(f"{len(creados)} activo(s) agregado(s) desde el Excel.", "success")
+    return redirect(url_for("depreciacion.empresa_detalle", empresa_id=empresa_id))
+
+
 @depreciacion_bp.route("/empresas/<empresa_id>/activos/<activo_id>/dar_de_baja", methods=["GET"])
 @pagina_required("depreciacion.empresas")
 def activo_baja_form(empresa_id, activo_id):

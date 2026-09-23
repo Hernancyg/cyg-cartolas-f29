@@ -50,6 +50,36 @@ def crear_activo(
     return resp.data[0]
 
 
+def crear_activos_masivo(filas: List[dict]) -> List[dict]:
+    """Carga masiva (22-09-2026, pedido por el usuario): inserta varios
+    activos de una sola vez en UNA llamada a Supabase (más difícil que
+    quede una carga a medias que un `for crear_activo(...)` fila por
+    fila). A diferencia de `guardar_todos` en otros repos (que REEMPLAZAN
+    toda la tabla), esto siempre SUMA activos nuevos — nunca borra los
+    que ya existían, porque los activos fijos no se "recargan" completos
+    como sí se hace con la planificación o el kardex.
+
+    Cada dict de `filas` trae las mismas claves que los parámetros de
+    `crear_activo` (`empresa_id`, `categoria_id`, `nombre_activo`,
+    `fecha_adquisicion`, `valor_adquisicion`, `vida_util_anios`,
+    `grupo_contable_codigo` — estas dos últimas opcionales)."""
+    payload = [
+        {
+            "empresa_id": f["empresa_id"],
+            "categoria_id": f.get("categoria_id"),
+            "nombre_activo": f["nombre_activo"].strip(),
+            "fecha_adquisicion": f["fecha_adquisicion"],
+            "valor_adquisicion": f["valor_adquisicion"],
+            "vida_util_anios": f["vida_util_anios"],
+            "grupo_contable_codigo": f.get("grupo_contable_codigo"),
+            "activo": True,
+        }
+        for f in filas
+    ]
+    resp = get_supabase().table(TABLE).insert(payload).execute()
+    return resp.data or []
+
+
 def dar_de_baja(activo_id: str) -> None:
     get_supabase().table(TABLE).update({"activo": False}).eq("id", activo_id).execute()
 
