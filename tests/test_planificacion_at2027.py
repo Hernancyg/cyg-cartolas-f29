@@ -18,6 +18,7 @@ from openpyxl import Workbook, load_workbook
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.run_verification import flask_app, seed_data  # noqa: E402
+from app.planificacion_at2027.pdf_calendario import generar_pdf_calendario  # noqa: E402
 
 seed_data()  # crea el usuario "testuser"/"trabajador123" (rol trabajador) usado en test_trabajador_sin_acceso
 
@@ -287,6 +288,32 @@ def test_calendario_reuniones_pdf():
     )
 
 
+def test_calendario_reuniones_pdf_pagina_larga():
+    """Regresión (22-09-2026, bug real reportado por el usuario: "el
+    informe sale cortado") — con muchas empresas juntas en un mismo mes,
+    la lista de esa casilla podía ser más alta que una página COMPLETA;
+    antes de la corrección, las últimas empresas se dibujaban igual y
+    quedaban recortadas por el borde físico de la hoja en vez de pasar a
+    una página nueva. Genera el PDF directo (sin pasar por Excel/HTTP,
+    más simple para forzar ~20 empresas en un solo mes) y confirma que
+    las 20 aparecen completas en el texto extraído, repartidas en más de
+    una página."""
+    nombres = [f"EMPRESA PRUEBA {i:02d} SPA" for i in range(1, 21)]
+    filas = [{"empresa": n, "analista": "Constanza", "reunion_cat1_1": "Enero"} for n in nombres]
+
+    pdf = generar_pdf_calendario([{"analista": "Constanza", "filas": filas}])
+    data = pdf.getvalue()
+    check("calendario largo: el PDF no viene vacío", len(data) > 500)
+
+    with pdfplumber.open(io.BytesIO(data)) as doc:
+        check("calendario largo: se reparte en más de 1 página", len(doc.pages) > 1)
+        texto_pdf = "\n".join(pagina.extract_text() or "" for pagina in doc.pages)
+
+    faltantes = [n for n in nombres if n not in texto_pdf]
+    check("calendario largo: las 20 empresas aparecen completas (ninguna recortada)", not faltantes, faltantes)
+    check("calendario largo: la columna continuada se marca '(CONT.)'", "(CONT.)" in texto_pdf)
+
+
 def test_trabajador_sin_acceso():
     client = flask_app.test_client()
     client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
@@ -317,6 +344,7 @@ def main():
     test_estado_calculado_resumen_y_exportar()
     test_informe_pdf()
     test_calendario_reuniones_pdf()
+    test_calendario_reuniones_pdf_pagina_larga()
     test_trabajador_sin_acceso()
 
     print(f"\n{len(PASSED)} OK, {len(FAILED)} FAIL")

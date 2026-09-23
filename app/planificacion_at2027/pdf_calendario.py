@@ -198,6 +198,18 @@ class _Builder:
         self.y -= 6 * mm
 
     def _fila_calendario(self, meses_fila, por_mes):
+        # 22-09-2026, bug real reportado por el usuario ("el informe sale
+        # cortado"): con muchas empresas juntas en un mismo mes, la lista
+        # de esa casilla podía ser más alta que una página COMPLETA — el
+        # chequeo de espacio de antes solo miraba "¿entra la fila entera
+        # en lo que queda de la página?" una vez, así que si ni una página
+        # nueva alcanzaba, las últimas empresas se dibujaban igual y
+        # quedaban recortadas por el borde físico de la hoja, sin pasar a
+        # una tercera página. Ahora cada casilla de mes se reparte en
+        # tantas páginas como haga falta: cada pasada dibuja las empresas
+        # que alcanzan a caber en lo que queda de la página actual y deja
+        # el resto pendiente para la siguiente (con el rótulo del mes
+        # repetido y "(cont.)" para que quede claro que sigue).
         c = self.c
         col_gap = 3 * mm
         col_w = (self.width - col_gap * 2) / 3
@@ -207,72 +219,135 @@ class _Builder:
         chip_pad_v = 1.8 * mm
         tag_fila_h = 4.8 * mm
         ancho_nombre = col_w - 2 * pad
+        alto_minimo = header_h + 11 * mm
 
-        alturas = []
-        for mes in meses_fila:
-            lista = por_mes[mes]
-            if not lista:
-                alturas.append(header_h + 11 * mm)
-                continue
-            h = header_h + pad
-            for nombre, tags in lista:
-                lineas = _envolver(c, nombre, ancho_nombre, fuente, tam)
-                h += len(lineas) * interlinea + tag_fila_h + chip_pad_v * 2 + 1.6 * mm
-            alturas.append(h + pad)
-        alto_fila = max(alturas)
+        def alto_chip(nombre):
+            lineas = _envolver(c, nombre, ancho_nombre, fuente, tam)
+            return len(lineas) * interlinea + tag_fila_h + chip_pad_v * 2, lineas
 
-        self.asegurar_espacio(alto_fila + 4 * mm)
-        top = self.y
-        for i, mes in enumerate(meses_fila):
-            bx = self.x0 + i * (col_w + col_gap)
-            lista = por_mes[mes]
-            n = len(lista)
+        pendientes = {mes: list(por_mes[mes]) for mes in meses_fila}
+        continuacion = {mes: False for mes in meses_fila}
+        dibujado_alguna_vez = {mes: False for mes in meses_fila}
 
-            c.setFillColor(colors.white if lista else BG)
-            c.setStrokeColor(BORDER)
-            c.roundRect(bx, top - alto_fila, col_w, alto_fila, 2 * mm, fill=1, stroke=1)
-            c.setFillColor(NAVY_2 if lista else TEXT_MUTED)
-            c.roundRect(bx, top - header_h, col_w, header_h, 2 * mm, fill=1, stroke=0)
-            c.rect(bx, top - header_h, col_w, header_h / 2, fill=1, stroke=0)  # cuadra las esquinas de abajo del rótulo
-            c.setFillColor(colors.white)
-            c.setFont("Helvetica-Bold", 10)
-            c.drawString(bx + pad, top - header_h / 2 - 1.6 * mm, mes.upper())
-            if n:
-                c.setFont("Helvetica", 7)
-                c.drawRightString(bx + col_w - pad, top - header_h / 2 - 1.4 * mm, f"{n} empresa{'s' if n != 1 else ''}")
+        while True:
+            # El mínimo real de esta pasada no es un número fijo: si a
+            # algún mes le toca dibujar recién ahora una empresa con un
+            # nombre largo (2-3 líneas envueltas), esa primera empresa
+            # necesita más que el mínimo genérico — sin este cálculo, el
+            # chequeo de espacio de abajo podía dar por buena una página
+            # que en realidad no alcanzaba ni para la primera empresa, y
+            # esa empresa quedaba recortada contra el margen (el mismo
+            # bug que esta reescritura corrige, pero en el primer renglón
+            # de la página en vez de en uno del medio).
+            minimo_pasada = alto_minimo
+            for mes in meses_fila:
+                if pendientes[mes]:
+                    primer_nombre, _tags = pendientes[mes][0]
+                    chip_h, _lineas = alto_chip(primer_nombre)
+                    minimo_pasada = max(minimo_pasada, header_h + pad + chip_h + 1.6 * mm + pad)
+            self.asegurar_espacio(minimo_pasada + 4 * mm)
+            top = self.y
+            disponible = self.y - self.MARGIN
 
-            cy = top - header_h - pad
-            if not lista:
-                c.setFillColor(TEXT_MUTED)
-                c.setFont("Helvetica-Oblique", 8)
-                c.drawString(bx + pad, cy - 4.5 * mm, "Sin reuniones")
-            for nombre, tags in lista:
-                lineas = _envolver(c, nombre, ancho_nombre, fuente, tam)
-                chip_h = len(lineas) * interlinea + tag_fila_h + chip_pad_v * 2
-                c.setFillColor(CHIP_BG)
-                c.roundRect(bx + pad - 1.2 * mm, cy - chip_h, col_w - 2 * pad + 2.4 * mm, chip_h, 1.4 * mm, fill=1, stroke=0)
-                ty = cy - chip_pad_v - 2.8 * mm
-                c.setFillColor(NAVY_2)
-                c.setFont(fuente, tam)
-                for linea in lineas:
-                    c.drawString(bx + pad, ty, linea)
-                    ty -= interlinea
-                # Las categorías van en su propia fila bajo el nombre (no al
-                # lado): un nombre de 2 líneas con 2+ categorías chocaba con
-                # el texto cuando se intentaba compartir la primera línea.
-                tagx = bx + pad
-                tagy = ty - tag_fila_h + 1.3 * mm
-                for tag in tags:
-                    label = CAT_LABEL[tag]
-                    w = c.stringWidth(label, "Helvetica-Bold", 6.5) + 2.4 * mm
-                    c.setFillColor(CAT_COLOR[tag])
-                    c.roundRect(tagx, tagy, w, 3.8 * mm, 1 * mm, fill=1, stroke=0)
-                    c.setFillColor(colors.white)
-                    c.setFont("Helvetica-Bold", 6.5)
-                    c.drawCentredString(tagx + w / 2, tagy + 1.2 * mm, label)
-                    tagx += w + 1.2 * mm
-                cy -= chip_h + 1.6 * mm
-        self.y = top - alto_fila
+            contenidos = {}
+            for mes in meses_fila:
+                lista = pendientes[mes]
+                dibujar = []
+                alto = header_h + pad
+                for item in lista:
+                    nombre, tags = item
+                    chip_h, lineas = alto_chip(nombre)
+                    chip_h_total = chip_h + 1.6 * mm
+                    if dibujar and alto + chip_h_total + pad > disponible:
+                        break
+                    alto += chip_h_total
+                    dibujar.append((nombre, tags, lineas, chip_h))
+                contenidos[mes] = dibujar
+
+            # Una casilla que ya se terminó de dibujar por completo en una
+            # página anterior no se repite vacía en cada página de
+            # continuación — solo las que todavía tienen algo pendiente
+            # (o que nunca se han dibujado, típicamente en la 1ª pasada).
+            activos = [mes for mes in meses_fila if contenidos[mes] or not dibujado_alguna_vez[mes]]
+
+            alturas = []
+            for mes in activos:
+                if not contenidos[mes]:
+                    alturas.append(alto_minimo)
+                else:
+                    h = header_h + pad
+                    for _n, _t, _l, chip_h in contenidos[mes]:
+                        h += chip_h + 1.6 * mm
+                    alturas.append(max(h + pad, alto_minimo))
+            alto_fila = min(max(alturas), disponible)
+
+            for i, mes in enumerate(meses_fila):
+                if mes not in activos:
+                    continue
+                bx = self.x0 + i * (col_w + col_gap)
+                dibujar = contenidos[mes]
+                n_total = len(por_mes[mes])
+                dibujado_alguna_vez[mes] = True
+
+                c.setFillColor(colors.white if dibujar else BG)
+                c.setStrokeColor(BORDER)
+                c.roundRect(bx, top - alto_fila, col_w, alto_fila, 2 * mm, fill=1, stroke=1)
+                c.setFillColor(NAVY_2 if dibujar else TEXT_MUTED)
+                c.roundRect(bx, top - header_h, col_w, header_h, 2 * mm, fill=1, stroke=0)
+                c.rect(bx, top - header_h, col_w, header_h / 2, fill=1, stroke=0)  # cuadra las esquinas de abajo del rótulo
+                c.setFillColor(colors.white)
+                c.setFont("Helvetica-Bold", 10)
+                titulo = mes.upper() + (" (CONT.)" if continuacion[mes] else "")
+                c.drawString(bx + pad, top - header_h / 2 - 1.6 * mm, titulo)
+                if n_total:
+                    c.setFont("Helvetica", 7)
+                    c.drawRightString(
+                        bx + col_w - pad, top - header_h / 2 - 1.4 * mm,
+                        f"{n_total} empresa{'s' if n_total != 1 else ''}",
+                    )
+
+                cy = top - header_h - pad
+                if not dibujar and not pendientes[mes] and not por_mes[mes]:
+                    c.setFillColor(TEXT_MUTED)
+                    c.setFont("Helvetica-Oblique", 8)
+                    c.drawString(bx + pad, cy - 4.5 * mm, "Sin reuniones")
+                for nombre, tags, lineas, chip_h in dibujar:
+                    c.setFillColor(CHIP_BG)
+                    c.roundRect(bx + pad - 1.2 * mm, cy - chip_h, col_w - 2 * pad + 2.4 * mm, chip_h, 1.4 * mm, fill=1, stroke=0)
+                    ty = cy - chip_pad_v - 2.8 * mm
+                    c.setFillColor(NAVY_2)
+                    c.setFont(fuente, tam)
+                    for linea in lineas:
+                        c.drawString(bx + pad, ty, linea)
+                        ty -= interlinea
+                    # Las categorías van en su propia fila bajo el nombre
+                    # (no al lado): un nombre de 2 líneas con 2+ categorías
+                    # chocaba con el texto cuando compartían la 1ª línea.
+                    tagx = bx + pad
+                    tagy = ty - tag_fila_h + 1.3 * mm
+                    for tag in tags:
+                        label = CAT_LABEL[tag]
+                        w = c.stringWidth(label, "Helvetica-Bold", 6.5) + 2.4 * mm
+                        c.setFillColor(CAT_COLOR[tag])
+                        c.roundRect(tagx, tagy, w, 3.8 * mm, 1 * mm, fill=1, stroke=0)
+                        c.setFillColor(colors.white)
+                        c.setFont("Helvetica-Bold", 6.5)
+                        c.drawCentredString(tagx + w / 2, tagy + 1.2 * mm, label)
+                        tagx += w + 1.2 * mm
+                    cy -= chip_h + 1.6 * mm
+
+            for mes in meses_fila:
+                pendientes[mes] = pendientes[mes][len(contenidos[mes]):]
+
+            self.y = top - alto_fila
+
+            if not any(pendientes[mes] for mes in meses_fila):
+                break
+            for mes in meses_fila:
+                if pendientes[mes]:
+                    continuacion[mes] = True
+            self.y -= 4 * mm
+            self.nueva_pagina()
 
 
 def generar_pdf_calendario(secciones) -> BytesIO:
