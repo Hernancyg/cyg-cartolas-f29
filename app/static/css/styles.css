@@ -984,10 +984,16 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 /* Pago parcial (22-09-2026, pedido por el usuario): "de $X total" bajo
    el monto restante de un documento ya parcialmente aplicado, y el
    campo para bajar el monto a aplicar antes de "Agregar" — comparten
-   la celda de acción con el botón, en vez de agregar una columna más. */
+   la celda de acción con el botón, en vez de agregar una columna más.
+   El `display:flex` va en un <div> ADENTRO del <td> (22-09-2026, bug
+   real reportado por el usuario: "no me deja editar el monto" — el
+   campo ni se veía) — ponerlo directo en el <td> le cambia el
+   `display` de `table-cell` a `flex`, y esa celda deja de participar
+   del cálculo de ancho de `table-layout:fixed`, quedando comprimida a
+   unos pocos píxeles aunque su columna tenga 17% asignado. */
 .conc-doc-monto-total { font-size: 0.72rem; }
-.conc-linea-docs-tabla td:nth-child(6) { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.conc-doc-monto-input { max-width: 84px; padding: 5px 6px; font-size: 0.8rem; font-weight: 600; }
+.conc-doc-aplicar-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.conc-doc-monto-input { max-width: 84px; width: 84px; padding: 5px 6px; font-size: 0.8rem; font-weight: 600; }
 
 #conc-agregar-cuenta { margin-top: 10px; }
 

@@ -775,8 +775,11 @@
           renderModalLineas();
           recomputarModalTotales();
         });
-        tdAccion.appendChild(inputAplicar);
-        tdAccion.appendChild(btnAgregar);
+        var wrapAplicar = document.createElement("div");
+        wrapAplicar.className = "conc-doc-aplicar-wrap";
+        wrapAplicar.appendChild(inputAplicar);
+        wrapAplicar.appendChild(btnAgregar);
+        tdAccion.appendChild(wrapAplicar);
         tr.appendChild(tdNum);
         tr.appendChild(tdTipo);
         tr.appendChild(tdFecha);
