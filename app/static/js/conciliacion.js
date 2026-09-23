@@ -254,24 +254,41 @@
     if (card) card.classList.toggle("collapsed");
   });
 
+  // Pago parcial (22-09-2026, pedido por el usuario: un movimiento de
+  // $500.000 contra una factura de $1.000.000 debe poder dejar aplicados
+  // solo $500.000 y la factura sigue disponible por el resto) — en vez
+  // de "disponible"/"usado" binario según si el documento aparece en
+  // ALGÚN `.conc-doc-ref`, se SUMAN los montos aplicados de todas las
+  // veces que aparezca (puede estar repartido entre varios movimientos)
+  // y se compara contra su monto original: "disponible" (nada aplicado
+  // todavía), "parcial" (queda un resto > 0) o "usado" (ya no queda
+  // resto, con menos de $1 de tolerancia por redondeo).
   function recomputarEstadoDocumentos() {
-    var usados = {};
+    var aplicadoPorDoc = {};
     document.querySelectorAll(".conc-fila .conc-doc-ref").forEach(function (ref) {
-      usados[ref.dataset.modulo + ":" + ref.dataset.idx] = true;
+      var key = ref.dataset.modulo + ":" + ref.dataset.idx;
+      aplicadoPorDoc[key] = (aplicadoPorDoc[key] || 0) + num(ref.dataset.monto);
     });
     document.querySelectorAll(".fila-doc-auxiliar").forEach(function (docFila) {
       var key = docFila.dataset.modulo + ":" + docFila.dataset.idx;
-      var usado = !!usados[key];
-      docFila.dataset.estado = usado ? "usado" : "disponible";
+      var original = num(docFila.dataset.monto);
+      var aplicado = aplicadoPorDoc[key] || 0;
+      var restante = Math.round((original - aplicado) * 100) / 100;
+      var estado = restante < 1 ? "usado" : (aplicado > 0 ? "parcial" : "disponible");
+      docFila.dataset.estado = estado;
+      docFila.dataset.restante = restante < 1 ? 0 : restante;
       var celda = docFila.querySelector(".conc-doc-estado");
-      if (celda) celda.innerHTML = usado ? '<span class="badge-usado">Usado</span>' : '<span class="badge-ok">Disponible</span>';
+      if (!celda) return;
+      if (estado === "usado") celda.innerHTML = '<span class="badge-usado">Usado</span>';
+      else if (estado === "parcial") celda.innerHTML = '<span class="badge-warn">Parcial · queda ' + formatoClp(restante) + '</span>';
+      else celda.innerHTML = '<span class="badge-ok">Disponible</span>';
     });
   }
 
   function documentosDisponibles(modulos) {
     var lista = [];
     document.querySelectorAll(".fila-doc-auxiliar").forEach(function (docFila) {
-      if (docFila.dataset.estado !== "disponible") return;
+      if (docFila.dataset.estado === "usado") return;
       if (modulos.indexOf(docFila.dataset.modulo) === -1) return;
       lista.push(docFila);
     });
@@ -322,7 +339,11 @@
 
     var modulos = modulosParaDireccion(esAbono ? "abono" : "cargo");
     var candidatos = documentosDisponibles(modulos).filter(function (docFila) {
-      return Math.round(num(docFila.dataset.monto)) === Math.round(monto) && normalizarRut(docFila.dataset.rut) === rutNorm;
+      // Contra el RESTANTE, no el monto original (22-09-2026): un
+      // documento con pago parcial ya aplicado también puede calzar
+      // exacto por lo que le queda pendiente.
+      var restante = docFila.dataset.restante !== undefined ? num(docFila.dataset.restante) : num(docFila.dataset.monto);
+      return Math.round(restante) === Math.round(monto) && normalizarRut(docFila.dataset.rut) === rutNorm;
     });
     return candidatos.length ? candidatos[0] : null;
   }
@@ -564,6 +585,7 @@
         ref.hidden = true;
         ref.dataset.modulo = doc.modulo;
         ref.dataset.idx = doc.idx;
+        ref.dataset.monto = doc.monto; // cuánto se aplicó de este documento acá (pago parcial)
         cont.appendChild(ref);
       });
     });
@@ -698,23 +720,62 @@
         tdFecha.textContent = docFila.dataset.fecha || docFila.dataset.fechaIso;
         var tdContraparte = document.createElement("td");
         tdContraparte.textContent = docFila.dataset.nombre + (docFila.dataset.rut ? " (" + docFila.dataset.rut + ")" : "");
+
+        // Pago parcial (22-09-2026, pedido por el usuario): se muestra lo
+        // que de verdad queda pendiente de este documento (puede ser
+        // menor al monto original si ya se aplicó parte en otro
+        // movimiento), y un campo editable para aplicar menos todavía —
+        // ej. mov. de $500.000 contra una factura de $1.000.000.
+        var original = num(docFila.dataset.monto);
+        var restante = docFila.dataset.restante !== undefined ? num(docFila.dataset.restante) : original;
+        var esParcial = docFila.dataset.estado === "parcial";
         var tdMonto = document.createElement("td");
         tdMonto.style.textAlign = "right";
-        tdMonto.textContent = formatoClp(num(docFila.dataset.monto));
+        var lineaMonto = document.createElement("div");
+        lineaMonto.textContent = formatoClp(restante);
+        tdMonto.appendChild(lineaMonto);
+        if (esParcial) {
+          var subMonto = document.createElement("div");
+          subMonto.className = "muted conc-doc-monto-total";
+          subMonto.textContent = "de " + formatoClp(original) + " total";
+          tdMonto.appendChild(subMonto);
+        }
+
         var tdAccion = document.createElement("td");
+        var inputAplicar = document.createElement("input");
+        inputAplicar.type = "number";
+        inputAplicar.min = "1";
+        inputAplicar.step = "1";
+        inputAplicar.max = String(Math.round(restante));
+        inputAplicar.className = "conc-linea-monto-input conc-doc-monto-input";
+        inputAplicar.value = Math.round(restante);
+        inputAplicar.title = "Monto a aplicar de este documento — bájalo para un pago parcial";
         var btnAgregar = document.createElement("button");
         btnAgregar.type = "button";
         btnAgregar.className = "btn-link";
         btnAgregar.textContent = "Agregar";
         btnAgregar.addEventListener("click", function () {
+          var aplicar = num(inputAplicar.value);
+          if (aplicar <= 0) {
+            alert("El monto a aplicar debe ser mayor a 0.");
+            return;
+          }
+          if (aplicar > restante + 0.5) {
+            alert(
+              "Ese documento solo tiene " + formatoClp(restante) + " disponible" +
+              (esParcial ? " (ya se aplicó parte en otro movimiento)." : ".")
+            );
+            return;
+          }
           linea.documentos.push({
             modulo: modulo, idx: docFila.dataset.idx, rut: docFila.dataset.rut, nombre: docFila.dataset.nombre,
             tipo_doc: docFila.dataset.tipoDocumento, numero_doc: docFila.dataset.numeroDocumento,
-            fecha_iso: docFila.dataset.fechaIso, monto: num(docFila.dataset.monto),
+            fecha_iso: docFila.dataset.fechaIso, monto: aplicar,
           });
           renderModalLineas();
           recomputarModalTotales();
         });
+        tdAccion.appendChild(inputAplicar);
         tdAccion.appendChild(btnAgregar);
         tr.appendChild(tdNum);
         tr.appendChild(tdTipo);
@@ -976,7 +1037,12 @@
           documentos: [{
             modulo: modulo, idx: propuesta.dataset.idx, rut: propuesta.dataset.rut, nombre: propuesta.dataset.nombre,
             tipo_doc: propuesta.dataset.tipoDocumento, numero_doc: propuesta.dataset.numeroDocumento,
-            fecha_iso: propuesta.dataset.fechaIso, monto: num(propuesta.dataset.monto),
+            // El RESTANTE, no el monto original (22-09-2026) — si el
+            // documento ya tenía un pago parcial aplicado en otro
+            // movimiento, la propuesta automática solo puede ofrecer lo
+            // que de verdad queda pendiente.
+            fecha_iso: propuesta.dataset.fechaIso,
+            monto: propuesta.dataset.restante !== undefined ? num(propuesta.dataset.restante) : num(propuesta.dataset.monto),
           }],
         }];
       } else {

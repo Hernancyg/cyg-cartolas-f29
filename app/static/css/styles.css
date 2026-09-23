@@ -977,9 +977,17 @@ tr.fila-doc-auxiliar[data-estado="usado"] { opacity: 0.55; }
 .conc-linea-docs-tabla th:nth-child(2), .conc-linea-docs-tabla td:nth-child(2) { width: 10%; white-space: nowrap; }
 .conc-linea-docs-tabla th:nth-child(3), .conc-linea-docs-tabla td:nth-child(3) { width: 12%; white-space: nowrap; }
 .conc-linea-docs-tabla th:nth-child(4), .conc-linea-docs-tabla td:nth-child(4) { width: auto; }
-.conc-linea-docs-tabla th:nth-child(5), .conc-linea-docs-tabla td:nth-child(5) { width: 14%; white-space: nowrap; }
-.conc-linea-docs-tabla th:nth-child(6), .conc-linea-docs-tabla td:nth-child(6) { width: 9%; }
+.conc-linea-docs-tabla th:nth-child(5), .conc-linea-docs-tabla td:nth-child(5) { width: 15%; white-space: nowrap; }
+.conc-linea-docs-tabla th:nth-child(6), .conc-linea-docs-tabla td:nth-child(6) { width: 17%; }
 .conc-linea-docs-tabla .btn-link { white-space: nowrap; }
+
+/* Pago parcial (22-09-2026, pedido por el usuario): "de $X total" bajo
+   el monto restante de un documento ya parcialmente aplicado, y el
+   campo para bajar el monto a aplicar antes de "Agregar" — comparten
+   la celda de acción con el botón, en vez de agregar una columna más. */
+.conc-doc-monto-total { font-size: 0.72rem; }
+.conc-linea-docs-tabla td:nth-child(6) { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.conc-doc-monto-input { max-width: 84px; padding: 5px 6px; font-size: 0.8rem; font-weight: 600; }
 
 #conc-agregar-cuenta { margin-top: 10px; }
 
