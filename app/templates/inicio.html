@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Inicio · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">{% if nombre %}Hola, {{ nombre }}{% else %}Inicio{% endif %}</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">Elige una herramienta para empezar.</p>
+
+<div class="card">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('sparkle', 16) }}</div>
+    <div class="section-title">Accesos rápidos</div>
+  </div>
+  <div class="quick-grid">
+    {% for p in accesos %}
+    <a class="quick-item" href="{{ url_for(p.endpoint) }}">
+      <span class="quick-icon">{{ icon(p.icon, 18) }}</span>
+      <span class="quick-label">{{ p.label }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-header">
+    <div class="section-badge">{{ icon('trending', 16) }}</div>
+    <div class="section-title">Indicadores de hoy</div>
+  </div>
+  {% if error %}<div class="alert alert-warn">{{ error }}</div>{% endif %}
+  {% if indicadores %}
+  <div class="metrics mb-0">
+    {% for i in indicadores %}
+    <div class="metric"><div class="k">{{ i.label }}</div><div class="v">{{ i.valor_fmt }}</div></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if accesos | selectattr('endpoint', 'equalto', 'indicadores.index') | list %}
+  <p class="muted mb-0" style="margin-top:12px"><a href="{{ url_for('indicadores.index') }}">Ver todos los indicadores</a></p>
+  {% endif %}
+</div>
+{% endblock %}

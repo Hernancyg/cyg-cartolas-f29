@@ -122,6 +122,7 @@ def create_app():
     from app.planificacion_at2027.routes import planificacion_at2027_bp
     from app.analisis.routes import analisis_bp
     from app.eerr.routes import eerr_bp
+    from app.inicio.routes import inicio_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(cartolas_bp)
@@ -137,23 +138,31 @@ def create_app():
     app.register_blueprint(planificacion_at2027_bp)
     app.register_blueprint(analisis_bp)
     app.register_blueprint(eerr_bp)
+    app.register_blueprint(inicio_bp)
 
     @app.route("/")
     def raiz():
         from flask import session, redirect, url_for
         if session.get("usuario"):
-            return redirect(url_for("cartolas.index"))
+            return redirect(url_for("inicio.index"))
         return redirect(url_for("auth.login"))
 
     @app.context_processor
     def inject_globals():
         from flask import session
-        from app.nav import paginas_con_visibilidad
+        from flask import request
+        from app.nav import paginas_con_visibilidad, menu_agrupado, grupo_de
         usuario = session.get("usuario")
+        es_admin = bool(usuario and usuario.get("rol") == "admin")
+        paginas = paginas_con_visibilidad()
+        miga_grupo, miga_pagina = grupo_de(request.endpoint)
         return {
             "usuario_actual": usuario,
-            "es_admin": bool(usuario and usuario.get("rol") == "admin"),
-            "paginas": paginas_con_visibilidad(),
+            "es_admin": es_admin,
+            "paginas": paginas,
+            "menu": menu_agrupado(paginas, es_admin) if usuario else [],
+            "miga_grupo": miga_grupo,
+            "miga_pagina": miga_pagina,
         }
 
     @app.errorhandler(403)

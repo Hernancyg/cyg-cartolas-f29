@@ -95,7 +95,7 @@ def main():
 
     # ---- Login: llave maestra de PRUEBA ----
     r = client.post("/login", data={"usuario": "", "clave": "test_local_only_1234"}, follow_redirects=True)
-    check("login con llave maestra de prueba entra como admin", r.status_code == 200 and "Subir Cartolas".encode() in r.data)
+    check("login con llave maestra de prueba entra como admin", r.status_code == 200 and "Subir cartolas".encode() in r.data)
 
     # ---- Subir Cartolas: página inicial ----
     r = client.get("/cartolas/")
@@ -1163,7 +1163,7 @@ def main():
     # ---- Logout y login como 'trabajador' (no admin) ----
     client.post("/logout")
     r = client.post("/login", data={"usuario": "testuser", "clave": "trabajador123"}, follow_redirects=True)
-    check("login como trabajador de prueba entra", r.status_code == 200 and b"Subir Cartolas" in r.data)
+    check("login como trabajador de prueba entra", r.status_code == 200 and "Subir cartolas".encode() in r.data)
 
     r = client.get("/admin/cuentas")
     check("trabajador NO puede ver Administrador (403)", r.status_code == 403)
@@ -1216,7 +1216,7 @@ def main():
 
     r = client.get("/admin/pestanas")
     check("GET /admin/pestanas 200 (admin)", r.status_code == 200)
-    check("panel de pestañas lista Reuniones, Conciliación y Empresas Caja", b"Reuniones" in r.data and b"Conciliaci" in r.data and b"Empresas Caja" in r.data)
+    check("panel de pestañas lista Reuniones, Conciliación y Empresas Caja", b"Reuniones" in r.data and b"Conciliaci" in r.data and b"Empresas caja" in r.data)
     check("panel de pestañas NO incluye Administrador (no configurable)", b'name="vis_admin.cuentas"' not in r.data)
 
     # Por defecto (nunca guardado): Reuniones/Conciliación/Empresas Caja solo-admin, el resto para todos.

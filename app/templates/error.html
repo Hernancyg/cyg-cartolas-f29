@@ -4,5 +4,5 @@
 <div class="page-title">{{ codigo }}</div>
 <div class="page-title-underline"></div>
 <p class="page-subtitle">{{ mensaje }}</p>
-<a class="btn" href="{{ url_for('cartolas.index') if usuario_actual else url_for('auth.login') }}">Volver</a>
+<a class="btn" href="{{ url_for('inicio.index') if usuario_actual else url_for('auth.login') }}">Volver</a>
 {% endblock %}

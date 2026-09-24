@@ -13,13 +13,13 @@ siempre solo-admin, sin excepción.
 """
 
 PAGINAS = [
-    {"endpoint": "cartolas.index", "icon": "cloud", "label": "Subir Cartolas", "admin_only": False, "configurable": True},
+    {"endpoint": "cartolas.index", "icon": "cloud", "label": "Subir cartolas", "admin_only": False, "configurable": True},
     {"endpoint": "f29.index", "icon": "invoice", "label": "Generar F29", "admin_only": False, "configurable": True},
     {"endpoint": "global_igc.index", "icon": "calculator", "label": "Calcular Global", "admin_only": False, "configurable": True},
     {"endpoint": "indicadores.index", "icon": "trending", "label": "Indicadores", "admin_only": False, "configurable": True},
     {"endpoint": "reuniones.index", "icon": "calendar", "label": "Reuniones", "admin_only": True, "configurable": True},
     {"endpoint": "conciliacion.index", "icon": "reconcile", "label": "Conciliación", "admin_only": True, "configurable": True},
-    {"endpoint": "caja_empresas.index", "icon": "cash", "label": "Empresas Caja", "admin_only": True, "configurable": True},
+    {"endpoint": "caja_empresas.index", "icon": "cash", "label": "Empresas caja", "admin_only": True, "configurable": True},
     {"endpoint": "sii.contribuyente", "icon": "shield", "label": "Consulta SII", "admin_only": True, "configurable": True},
     {"endpoint": "depreciacion.empresas", "icon": "calculator", "label": "Depreciación", "admin_only": True, "configurable": True},
     {"endpoint": "planificacion_at2027.index", "icon": "calendar", "label": "Planificación AT 2027", "admin_only": True, "configurable": True},
@@ -27,6 +27,77 @@ PAGINAS = [
     {"endpoint": "eerr.index", "icon": "sparkle", "label": "EERR Dinámico", "admin_only": True, "configurable": True},
     {"endpoint": "admin.cuentas", "icon": "gear", "label": "Administrador", "admin_only": True, "configurable": False},
 ]
+
+# Rediseño 24-09-2026: el menú lateral agrupa las pestañas. `GRUPOS` solo
+# decide el orden y el agrupado visual; la visibilidad sigue saliendo de
+# `PAGINAS` (arriba). Una pestaña que no aparezca en ningún grupo queda
+# suelta al final, para que agregar una nueva nunca la esconda.
+GRUPOS = [
+    {"id": "bancos", "icon": "bank", "label": "Bancos",
+     "endpoints": ["cartolas.index", "conciliacion.index", "caja_empresas.index"]},
+    {"id": "impuestos", "icon": "invoice", "label": "Impuestos",
+     "endpoints": ["f29.index", "global_igc.index", "sii.contribuyente", "planificacion_at2027.index"]},
+    {"id": "contabilidad", "icon": "calculator", "label": "Contabilidad",
+     "endpoints": ["depreciacion.empresas", "eerr.index", "analisis.index", "indicadores.index"]},
+    {"id": None, "endpoints": ["reuniones.index"]},
+]
+
+# Subpáginas del Administrador que se muestran dentro de su grupo en el
+# menú (las mismas del subnav que ya tiene cada pantalla del panel).
+ADMIN_SUBPAGINAS = [
+    {"endpoint": "admin.cuentas", "label": "Cuentas F29"},
+    {"endpoint": "admin.usuarios", "label": "Usuarios"},
+    {"endpoint": "admin.pestanas", "label": "Pestañas"},
+    {"endpoint": "admin.tipos_documento", "label": "Tipos de documento"},
+    {"endpoint": "admin.planificacion_at2027", "label": "Carga planificación"},
+    {"endpoint": "admin.sistemas_contables", "label": "Sistemas contables"},
+]
+
+
+def menu_agrupado(paginas, es_admin):
+    """Arma el menú lateral a partir de las páginas ya filtradas por
+    visibilidad: una lista de grupos (con sus ítems visibles) e ítems
+    sueltos. Los grupos sin ningún ítem visible para este usuario no se
+    muestran."""
+    visibles = {p["endpoint"]: p for p in paginas if not p["admin_only"] or es_admin}
+    usados = set()
+    menu = []
+    for g in GRUPOS:
+        items = [visibles[e] for e in g["endpoints"] if e in visibles]
+        usados.update(p["endpoint"] for p in items)
+        if not items:
+            continue
+        if g["id"] is None:
+            menu.extend({"tipo": "item", "pagina": p} for p in items)
+        else:
+            menu.append({"tipo": "grupo", "id": g["id"], "icon": g["icon"], "label": g["label"], "items": items})
+    for e, p in visibles.items():
+        if e not in usados and e != "admin.cuentas":
+            menu.append({"tipo": "item", "pagina": p})
+    if "admin.cuentas" in visibles:
+        menu.append({"tipo": "grupo", "id": "admin", "icon": "gear", "label": "Administrador",
+                     "items": [dict(s, icon="gear") for s in ADMIN_SUBPAGINAS]})
+    return menu
+
+
+def grupo_de(endpoint):
+    """(nombre del grupo, etiqueta de la página) para la ruta de migas de
+    la página actual, o (None, None) si no es una pestaña del menú."""
+    if not endpoint:
+        return None, None
+    blueprint = endpoint.split(".")[0]
+    for s in ADMIN_SUBPAGINAS:
+        if s["endpoint"] == endpoint:
+            return "Administrador", s["label"]
+    if blueprint == "admin":
+        return "Administrador", None
+    for p in PAGINAS:
+        if p["endpoint"].split(".")[0] == blueprint:
+            for g in GRUPOS:
+                if p["endpoint"] in g["endpoints"]:
+                    return g.get("label"), p["label"]
+            return None, p["label"]
+    return None, None
 
 
 def paginas_con_visibilidad():

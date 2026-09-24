@@ -3,9 +3,19 @@
 {% block content %}
 {% from "_icons.html" import icon %}
 
-<div class="page-title">Carga de Cartolas Bancarias</div>
+<div class="page-title">Subir cartolas</div>
 <div class="page-title-underline"></div>
-<p class="page-subtitle">Selecciona tu banco y carga tu cartola en PDF o Excel.</p>
+<p class="page-subtitle">Convierte la cartola del banco en un Excel listo para importar.</p>
+{% set paso = 4 if (resultado and resultado.transacciones) else (3 if resultado else (2 if banco_elegido else 1)) %}
+{% set paso = 3 if paso == 4 else paso %}
+<div class="flow-steps" aria-label="Avance">
+  {% for nombre in ['Seleccionar banco', 'Cargar archivo', 'Revisar movimientos', 'Descargar Excel'] %}
+    {% if not loop.first %}<span class="flow-sep" aria-hidden="true">{{ icon('chevron-right', 14) }}</span>{% endif %}
+    <div class="flow-step {{ 'done' if loop.index < paso else ('now' if loop.index == paso else '') }}" {% if loop.index == paso %}aria-current="step"{% endif %}>
+      <span class="n">{% if loop.index < paso %}{{ icon('check', 13) }}{% else %}{{ loop.index }}{% endif %}</span><span class="t">{{ nombre }}</span>
+    </div>
+  {% endfor %}
+</div>
 
 <div class="card mergeable">
   <div class="section-header">

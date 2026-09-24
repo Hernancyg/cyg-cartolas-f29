@@ -21,7 +21,7 @@ auth_bp = Blueprint("auth", __name__)
 @limiter.limit("10 per minute", methods=["POST"])
 def login():
     if session.get("usuario"):
-        return redirect(url_for("cartolas.index"))
+        return redirect(url_for("inicio.index"))
 
     clave_maestra = current_app.config.get("ADMIN_PASSWORD")
     error = None
@@ -32,7 +32,7 @@ def login():
 
         if clave_maestra and verificar_clave_maestra(clave_ingresada, clave_maestra):
             session["usuario"] = {"usuario": "admin", "nombre": "Administrador", "rol": "admin", "is_master": True}
-            return redirect(request.args.get("next") or url_for("cartolas.index"))
+            return redirect(request.args.get("next") or url_for("inicio.index"))
 
         u = buscar_usuario(usuario_ingresado) if usuario_ingresado else None
         if u and u.get("activo", True) and verificar_password(clave_ingresada, u["salt"], u["hash"]):
@@ -40,7 +40,7 @@ def login():
                 "usuario": u["usuario"], "nombre": u["nombre"], "rol": u["rol"],
                 "id": u["id"], "is_master": False,
             }
-            return redirect(request.args.get("next") or url_for("cartolas.index"))
+            return redirect(request.args.get("next") or url_for("inicio.index"))
 
         error = "Usuario o contraseña incorrectos."
 

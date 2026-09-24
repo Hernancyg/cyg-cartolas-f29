@@ -18,59 +18,218 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ static_v('css/styles.css') }}">
 {% block extra_head %}{% endblock %}
 </head>
 <body>
 {% from "_icons.html" import icon %}
-<div class="app-shell">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-icon"><img src="{{ url_for('static', filename='img/brand-icon.png') }}" alt=""></div>
-      <div>
-        <div class="brand-name">C<span class="amp">&amp;</span>G Group</div>
-        <div class="brand-sub">CONTADORES Y ABOGADOS</div>
-        <div class="brand-tag">¿Emprendemos?</div>
-      </div>
-    </div>
+{%- macro activo_bp(endpoint) -%}
+{{ 'true' if request.endpoint and (request.endpoint == endpoint or request.endpoint.startswith(endpoint.split('.')[0] + '.')) else '' }}
+{%- endmacro -%}
+{%- macro activo_exacto(endpoint) -%}
+{{ 'true' if request.endpoint and (request.endpoint == endpoint or request.endpoint.startswith(endpoint + '_')) else '' }}
+{%- endmacro -%}
 
-    {% if usuario_actual %}
-    <nav class="nav">
-      {% for p in paginas %}
-        {% if not p.admin_only or es_admin %}
-        <a class="nav-item {{ 'active' if request.endpoint == p.endpoint or (request.endpoint and request.endpoint.startswith(p.endpoint.split('.')[0] + '.')) else '' }}" href="{{ url_for(p.endpoint) }}">
-          {{ icon(p.icon, 18) }}<span>{{ p.label }}</span>
-        </a>
+{% with messages = get_flashed_messages(with_categories=true) %}{% set flashes = messages %}
+{% if usuario_actual %}
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
+<div class="app-shell" id="app-shell">
+  <aside class="sidebar" id="sidebar" aria-label="Menú principal">
+    <a class="brand" href="{{ url_for('inicio.index') }}">
+      <img src="{{ url_for('static', filename='img/brand-icon.png') }}" alt="">
+      <span class="brand-name">C<span class="amp">&amp;</span>G Group</span>
+    </a>
+
+    <nav class="side-nav" aria-label="Módulos">
+      <a class="side-item" href="{{ url_for('inicio.index') }}" {% if request.endpoint == 'inicio.index' %}aria-current="page"{% endif %}>{{ icon('home', 18) }}<span>Inicio</span></a>
+      {% for m in menu %}
+        {% if m.tipo == 'item' %}
+        <a class="side-item" href="{{ url_for(m.pagina.endpoint) }}" {% if activo_bp(m.pagina.endpoint) %}aria-current="page"{% endif %}>{{ icon(m.pagina.icon, 18) }}<span>{{ m.pagina.label }}</span></a>
+        {% else %}
+          {% set ns = namespace(abierto=false) %}
+          {% for it in m['items'] %}
+            {% if (m.id == 'admin' and activo_exacto(it.endpoint)) or (m.id != 'admin' and activo_bp(it.endpoint)) %}{% set ns.abierto = true %}{% endif %}
+          {% endfor %}
+          {% if m.id == 'admin' and request.endpoint and request.endpoint.startswith('admin.') %}{% set ns.abierto = true %}{% endif %}
+        <div class="side-group{{ ' has-current' if ns.abierto }}" data-grupo="{{ m.id }}">
+          <button type="button" class="side-item side-group-head" aria-expanded="{{ 'true' if ns.abierto else 'false' }}" aria-controls="grupo-{{ m.id }}">
+            {{ icon(m.icon, 18) }}<span>{{ m.label }}</span><span class="side-chev">{{ icon('chevron-right', 15) }}</span>
+          </button>
+          <div class="side-sub" id="grupo-{{ m.id }}" {% if not ns.abierto %}hidden{% endif %}>
+            {% for it in m['items'] %}
+              {% if m.id == 'admin' %}
+              <a class="side-item side-subitem" href="{{ url_for(it.endpoint) }}" {% if activo_exacto(it.endpoint) %}aria-current="page"{% endif %}>{{ icon('dot', 18) }}<span>{{ it.label }}</span></a>
+              {% else %}
+              <a class="side-item side-subitem" href="{{ url_for(it.endpoint) }}" {% if activo_bp(it.endpoint) %}aria-current="page"{% endif %}>{{ icon(it.icon, 17) }}<span>{{ it.label }}</span></a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
         {% endif %}
       {% endfor %}
     </nav>
-    <hr class="sidebar-divider">
-    <div class="sidebar-footer">
-      <button type="button" class="theme-toggle" id="theme-toggle" onclick="cygToggleTheme()">
-        <span id="theme-toggle-icon">{{ icon('moon', 16) }}</span>
-        <span id="theme-toggle-label">Tema oscuro</span>
-      </button>
-      <div class="connected-as">Conectado como <strong>{{ usuario_actual.nombre }}</strong>{% if es_admin %} (admin){% endif %}</div>
+
+    <div class="side-foot">
+      <div class="side-who">
+        <span class="side-who-ok">{{ icon('check-circle', 20) }}</span>
+        <div><small>Conectado como</small><b>{{ usuario_actual.nombre }}</b>{% if es_admin %}<small>(admin)</small>{% endif %}</div>
+      </div>
       <form method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="nav-item" style="width:100%">{{ icon('logout', 18) }}<span>Cerrar sesión</span></button>
+        <button type="submit" class="side-logout">{{ icon('logout', 17) }}<span>Cerrar sesión</span></button>
       </form>
     </div>
-    {% endif %}
   </aside>
 
-  <main class="main">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
+  <div class="shell">
+    <header class="topbar">
+      <button type="button" class="topbar-btn topbar-menu" id="menu-btn" aria-controls="sidebar" aria-expanded="false" aria-label="Abrir menú">{{ icon('menu', 20) }}</button>
+      <button type="button" class="topbar-search" id="search-btn" aria-haspopup="dialog">
+        {{ icon('search', 16) }}<span>Buscar módulos…</span><kbd>Ctrl K</kbd>
+      </button>
+      <div class="topbar-right">
+        <div class="user-menu">
+          <button type="button" class="user-btn" id="user-btn" aria-haspopup="true" aria-expanded="false" aria-controls="user-drop">
+            <span class="avatar">{% set partes = (usuario_actual.nombre or usuario_actual.usuario or '?').split() %}{{ (partes[0][:1] ~ (partes[1][:1] if partes|length > 1 else '')) | upper }}</span>
+            <span class="user-text"><b>{{ usuario_actual.nombre }}</b><small>{{ 'Administrador' if es_admin else 'Trabajador' }}</small></span>
+            {{ icon('chevron-down', 16) }}
+          </button>
+          <div class="user-drop" id="user-drop" hidden>
+            <button type="button" class="user-drop-item" id="theme-toggle" onclick="cygToggleTheme()">
+              <span id="theme-toggle-icon">{{ icon('moon', 16) }}</span><span id="theme-toggle-label">Tema oscuro</span>
+            </button>
+            <form method="post" action="{{ url_for('auth.logout') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="user-drop-item">{{ icon('logout', 16) }}<span>Cerrar sesión</span></button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="main" id="contenido" tabindex="-1">
+      {% if miga_grupo or miga_pagina %}
+      <nav class="crumb" aria-label="Ruta">
+        <a href="{{ url_for('inicio.index') }}" aria-label="Inicio">{{ icon('home', 15) }}</a>
+        {% if miga_grupo %}<span>{{ miga_grupo }}</span>{% endif %}
+        {% if miga_grupo and miga_pagina %}<span aria-hidden="true">/</span>{% endif %}
+        {% if miga_pagina %}<span>{{ miga_pagina }}</span>{% endif %}
+      </nav>
+      {% endif %}
+      {% if flashes %}
+        {% for category, message in flashes %}
           <div class="alert alert-{{ category }}">{{ message | safe }}</div>
         {% endfor %}
       {% endif %}
-    {% endwith %}
-    {% block content %}{% endblock %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<div class="palette-wrap" id="palette" hidden>
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Buscar módulo">
+    <div class="palette-in">{{ icon('search', 18) }}<input type="text" id="palette-q" placeholder="Buscar módulo…" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="palette-list"></div>
+    <ul id="palette-list" role="listbox" aria-label="Módulos"></ul>
+    <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> moverse</span><span><kbd>Enter</kbd> abrir</span><span><kbd>Esc</kbd> cerrar</span></div>
+  </div>
+</div>
+{%- set destinos = [{'label': 'Inicio', 'grupo': '', 'url': url_for('inicio.index')}] -%}
+{%- for m in menu -%}
+  {%- if m.tipo == 'item' -%}
+    {%- set _ = destinos.append({'label': m.pagina.label, 'grupo': '', 'url': url_for(m.pagina.endpoint)}) -%}
+  {%- else -%}
+    {%- for it in m['items'] -%}
+      {%- set _ = destinos.append({'label': it.label, 'grupo': m.label, 'url': url_for(it.endpoint)}) -%}
+    {%- endfor -%}
+  {%- endif -%}
+{%- endfor %}
+<script>
+(function () {
+  var DEST = {{ destinos | tojson }};
+
+  /* Grupos del menú lateral: abrir/cerrar y recordar cuáles dejó abiertos. */
+  var abiertos = {};
+  try { abiertos = JSON.parse(localStorage.getItem('cyg-menu') || '{}'); } catch (e) {}
+  document.querySelectorAll('.side-group').forEach(function (g) {
+    var id = g.getAttribute('data-grupo'), btn = g.querySelector('.side-group-head'), sub = g.querySelector('.side-sub');
+    if (!g.classList.contains('has-current') && abiertos[id]) { sub.hidden = false; btn.setAttribute('aria-expanded', 'true'); }
+    btn.addEventListener('click', function () {
+      var abrir = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', abrir ? 'true' : 'false'); sub.hidden = !abrir;
+      abiertos[id] = abrir; try { localStorage.setItem('cyg-menu', JSON.stringify(abiertos)); } catch (e) {}
+    });
+  });
+
+  /* Menú lateral en pantallas angostas. */
+  var shell = document.getElementById('app-shell'), menuBtn = document.getElementById('menu-btn'), scrim = null;
+  function cerrarMenu() { shell.classList.remove('menu-open'); menuBtn.setAttribute('aria-expanded', 'false'); if (scrim) { scrim.remove(); scrim = null; } }
+  menuBtn.addEventListener('click', function () {
+    shell.classList.add('menu-open'); menuBtn.setAttribute('aria-expanded', 'true');
+    scrim = document.createElement('div'); scrim.className = 'menu-scrim'; scrim.addEventListener('click', cerrarMenu); shell.appendChild(scrim);
+  });
+
+  /* Menú de la cuenta. */
+  var userBtn = document.getElementById('user-btn'), userDrop = document.getElementById('user-drop');
+  userBtn.addEventListener('click', function (e) { e.stopPropagation(); var abrir = userDrop.hidden; userDrop.hidden = !abrir; userBtn.setAttribute('aria-expanded', abrir ? 'true' : 'false'); });
+  document.addEventListener('click', function (e) { if (!userDrop.hidden && !userDrop.contains(e.target)) { userDrop.hidden = true; userBtn.setAttribute('aria-expanded', 'false'); } });
+
+  /* Buscador de módulos (botón de arriba o Ctrl+K). */
+  var pal = document.getElementById('palette'), q = document.getElementById('palette-q'), list = document.getElementById('palette-list'), sel = 0, res = [], lastFocus = null;
+  function norm(s) { return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function pintar() {
+    var t = norm(q.value.trim());
+    res = DEST.filter(function (d) { return !t || norm(d.label).indexOf(t) >= 0 || norm(d.grupo).indexOf(t) >= 0; });
+    if (sel >= res.length) sel = Math.max(0, res.length - 1);
+    list.innerHTML = res.length ? res.map(function (d, i) { return '<li role="option" id="pal-' + i + '" data-i="' + i + '" aria-selected="' + (i === sel) + '"><span>' + esc(d.label) + '</span><small>' + esc(d.grupo) + '</small></li>'; }).join('')
+      : '<li class="palette-empty" role="option" aria-disabled="true">Ningún módulo coincide. Prueba con "banco" o "impuesto".</li>';
+    q.setAttribute('aria-activedescendant', res.length ? 'pal-' + sel : '');
+    var s = list.querySelector('[aria-selected="true"]'); if (s) s.scrollIntoView({ block: 'nearest' });
+  }
+  function abrirPal() { lastFocus = document.activeElement; pal.hidden = false; q.value = ''; sel = 0; pintar(); q.focus(); }
+  function cerrarPal() { pal.hidden = true; if (lastFocus && lastFocus.focus) lastFocus.focus(); }
+  document.getElementById('search-btn').addEventListener('click', abrirPal);
+  q.addEventListener('input', function () { sel = 0; pintar(); });
+  q.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (res.length) { sel = (sel + 1) % res.length; pintar(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (res.length) { sel = (sel - 1 + res.length) % res.length; pintar(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); if (res[sel]) window.location.href = res[sel].url; }
+    else if (e.key === 'Escape') { e.preventDefault(); cerrarPal(); }
+    else if (e.key === 'Tab') { e.preventDefault(); }
+  });
+  list.addEventListener('mousemove', function (e) { var li = e.target.closest('[data-i]'); if (li && +li.dataset.i !== sel) { sel = +li.dataset.i; pintar(); } });
+  list.addEventListener('click', function (e) { var li = e.target.closest('[data-i]'); if (li) window.location.href = res[+li.dataset.i].url; });
+  pal.addEventListener('click', function (e) { if (e.target === pal) cerrarPal(); });
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); pal.hidden ? abrirPal() : cerrarPal(); }
+    else if (e.key === 'Escape') { cerrarMenu(); if (!userDrop.hidden) { userDrop.hidden = true; userBtn.setAttribute('aria-expanded', 'false'); userBtn.focus(); } }
+  });
+})();
+</script>
+{% else %}
+<div class="auth-shell">
+  <aside class="auth-side">
+    <div class="auth-brand"><img src="{{ url_for('static', filename='img/brand-icon.png') }}" alt=""><span>C<span class="amp">&amp;</span>G Group</span></div>
+    <div>
+      <h2>Las herramientas del estudio, en un solo lugar.</h2>
+      <p>Cartolas, F29, conciliación, depreciación y estados de resultados para las empresas clientes.</p>
+    </div>
+    <small>Contadores y abogados · ¿Emprendemos?</small>
+  </aside>
+  <main class="auth-main" id="contenido">
+    <div class="auth-inner">
+      {% if flashes %}
+        {% for category, message in flashes %}
+          <div class="alert alert-{{ category }}">{{ message | safe }}</div>
+        {% endfor %}
+      {% endif %}
+      {% block content_auth %}{{ self.content() }}{% endblock %}
+    </div>
   </main>
 </div>
+{% endif %}
+{% endwith %}
 
 <div class="loading-overlay" id="loading-overlay" aria-hidden="true">
   <div class="loading-box">
