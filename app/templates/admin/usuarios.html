@@ -29,7 +29,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Activo</th><th></th></tr></thead>
+        <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Tema</th><th>Activo</th><th></th></tr></thead>
         <tbody>
           {% for u in usuarios %}
           <tr>
@@ -38,6 +38,11 @@
             <td>
               <select name="u_rol" {{ 'disabled' if u.id == mi_id else '' }}>
                 {% for r in roles %}<option value="{{ r }}" {{ 'selected' if u.rol == r else '' }}>{{ r }}</option>{% endfor %}
+              </select>
+            </td>
+            <td>
+              <select name="u_tema_{{ u.id }}" aria-label="Tema visual de {{ u.usuario }}">
+                {% for k, v in temas.items() %}<option value="{{ k }}" {{ 'selected' if (u.get('tema') or '') == k else '' }}>{{ v }}</option>{% endfor %}
               </select>
             </td>
             <td><input type="checkbox" name="u_activo" value="{{ u.id }}" {{ 'checked' if u.get('activo', True) else '' }} {{ 'disabled' if u.id == mi_id else '' }}></td>

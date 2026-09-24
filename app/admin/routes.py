@@ -109,7 +109,7 @@ def usuarios():
     yo = session.get("usuario") or {}
     return render_template(
         "admin/usuarios.html", usuarios=lista, roles=usuarios_repo.ROLES,
-        mi_id=yo.get("id"),
+        temas=usuarios_repo.TEMAS, mi_id=yo.get("id"),
     )
 
 
@@ -131,6 +131,25 @@ def usuarios_actualizar():
             roles[i] if i < len(roles) else "trabajador",
             uid in activos,
         )
+
+    # Tema visual (25-09-2026): campo por id (u_tema_<id>), también para el
+    # propio admin — cambiarse el tema no lo bloquea de nada.
+    temas_fallidos = False
+    for u in usuarios_repo.listar_usuarios():
+        clave = f"u_tema_{u['id']}"
+        if clave not in request.form:
+            continue
+        nuevo = request.form.get(clave) or ""
+        if nuevo == (u.get("tema") or ""):
+            continue
+        try:
+            usuarios_repo.actualizar_tema(u["id"], nuevo)
+        except Exception as exc:  # noqa: BLE001
+            current_app.logger.warning("No se pudo guardar el tema: %s", exc)
+            temas_fallidos = True
+    if temas_fallidos:
+        flash("Los temas no se guardaron: falta ejecutar migration/016_tema_usuario.sql en Supabase "
+              "(SQL Editor). El resto de los cambios sí quedó guardado.", "error")
     flash("Cambios de usuarios guardados.", "success")
     return redirect(url_for("admin.usuarios"))
 

@@ -198,7 +198,10 @@ def test_rutas_flujo_completo():
     r = client.get("/eerr/datos?sistema=nubox&codigo=626&anio=2026")
     j = r.get_json()
     check("GET /eerr/datos 200", r.status_code == 200, str(j)[:200])
-    check("datos: meses enero-agosto", j["meses_con_datos"] == list(range(1, 9)))
+    # El puente se actualiza solo durante el año (rutinas 08:00/13:30/18:30):
+    # al menos enero-agosto, sin huecos.
+    m = j["meses_con_datos"]
+    check("datos: meses desde enero sin huecos", m[:8] == list(range(1, 9)) and m == list(range(1, len(m) + 1)), str(m))
     check("datos: plantilla de conceptos", [c["id"] for c in j["conceptos"]][:4] == ["ing_exp", "otros_ing", "ing_reaj", "tg"])
     check("datos: sin configuración guardada", j["config_guardada"] is False)
 

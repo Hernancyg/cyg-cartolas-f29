@@ -156,8 +156,11 @@ def create_app():
         es_admin = bool(usuario and usuario.get("rol") == "admin")
         paginas = paginas_con_visibilidad()
         miga_grupo, miga_pagina = grupo_de(request.endpoint)
+        from app.data import usuarios_repo
         return {
             "usuario_actual": usuario,
+            # Tema visual asignado a este usuario (Administrador → Usuarios).
+            "tema_usuario": usuarios_repo.tema_de(usuario.get("id")) if usuario else "",
             "es_admin": es_admin,
             "paginas": paginas,
             "menu": menu_agrupado(paginas, es_admin) if usuario else [],

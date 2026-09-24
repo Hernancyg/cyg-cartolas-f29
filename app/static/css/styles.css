@@ -1299,3 +1299,42 @@ body.plan-expandido .topbar { display: none; }
 #conc-bulk-cuenta-slot { flex: 1 1 280px; min-width: 0; position: relative; }
 .conc-bulk-nota { flex-basis: 100%; font-size: 0.76rem; color: var(--text-muted); margin: 0; }
 .conc-bulk-hecho { margin-top: 10px; }
+
+/* Tema "Rosa" (25-09-2026): paleta asignable por usuario desde
+   Administrador → Usuarios. Se activa con data-tema="rosa" en <html> y
+   convive con el claro/oscuro de siempre (data-theme). Acento de marca
+   #E44F9C; los botones usan #CF3585 para que el texto blanco cumpla
+   contraste AA (4,7:1 — con #E44F9C sería 3,6:1). */
+:root[data-tema="rosa"] {
+  --rosa: #E44F9C;
+  --side: #3A0D2B; --side-2: #2A0820; --side-on: #7A1D57; --side-line: rgba(255,255,255,0.08);
+  --side-ink: #FBEAF3; --side-muted: #EACBDC; --side-hover: rgba(255,255,255,0.06);
+  --sidebar-grad-1: #3A0D2B; --sidebar-grad-2: #2A0820; --navy: #2A0820;
+  --ground: #FBF4F8; --head: #FAF1F6; --line: #F1E1EA; --border: #F1E1EA;
+  --blue-soft: #FDE7F2; --section-badge-bg: #FDE7F2;
+  --indigo: #CF3585; --indigo-rgb: 207,53,133; --indigo-dark: #B02A70;
+  --teal: #9C3D8F; --teal-rgb: 156,61,143;
+  --card-border: #F1E1EA; --card-border-hover: #E6CCDA;
+  --table-border: #F1E1EA; --table-th-bg: #FAF1F6; --table-td-border: #F5E8EF; --table-row-hover: #FDF6FA;
+  --input-border: #EBD3E0; --btn-secondary-border: #EBD3E0; --metric-border: #F1E1EA;
+  --alert-info-bg: #FDE7F2; --alert-info-color: #7A1450; --alert-info-line: #F6C6DF;
+}
+:root[data-tema="rosa"][data-theme="dark"] {
+  --rosa: #F071B2;
+  --side: #1E0917; --side-2: #150611; --side-on: #5C1743;
+  --side-ink: #F6E3EE; --side-muted: #C9A6B9;
+  --sidebar-grad-1: #1E0917; --sidebar-grad-2: #150611; --navy: #150611;
+  --ground: #140A11; --surface: #1D1019; --head: #27141F; --line: #36202D; --border: #36202D;
+  --blue-soft: #3A1530; --section-badge-bg: #3A1530;
+  --indigo: #E44F9C; --indigo-rgb: 228,79,156; --indigo-dark: #CF3585;
+  --teal: #D17BC4; --teal-rgb: 209,123,196;
+  --card-bg: #1D1019; --card-border: #36202D; --card-border-hover: #4A2B3D;
+  --table-bg: #1D1019; --table-border: #36202D; --table-th-bg: #27141F; --table-td-border: #2E1825; --table-row-hover: #27141F;
+  --input-bg: #180C14; --input-border: #43283A; --btn-secondary-bg: #1D1019; --btn-secondary-border: #43283A;
+  --metric-bg: #1D1019; --metric-border: #36202D; --subnav-bg: #1D1019;
+  --alert-info-bg: #3A1530; --alert-info-color: #FFD1E8; --alert-info-line: #5C2449;
+  --btn-text: #1A0612;
+}
+:root[data-tema="rosa"] .page-title-underline { background: var(--rosa); }
+:root[data-tema="rosa"] .side-item[aria-current="page"] { box-shadow: inset 3px 0 0 var(--rosa); }
+:root[data-tema="rosa"] .avatar { background: var(--rosa); color: #FFFFFF; }
