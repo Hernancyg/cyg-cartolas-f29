@@ -209,15 +209,34 @@
       return "Suma de " + n + " concepto" + (n === 1 ? "" : "s");
     }
     if (c.tipo === "f") return nombreConcepto(c.a) + " − " + nombreConcepto(c.b);
+    if (c.tipo === "rf") {
+      return "Resultado del ejercicio " + postConceptos().map(function (x) {
+        return (x.op === "suma" ? "+ " : "− ") + x.n;
+      }).join(" ");
+    }
+    if (c.sec === "post") {
+      return "Monto manual por mes (se escribe en el informe) · " + (c.op === "suma" ? "suma al" : "resta al") + " Resultado del ejercicio";
+    }
     var k = Object.keys(S.asig).filter(function (x) { return S.asig[x] === c.id; }).length;
     return k + " cuenta" + (k === 1 ? "" : "s") + " asignada" + (k === 1 ? "" : "s") + " · suma en " + INIT.secciones[c.sec];
   }
+  function postConceptos() { return S.conceptos.filter(function (c) { return c.sec === "post"; }); }
   function renderConceptos() {
-    var badge = { g: '<span class="eerr-badge">Concepto</span>', t: '<span class="eerr-badge t">Total</span>', f: '<span class="eerr-badge f">Margen</span>' };
+    var badge = {
+      g: '<span class="eerr-badge">Concepto</span>', t: '<span class="eerr-badge t">Total</span>',
+      f: '<span class="eerr-badge f">Margen</span>', rf: '<span class="eerr-badge f">Resultado final</span>'
+    };
+    var primeroPost = postConceptos()[0];
     $("#eerr-clist").innerHTML = S.conceptos.map(function (c) {
-      var cls = c.tipo === "t" ? "total" : (c.tipo === "f" ? "formula" : "");
-      return '<div class="eerr-crow ' + cls + (c.inc ? "" : " off") + '">' +
-        '<div><span class="nm">' + esc(c.n) + "</span>" + badge[c.tipo] + (c.custom ? '<span class="eerr-badge new">Nuevo</span>' : "") +
+      var cls = c.tipo === "t" ? "total" : ((c.tipo === "f" || c.tipo === "rf") ? "formula" : "");
+      var editable = c.custom || c.tipo === "rf";
+      var nombre = editable
+        ? '<input type="text" class="eerr-name" data-id="' + esc(c.id) + '" value="' + esc(c.n) + '" maxlength="80" aria-label="Nombre de ' + esc(c.n) + '">'
+        : '<span class="nm">' + esc(c.n) + "</span>";
+      var op = c.sec === "post" ? '<span class="eerr-badge ' + c.op + '">' + (c.op === "suma" ? "Suma" : "Resta") + "</span>" : "";
+      return (c === primeroPost ? '<div class="eerr-csep">Bajo el Resultado del ejercicio</div>' : "") +
+        '<div class="eerr-crow ' + cls + (c.inc ? "" : " off") + '">' +
+        "<div>" + nombre + badge[c.tipo] + op + (c.custom ? '<span class="eerr-badge new">Nuevo</span>' : "") +
         '<span class="sub">' + esc(describe(c)) + "</span></div>" +
         '<div class="eerr-seg" role="group" aria-label="Incluir ' + esc(c.n) + ' en el informe">' +
         '<button type="button" class="inc" data-id="' + esc(c.id) + '" data-v="1" aria-pressed="' + !!c.inc + '">Incluir</button>' +
@@ -232,10 +251,26 @@
         guardarPronto();
       });
     });
+    $$("#eerr-clist .eerr-name").forEach(function (inp) {
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") inp.blur(); });
+      inp.addEventListener("change", function () {
+        var c = S.conceptos.filter(function (x) { return x.id === inp.dataset.id; })[0];
+        var v = inp.value.trim().replace(/\s+/g, " ").toUpperCase();
+        if (!v) { inp.value = c.n; toast("El nombre no puede quedar vacío"); return; }
+        if (S.conceptos.some(function (x) { return x.id !== c.id && x.n.toUpperCase() === v; })) {
+          inp.value = c.n; toast("Ya existe un concepto con ese nombre"); return;
+        }
+        c.n = v;
+        renderConceptos();
+        guardarPronto();
+        toast("Nombre guardado: " + v);
+      });
+    });
     $$("#eerr-clist [data-del]").forEach(function (b) {
       b.addEventListener("click", function () {
         var id = b.dataset.del;
         S.conceptos = S.conceptos.filter(function (c) { return c.id !== id; });
+        if (!postConceptos().length) S.conceptos = S.conceptos.filter(function (c) { return c.tipo !== "rf"; });
         Object.keys(S.asig).forEach(function (k) { if (S.asig[k] === id) delete S.asig[k]; });
         renderConceptos();
         guardarPronto();
@@ -249,6 +284,19 @@
     if (!n) { $("#eerr-newname").focus(); toast("Escribe el nombre del concepto"); return; }
     if (S.conceptos.some(function (c) { return c.n.toUpperCase() === n; })) { toast("Ya existe un concepto con ese nombre"); return; }
     var sec = $("#eerr-newsec").value;
+    if (sec === "post") {
+      if (!S.conceptos.some(function (c) { return c.tipo === "rf"; })) {
+        S.conceptos.push({ id: "resfin", n: "RESULTADO FINAL", tipo: "rf", inc: true });
+      }
+      var op = $("#eerr-newop").value;
+      var ifin = S.conceptos.map(function (c) { return c.id; }).indexOf("resfin");
+      S.conceptos.splice(ifin, 0, { id: "c" + Date.now(), n: n, tipo: "g", sec: "post", op: op, inc: true, custom: true, manual: {} });
+      $("#eerr-newname").value = "";
+      renderConceptos();
+      guardarPronto();
+      toast("“" + n + "” agregado: escribe sus montos en el informe");
+      return;
+    }
     var idx = S.conceptos.map(function (c) { return c.id; }).indexOf(sec);
     S.conceptos.splice(idx, 0, { id: "c" + Date.now(), n: n, tipo: "g", sec: sec, inc: true, custom: true });
     $("#eerr-newname").value = "";
@@ -256,6 +304,8 @@
     guardarPronto();
     toast("“" + n + "” agregado a " + INIT.secciones[sec]);
   });
+
+  $("#eerr-newsec").addEventListener("change", function () { $("#eerr-opfield").hidden = $("#eerr-newsec").value !== "post"; });
 
   /* ---------------- paso 4: asignar cuentas ---------------- */
   function enRango(c) {
@@ -270,14 +320,14 @@
   function renderCuentas() {
     var lista = S.datos.cuentas.filter(enRango);
     $("#eerr-ncuentas").textContent = lista.length;
-    var grupos = S.conceptos.filter(function (c) { return c.tipo === "g"; });
+    var grupos = S.conceptos.filter(function (c) { return c.tipo === "g" && c.sec !== "post"; });
     var sin = lista.filter(function (c) { return !S.asig[cod(c)]; }).length;
     $("#eerr-nsin").textContent = sin;
     var q = S.q.toLowerCase();
     var filas = lista.filter(function (c) {
       return (S.filtro === "todas" || !S.asig[cod(c)]) && (!q || (c.codigo + " " + c.nombre).toLowerCase().indexOf(q) !== -1);
     });
-    var opciones = Object.keys(INIT.secciones).map(function (sid) {
+    var opciones = Object.keys(INIT.secciones).filter(function (sid) { return sid !== "post"; }).map(function (sid) {
       return '<optgroup label="' + esc(INIT.secciones[sid]) + '">' + grupos.filter(function (g) { return g.sec === sid; }).map(function (g) {
         return '<option value="' + esc(g.id) + '">' + esc(g.n) + "</option>";
       }).join("") + "</optgroup>";
@@ -379,6 +429,17 @@
         h += '<tr class="cta"><td>' + esc(f.nombre) + "</td>" + celdas(f) + "</tr>";
         return;
       }
+      if (f.tipo === "manual") {
+        h += '<tr class="grupo manual"><td><span class="eerr-tog"></span>' + esc(f.nombre) + "</td>";
+        for (var j = 0; j < f.valores.length; j++) {
+          var v = f.valores[j];
+          h += '<td><input class="eerr-minput" inputmode="numeric" placeholder="0" data-c="' + esc(f.id) + '" data-m="' + f.claves[j] + '"' +
+            ' value="' + (v ? fmt.format(Math.round(v)) : "") + '" aria-label="' + esc(f.nombre) + " " + esc(cols[j]) + '"></td>' +
+            '<td class="p">' + pct(f.pcts[j]) + "</td>";
+        }
+        h += '<td class="acc ' + (f.acum < 0 ? "neg" : "") + '">' + money(f.acum) + '</td><td class="p acc">' + pct(f.acum_pct) + "</td></tr>";
+        return;
+      }
       if (f.tipo === "grupo") {
         var tiene = I.filas.some(function (x) { return x.tipo === "cta" && x.padre === f.id; });
         var open = S.verCuentas && S.abiertos[f.id] !== false;
@@ -394,6 +455,23 @@
       b.addEventListener("click", function () {
         S.abiertos[b.dataset.t] = b.getAttribute("aria-expanded") !== "true";
         renderInforme();
+      });
+    });
+    $$(".eerr-minput").forEach(function (inp) {
+      inp.addEventListener("focus", function () { inp.select(); });
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") inp.blur(); });
+      inp.addEventListener("change", function () {
+        var txt = inp.value.trim();
+        var neg = /^\(|^-/.test(txt);
+        var num = Number(txt.replace(/[^0-9,]/g, "").replace(",", "."));
+        if (txt && isNaN(num)) { toast("Escribe solo números"); renderInforme(); return; }
+        var c = S.conceptos.filter(function (x) { return x.id === inp.dataset.c; })[0];
+        if (!c) return;
+        c.manual = c.manual || {};
+        if (!txt || !num) delete c.manual[inp.dataset.m];
+        else c.manual[inp.dataset.m] = Math.round(neg ? -num : num);
+        pedirInforme(true);
+        toast("Monto guardado");
       });
     });
     var q = $("#eerr-cuadre"), cu = I.cuadre;

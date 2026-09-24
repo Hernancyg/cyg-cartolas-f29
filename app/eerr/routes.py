@@ -111,7 +111,8 @@ def index():
     return render_template(
         "eerr/index.html",
         sistemas=eerr_repo.SISTEMAS, empresas=empresas, aviso=aviso,
-        secciones={k: v[0] for k, v in calculo.SECCIONES.items()}, meses=calculo.MESES,
+        secciones=dict({k: v[0] for k, v in calculo.SECCIONES.items()}, **{calculo.POST: "Bajo el Resultado del ejercicio"}),
+        meses=calculo.MESES,
     )
 
 
@@ -186,7 +187,7 @@ def informe():
             logger.exception("No se pudo guardar eerr_config")
             aviso = _AVISO_MIGRACION
 
-    resultado = calculo.calcular(leidos["cuentas"], conceptos, asignaciones, desde, hasta)
+    resultado = calculo.calcular(leidos["cuentas"], conceptos, asignaciones, desde, hasta, anio)
     return jsonify(informe=resultado, conceptos=conceptos, asignaciones=asignaciones,
                    guardado=bool(cuerpo.get("guardar")) and aviso is None, aviso=aviso)
 
@@ -203,7 +204,7 @@ def exportar():
     if error:
         return render_template("error.html", codigo=404, mensaje=error), 404
 
-    resultado = calculo.calcular(leidos["cuentas"], conceptos, asignaciones, desde, hasta)
+    resultado = calculo.calcular(leidos["cuentas"], conceptos, asignaciones, desde, hasta, anio)
     rango = calculo.rango_legible(resultado["meses"][0], resultado["meses"][-1], anio)
     fuente = _fuente(sistema, leidos)
     base = f"EERR_{codigo}_{anio}{resultado['meses'][0]:02d}-{resultado['meses'][-1]:02d}"

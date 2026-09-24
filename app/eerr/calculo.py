@@ -20,6 +20,13 @@ dentro de su concepto en ese mes; en conceptos, totales y márgenes, sobre
 el Total Ganancias del mes. "No incluir" solo oculta la fila del informe:
 su monto sigue sumando en su total.
 
+Bajo el Resultado del ejercicio (24-09-2026, pedido para 626/627): el
+usuario puede agregar conceptos cuyos montos se escriben a mano, mes a mes
+(no llevan cuentas de Nubox — p. ej. "GASTOS EN NEGRO"); cada uno resta o
+suma y dan un resultado final con el nombre que el usuario elija. El cuadre
+con Nubox se hace contra el Resultado del ejercicio, porque esos montos no
+existen en Nubox.
+
 El mismo cálculo alimenta la pantalla y las exportaciones a Excel y PDF,
 para que los tres muestren exactamente las mismas cifras.
 """
@@ -74,6 +81,12 @@ CONCEPTOS_BASE: List[dict] = [
     {"id": "res", "n": "Resultado del ejercicio", "tipo": "f", "a": "mb", "b": "te"},
 ]
 
+POST = "post"  # sección "Bajo el Resultado del ejercicio"
+OPERACIONES = {"resta": -1, "suma": 1}
+ID_RESULTADO_FINAL = "resfin"
+NOMBRE_RESULTADO_FINAL = "RESULTADO FINAL"
+
+_MES_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _ID_RE = re.compile(r"^[A-Za-z0-9_]{1,40}$")
 _CODIGO_RE = re.compile(r"^[0-9A-Za-z.\-]{1,30}$")
 
@@ -135,17 +148,41 @@ def leer_eerr_csv(ruta: Path) -> dict:
 # Validación de lo que llega desde el navegador
 # ---------------------------------------------------------------------------
 
+def _nombre(texto) -> str:
+    return " ".join(str(texto or "").split())[:80].upper()
+
+
+def _montos_manuales(manual) -> Dict[str, float]:
+    """{"AAAA-MM": monto} válido (sin ceros ni claves raras)."""
+    if not isinstance(manual, dict):
+        return {}
+    limpio = {}
+    for k, v in manual.items():
+        if not _MES_RE.match(str(k)):
+            continue
+        try:
+            monto = round(float(v))
+        except (TypeError, ValueError):
+            continue
+        if monto:
+            limpio[str(k)] = monto
+    return limpio
+
+
 def normalizar_conceptos(conceptos) -> List[dict]:
     """Deja una lista válida de conceptos a partir de lo que mandó el
     navegador (o lo guardado en Supabase). Los conceptos de la plantilla,
     totales y márgenes siempre existen, en el orden de la plantilla y con
     su fórmula original (desde afuera solo se puede cambiar "Incluir / No
     incluir"); los conceptos propios del usuario van justo antes del total
-    de su sección, en el orden en que se agregaron."""
+    de su sección, en el orden en que se agregaron. Los de "bajo el
+    resultado" van después del Resultado del ejercicio, seguidos del
+    resultado final (solo si hay alguno)."""
     if not isinstance(conceptos, list):
         conceptos = []
     base_ids = {c["id"] for c in CONCEPTOS_BASE}
     inc, propios, vistos = {}, {sid: [] for sid in SECCIONES}, set()
+    post, final = [], {"n": NOMBRE_RESULTADO_FINAL, "inc": True}
     for c in conceptos:
         if not isinstance(c, dict):
             continue
@@ -155,8 +192,17 @@ def normalizar_conceptos(conceptos) -> List[dict]:
         vistos.add(cid)
         if cid in base_ids:
             inc[cid] = c.get("inc") is not False
+        elif cid == ID_RESULTADO_FINAL:
+            final = {"n": _nombre(c.get("n")) or NOMBRE_RESULTADO_FINAL, "inc": c.get("inc") is not False}
+        elif c.get("tipo") == "g" and c.get("sec") == POST:
+            nombre = _nombre(c.get("n"))
+            if nombre:
+                post.append({"id": cid, "n": nombre, "tipo": "g", "sec": POST,
+                             "op": c.get("op") if c.get("op") in OPERACIONES else "resta",
+                             "manual": _montos_manuales(c.get("manual")),
+                             "inc": c.get("inc") is not False, "custom": True})
         elif c.get("tipo") == "g" and c.get("sec") in SECCIONES:
-            nombre = " ".join(str(c.get("n") or "").split())[:80].upper()
+            nombre = _nombre(c.get("n"))
             if nombre:
                 propios[c["sec"]].append({"id": cid, "n": nombre, "tipo": "g", "sec": c["sec"],
                                           "inc": c.get("inc") is not False, "custom": True})
@@ -165,6 +211,9 @@ def normalizar_conceptos(conceptos) -> List[dict]:
         if c["tipo"] == "t":
             resultado.extend(propios[c["id"]])
         resultado.append(dict(c, inc=inc.get(c["id"], True)))
+    if post:
+        resultado.extend(post)
+        resultado.append({"id": ID_RESULTADO_FINAL, "n": final["n"], "tipo": "rf", "inc": final["inc"]})
     return resultado
 
 
@@ -173,7 +222,8 @@ def normalizar_asignaciones(asignaciones, conceptos: List[dict]) -> Dict[str, st
     inválidos (p. ej. asignaciones a un concepto que se quitó)."""
     if not isinstance(asignaciones, dict):
         return {}
-    grupos = {c["id"] for c in conceptos if c["tipo"] == "g"}
+    # Los conceptos bajo el resultado no llevan cuentas (montos a mano).
+    grupos = {c["id"] for c in conceptos if c["tipo"] == "g" and c.get("sec") != POST}
     return {
         str(k): str(v) for k, v in asignaciones.items()
         if _CODIGO_RE.match(str(k)) and str(v) in grupos
@@ -191,13 +241,15 @@ def _pct(valor: float, base: float) -> Optional[float]:
 
 
 def calcular(cuentas: List[dict], conceptos: List[dict], asignaciones: Dict[str, str],
-             desde: int, hasta: int) -> dict:
+             desde: int, hasta: int, anio: Optional[int] = None) -> dict:
     """Informe listo para dibujar: columnas (meses del rango) y filas en
     orden, cada una con sus montos, porcentajes y acumulado.
 
     Tipos de fila: "grupo" (concepto), "cta" (cuenta dentro de un concepto),
-    "total", "formula" (margen), "resultado" (Resultado del ejercicio) y
-    "sinasig" (efecto de las cuentas sin asignar, si las hay)."""
+    "total", "formula" (margen), "resultado" (Resultado del ejercicio y
+    resultado final), "manual" (concepto bajo el resultado, con las claves
+    "AAAA-MM" de cada mes para editarlo) y "sinasig" (efecto de las cuentas
+    sin asignar, si las hay). `anio` hace falta para leer los montos manuales."""
     desde = max(1, min(12, int(desde)))
     hasta = max(desde, min(12, int(hasta)))
     idx = list(range(desde - 1, hasta))
@@ -212,7 +264,7 @@ def calcular(cuentas: List[dict], conceptos: List[dict], asignaciones: Dict[str,
 
     for cta in en_rango:
         g = por_id.get(asignaciones.get(cta["codigo"], ""))
-        if not g or g["tipo"] != "g":
+        if not g or g["tipo"] != "g" or g.get("sec") == POST:
             sin_asignar.append(cta)
             continue
         signo = 1 if cta["tipo"] == naturaleza[g["sec"]] else -1
@@ -221,7 +273,17 @@ def calcular(cuentas: List[dict], conceptos: List[dict], asignaciones: Dict[str,
         for j, v in enumerate(montos):
             valores[g["id"]][j] += v
 
+    claves = [f"{anio}-{i + 1:02d}" for i in idx]
     for c in conceptos:
+        if c["tipo"] == "g" and c.get("sec") == POST:
+            manual = c.get("manual") or {}
+            valores[c["id"]] = [float(manual.get(k, 0)) for k in claves]
+        elif c["tipo"] == "rf":
+            valores[c["id"]] = list(valores["res"])
+            for g in conceptos:
+                if g["tipo"] == "g" and g.get("sec") == POST:
+                    s = OPERACIONES[g["op"]]
+                    valores[c["id"]] = [a + s * b for a, b in zip(valores[c["id"]], valores[g["id"]])]
         if c["tipo"] == "t":
             for g in conceptos:
                 if g["tipo"] == "g" and g["sec"] == c["id"]:
@@ -245,7 +307,11 @@ def calcular(cuentas: List[dict], conceptos: List[dict], asignaciones: Dict[str,
     for c in conceptos:
         if not c.get("inc", True):
             continue
-        if c["tipo"] == "g":
+        if c["tipo"] == "g" and c.get("sec") == POST:
+            prefijo = "(−) " if c["op"] == "resta" else "(+) "
+            filas.append(fila("manual", prefijo + c["n"], valores[c["id"]], base, base_acum,
+                              id=c["id"], claves=claves))
+        elif c["tipo"] == "g":
             v = valores[c["id"]]
             filas.append(fila("grupo", c["n"], v, base, base_acum, id=c["id"]))
             for cta, montos in cuentas_de[c["id"]]:
@@ -253,7 +319,7 @@ def calcular(cuentas: List[dict], conceptos: List[dict], asignaciones: Dict[str,
         elif c["tipo"] == "t":
             filas.append(fila("total", c["n"], valores[c["id"]], base, base_acum, id=c["id"]))
         else:
-            tipo = "resultado" if c["id"] == "res" else "formula"
+            tipo = "resultado" if c["id"] in ("res", ID_RESULTADO_FINAL) else "formula"
             filas.append(fila(tipo, c["n"], valores[c["id"]], base, base_acum, id=c["id"]))
 
     def resultado_nubox(lista):

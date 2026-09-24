@@ -91,6 +91,11 @@
 .eerr-seg button[aria-pressed="true"].exc { background: rgba(var(--danger-rgb), .12); color: var(--danger); }
 .eerr-seg button:focus-visible { outline: 2px solid var(--indigo); outline-offset: -2px; }
 .eerr-del { border: 0; background: none; font: 600 12px var(--font-body); color: var(--danger); cursor: pointer; padding: 4px 6px; }
+.eerr-csep { padding: 8px 14px; border-top: 2px solid var(--border); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); background: var(--g-concept); }
+.eerr-badge.resta { color: var(--danger); border-color: rgba(var(--danger-rgb), .4); }
+.eerr-badge.suma { color: var(--emerald); border-color: rgba(var(--emerald-rgb), .4); }
+.eerr-crow input.eerr-name { display: inline-block; font: 700 13px var(--font-body); padding: 4px 8px; width: min(380px, 100%); border-style: dashed; vertical-align: middle; }
+.eerr-field[hidden] { display: none; }
 .eerr-addform { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 14px; padding: 14px; border: 1px dashed var(--border); border-radius: var(--r-md); }
 .eerr-grow { flex: 1 1 240px; }
 @media (max-width: 600px) { .eerr-crow { grid-template-columns: minmax(0, 1fr) auto; } }
@@ -148,6 +153,13 @@
 .eerr-grid tr.resultado td, .eerr-grid tr.resultado td:first-child { background: var(--g-margin); font-size: 10px; font-weight: 700; }
 .eerr-grid tr.resultado td, .eerr-grid tr.resultado td:first-child { font-size: 10.5px; text-transform: uppercase; }
 .eerr-grid tr.sinasig td, .eerr-grid tr.sinasig td:first-child { background: var(--g-warn-bg); color: var(--g-warn); font-weight: 600; font-size: 10px; }
+.eerr-grid tr.manual td { padding-block: 4px; }
+.eerr-grid .eerr-minput {
+  width: 100%; min-width: 84px; box-sizing: border-box; font: 11px var(--font-body); text-align: right;
+  padding: 3px 6px; border: 1px dashed var(--g-muted); border-radius: 6px; background: var(--g-surface); color: var(--g-ink);
+  font-variant-numeric: tabular-nums;
+}
+.eerr-grid .eerr-minput:focus { outline: 2px solid var(--indigo); border-style: solid; box-shadow: none; }
 .eerr-tog { display: inline-block; border: 0; background: none; cursor: pointer; width: 16px; padding: 0; color: var(--g-muted); font-size: 9px; }
 .eerr-tog:focus-visible { outline: 2px solid var(--indigo); }
 .eerr-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; margin-top: 12px; }

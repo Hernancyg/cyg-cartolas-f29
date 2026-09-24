@@ -37,7 +37,7 @@ NEG = "A3303A"
 AVISO = "FDF1DC"
 AVISO_TXT = "8A5A00"
 
-_FILL = {"grupo": CONCEPTO, "total": TOTAL, "formula": MARGEN, "resultado": MARGEN, "sinasig": AVISO}
+_FILL = {"grupo": CONCEPTO, "manual": CONCEPTO, "total": TOTAL, "formula": MARGEN, "resultado": MARGEN, "sinasig": AVISO}
 
 
 def _titulo_columna_acum(informe, anio):

@@ -294,6 +294,10 @@ página:
 3. **Conceptos**: parte de una plantilla (Ingresos de explotación, Total
    Ganancias, Margen Operacional, …, Resultado del ejercicio); se pueden
    agregar conceptos y marcar "Incluir / No incluir" en el informe.
+   Bajo el Resultado del ejercicio se pueden agregar conceptos con montos
+   escritos a mano mes a mes (p. ej. "GASTOS EN NEGRO"), que restan o suman
+   y dan un resultado final con el nombre que se elija; el cuadre con Nubox
+   se hace contra el Resultado del ejercicio.
 4. **Asignar cuentas**: en qué concepto va cada cuenta. Se guarda por
    empresa (tabla `eerr_config`) y se reutiliza la próxima vez.
 5. **Estado de resultados**: una columna por mes con su porcentaje, más el

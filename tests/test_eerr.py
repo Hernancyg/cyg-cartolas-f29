@@ -133,6 +133,42 @@ def test_normalizacion():
     check("asignaciones solo a conceptos que agrupan", asig == {"5101-01": "ing_exp", "4101-01": "c1"}, str(asig))
 
 
+def test_bajo_resultado(tmp_dir):
+    """Conceptos bajo el Resultado del ejercicio con montos manuales
+    (24-09-2026, pedido para 626/627: p. ej. "GASTOS EN NEGRO")."""
+    ruta = tmp_dir / "y_2026.csv"
+    _csv_ejemplo(ruta)
+    datos = calculo.leer_eerr_csv(ruta)
+    enviados = calculo.conceptos_por_defecto() + [
+        {"id": "c_negro", "n": " gastos en  negro ", "tipo": "g", "sec": "post", "op": "resta",
+         "manual": {"2026-01": 300, "2026-02": "250", "2026-13": 5, "x": 9, "2026-03": 0}},
+        {"id": "c_otro", "n": "Aporte socios", "tipo": "g", "sec": "post", "op": "suma", "manual": {"2026-02": 100}},
+        {"id": "resfin", "n": "resultado del ejercicio real", "tipo": "rf"},
+    ]
+    conceptos = calculo.normalizar_conceptos(enviados)
+    ids = [c["id"] for c in conceptos]
+    negro = [c for c in conceptos if c["id"] == "c_negro"][0]
+    check("bajo el resultado: van después del Resultado del ejercicio", ids[-4:] == ["res", "c_negro", "c_otro", "resfin"], str(ids[-4:]))
+    check("bajo el resultado: nombre limpio", negro["n"] == "GASTOS EN NEGRO")
+    check("bajo el resultado: solo montos válidos", negro["manual"] == {"2026-01": 300, "2026-02": 250}, str(negro["manual"]))
+    check("resultado final con nombre del usuario", conceptos[-1]["n"] == "RESULTADO DEL EJERCICIO REAL")
+    check("sin conceptos bajo el resultado no hay resultado final",
+          "resfin" not in [c["id"] for c in calculo.normalizar_conceptos(enviados[:-3] + [enviados[-1]])])
+
+    asig = calculo.normalizar_asignaciones({"5101-01": "ing_exp", "5101-02": "c_negro"}, conceptos)
+    check("no se asignan cuentas a conceptos manuales", asig == {"5101-01": "ing_exp"})
+
+    todo = {"5101-01": "ing_exp", "5101-02": "ing_exp", "4101-01": "costos_exp", "4201-01": "remu", "4701-01": "renta"}
+    inf = calculo.calcular(datos["cuentas"], conceptos, todo, 1, 2, 2026)
+    f = {x.get("id"): x for x in inf["filas"] if x.get("id")}
+    check("fila manual con sus montos", f["c_negro"]["tipo"] == "manual" and f["c_negro"]["valores"] == [300, 250])
+    check("fila manual trae las claves de cada mes", f["c_negro"]["claves"] == ["2026-01", "2026-02"])
+    check("nombre con signo en el informe", f["c_negro"]["nombre"] == "(−) GASTOS EN NEGRO" and f["c_otro"]["nombre"] == "(+) APORTE SOCIOS")
+    check("resultado final = resultado − resta + suma", f["resfin"]["valores"] == [1100 - 300, 800 - 250 + 100], str(f["resfin"]["valores"]))
+    check("resultado final se dibuja como resultado", f["resfin"]["tipo"] == "resultado")
+    check("cuadre con Nubox contra el Resultado del ejercicio", inf["cuadre"]["cuadra"])
+
+
 def test_datos_reales_del_puente():
     empresas = nubox_importado_repo.listar_empresas_nubox()
     check("empresas del conector (puente)", {e["alias"] for e in empresas} >= {"626"}, str(empresas))
@@ -205,6 +241,27 @@ def test_rutas_flujo_completo():
     check("exporta PDF", r.status_code == 200 and r.data[:4] == b"%PDF")
     check("nombre de archivo del PDF", "EERR_626_202601-08.pdf" in (r.headers.get("Content-Disposition") or ""))
 
+    # Concepto bajo el resultado con montos manuales: se guarda y sale en el Excel.
+    con_post = j3["conceptos"] + [
+        {"id": "c_negro", "n": "Gastos en negro", "tipo": "g", "sec": "post", "op": "resta", "manual": {"2026-01": 1500000}},
+        {"id": "resfin", "n": "Resultado del ejercicio real", "tipo": "rf"},
+    ]
+    cuerpo = dict(cuerpo, conceptos=con_post)
+    r = client.post("/eerr/informe", data=json.dumps(cuerpo), content_type="application/json")
+    jp = r.get_json()
+    fp = {x.get("id"): x for x in jp["informe"]["filas"] if x.get("id")}
+    check("informe con concepto manual", fp["c_negro"]["valores"][0] == 1500000
+          and fp["resfin"]["valores"][0] == fp["res"]["valores"][0] - 1500000)
+    j4 = client.get("/eerr/datos?sistema=nubox&codigo=626&anio=2026").get_json()
+    guardado = [c for c in j4["conceptos"] if c["id"] == "c_negro"]
+    check("montos manuales quedan guardados", guardado and guardado[0]["manual"] == {"2026-01": 1500000})
+    r = client.post("/eerr/exportar", data=dict(form, conceptos=json.dumps(j4["conceptos"]), formato="xlsx"))
+    ws = openpyxl.load_workbook(io.BytesIO(r.data)).active
+    textos = [ws.cell(row=i, column=1).value for i in range(1, ws.max_row + 1)]
+    fila_negro = textos.index("(−) GASTOS EN NEGRO") + 1 if "(−) GASTOS EN NEGRO" in textos else None
+    check("Excel incluye el concepto manual y el resultado real", fila_negro and ws.cell(row=fila_negro, column=2).value == 1500000
+          and "RESULTADO DEL EJERCICIO REAL" in textos)
+
 
 def test_admin_sistemas_contables():
     client = _login_admin()
@@ -253,6 +310,7 @@ def main():
 
     with tempfile.TemporaryDirectory() as tmp:
         test_lectura_y_calculo(Path(tmp))
+        test_bajo_resultado(Path(tmp))
     test_normalizacion()
     test_datos_reales_del_puente()
     test_rutas_flujo_completo()

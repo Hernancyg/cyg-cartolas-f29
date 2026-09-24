@@ -60,8 +60,11 @@
       <div class="eerr-field eerr-grow"><label for="eerr-newname">Nuevo concepto</label><input type="text" id="eerr-newname" placeholder="Ej.: PUBLICIDAD Y MARKETING" autocomplete="off" maxlength="80"></div>
       <div class="eerr-field"><label for="eerr-newsec">Se suma en</label>
         <select id="eerr-newsec">{% for k, v in secciones.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+      <div class="eerr-field" id="eerr-opfield" hidden><label for="eerr-newop">Al resultado</label>
+        <select id="eerr-newop"><option value="resta">Resta</option><option value="suma">Suma</option></select></div>
       <button class="btn" type="submit">{{ icon('plus', 16) }} Agregar concepto</button>
     </form>
+    <p class="muted eerr-note">Para agregar conceptos bajo el Resultado del ejercicio, elige “Bajo el Resultado del ejercicio” en “Se suma en”: sus montos se escriben a mano, mes a mes, en el informe; cada uno resta o suma y da un nuevo resultado final, con el nombre que quieras.</p>
     <p class="muted eerr-note">“No incluir” oculta la fila del informe final, pero su monto sigue sumando en su total, para que el Resultado cuadre con el sistema contable.</p>
     <div class="eerr-actions">
       <button class="btn btn-secondary" type="button" data-go="2">← Volver</button>
@@ -112,6 +115,7 @@
       <span><b>% en cuentas:</b> peso de la cuenta dentro de su concepto en ese mes</span>
       <span><b>% en conceptos, totales y márgenes:</b> sobre Total Ganancias del mes</span>
       <span><b>(123)</b> montos negativos</span>
+      <span><b>Casillas punteadas:</b> montos que se escriben a mano, mes a mes</span>
     </div>
     <div class="eerr-actions"><button class="btn btn-secondary" type="button" data-go="4">← Asignar cuentas</button></div>
     <form method="post" action="{{ url_for('eerr.exportar') }}" id="eerr-form-exportar" hidden>
