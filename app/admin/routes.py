@@ -16,6 +16,7 @@ from app.auth.security import hash_password
 from app.parsers.config_manager import cargar_config, guardar_config, CuentaConfig
 from app.parsers.f29_parser import parsear_f29, _clean_monto
 from app.data import usuarios_repo, visibilidad_repo, tipos_documento_repo, planificacion_at2027_repo
+from app.data import eerr_repo, nubox_importado_repo
 from app.nav import paginas_con_visibilidad
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -414,3 +415,77 @@ def planificacion_at2027_cargar():
 # app/depreciacion/routes.py el 21-09-2026 (pedido por el usuario: no
 # debía quedar exclusiva de Administrador, sino accesible directo desde
 # la propia pestaña Depreciación, junto con "Empresas" y "Categorías SII").
+
+
+# ---------------------------------------------------------------------------
+# Sistemas contables (24-09-2026, para "EERR Dinámico"): las empresas de
+# Nubox se listan solas (las que están seleccionadas en el conector
+# NuboxMCP, vía el puente Nubox -> repo); las de Softland y Defontana se
+# agregan a mano acá. Cómo se importan los datos de estas últimas (libros
+# mayores o balances en archivo) queda por definir con el usuario.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/sistemas_contables", methods=["GET"])
+@admin_required
+def sistemas_contables():
+    nubox = nubox_importado_repo.listar_empresas_nubox()
+    for e in nubox:
+        e["anios"] = nubox_importado_repo.eerr_anios_disponibles(e["alias"])
+    manuales, error_bd = [], False
+    try:
+        manuales = eerr_repo.listar_empresas_manuales()
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning("No se pudo leer eerr_empresas: %s", exc)
+        error_bd = True
+    return render_template(
+        "admin/sistemas_contables.html", nubox=nubox, manuales=manuales, error_bd=error_bd,
+        sistemas=eerr_repo.SISTEMAS, sistemas_manuales=eerr_repo.SISTEMAS_MANUALES,
+    )
+
+
+@admin_bp.route("/sistemas_contables/agregar", methods=["POST"])
+@admin_required
+def sistemas_contables_agregar():
+    codigo = (request.form.get("codigo") or "").strip()
+    razon_social = " ".join((request.form.get("razon_social") or "").split())
+    rut = (request.form.get("rut") or "").strip()
+    sistema = request.form.get("sistema") or ""
+    if sistema not in eerr_repo.SISTEMAS_MANUALES:
+        flash("Elige Softland o Defontana. Las empresas de Nubox se toman solas del conector.", "error")
+        return redirect(url_for("admin.sistemas_contables"))
+    if not codigo or not razon_social:
+        flash("Completa el código y la razón social de la empresa.", "error")
+        return redirect(url_for("admin.sistemas_contables"))
+    if not nubox_importado_repo.alias_valido(codigo):
+        flash("El código solo puede tener letras, números, guion y guion bajo (sin espacios).", "error")
+        return redirect(url_for("admin.sistemas_contables"))
+    try:
+        existentes = eerr_repo.listar_empresas_manuales()
+        if any(e.get("codigo") == codigo and e.get("sistema") == sistema for e in existentes):
+            flash(f"Ya existe la empresa {codigo} en {eerr_repo.SISTEMAS[sistema]}.", "error")
+            return redirect(url_for("admin.sistemas_contables"))
+        eerr_repo.agregar_empresa(codigo, razon_social, rut, sistema)
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning("No se pudo guardar eerr_empresas: %s", exc)
+        flash(
+            "No se pudo guardar: falta crear las tablas del EERR Dinámico en Supabase "
+            "(ejecuta migration/015_eerr.sql una vez en el SQL Editor) o hubo un problema de conexión.",
+            "error",
+        )
+        return redirect(url_for("admin.sistemas_contables"))
+    flash(f"{razon_social} agregada a {eerr_repo.SISTEMAS[sistema]}.", "success")
+    return redirect(url_for("admin.sistemas_contables"))
+
+
+@admin_bp.route("/sistemas_contables/eliminar", methods=["POST"])
+@admin_required
+def sistemas_contables_eliminar():
+    empresa_id = (request.form.get("id") or "").strip()
+    if empresa_id:
+        try:
+            eerr_repo.eliminar_empresa(empresa_id)
+            flash("Empresa quitada.", "success")
+        except Exception as exc:  # noqa: BLE001
+            current_app.logger.warning("No se pudo eliminar de eerr_empresas: %s", exc)
+            flash("No se pudo quitar la empresa (problema de conexión con la base de datos).", "error")
+    return redirect(url_for("admin.sistemas_contables"))

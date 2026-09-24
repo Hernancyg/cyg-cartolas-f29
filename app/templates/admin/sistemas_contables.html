@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Sistemas contables · C&amp;G Group{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="page-title">⚙ Panel de Administrador</div>
+<div class="page-title-underline"></div>
+<p class="page-subtitle">
+  De qué sistema contable se importan los datos de cada empresa en "EERR Dinámico". Las empresas de Nubox
+  se toman solas del conector de Nubox; las de Softland y Defontana se agregan aquí.
+</p>
+
+<div class="nav subnav">
+  <a href="{{ url_for('admin.cuentas') }}" class="nav-item">Cuentas F29</a>
+  <a href="{{ url_for('admin.usuarios') }}" class="nav-item">Usuarios</a>
+  <a href="{{ url_for('admin.pestanas') }}" class="nav-item">Pestañas</a>
+  <a href="{{ url_for('admin.tipos_documento') }}" class="nav-item">Tipos de Documento</a>
+  <a href="{{ url_for('admin.planificacion_at2027') }}" class="nav-item">Planificación AT 2027</a>
+  <a href="{{ url_for('admin.sistemas_contables') }}" class="nav-item active">Sistemas contables</a>
+</div>
+
+<div class="card">
+  <div class="section-title" style="margin-bottom:6px">Nubox · empresas del conector</div>
+  <p class="muted" style="margin-top:0">
+    Son las empresas seleccionadas en el conector de Nubox. Para agregar o quitar una, cámbiala en el conector;
+    aparecerá aquí en la próxima importación.
+  </p>
+  {% if nubox %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Código</th><th>Empresa</th><th>RUT</th><th>Estado de Resultados importado</th></tr></thead>
+      <tbody>
+        {% for e in nubox %}
+        <tr>
+          <td><strong>{{ e.alias }}</strong></td>
+          <td>{{ e.razon_social }}</td>
+          <td>{{ e.rut }}</td>
+          <td>{% if e.anios %}{{ e.anios | join(', ') }}{% else %}<span class="muted">Todavía no</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Todavía no hay empresas importadas desde el conector de Nubox.</p>
+  {% endif %}
+</div>
+
+<div class="card highlight">
+  <div class="section-title" style="margin-bottom:6px">Softland y Defontana</div>
+  <p class="muted" style="margin-top:0">
+    Empresas que se trabajan con archivos de estos sistemas (libros mayores o balances). La importación de sus
+    datos todavía está por definir; por ahora quedan listadas en el EERR Dinámico.
+  </p>
+  {% if error_bd %}
+  <div class="alert alert-warn">
+    No se pudo leer la lista desde la base de datos. Si es la primera vez, ejecuta
+    <code>migration/015_eerr.sql</code> en el SQL Editor de Supabase.
+  </div>
+  {% endif %}
+  {% if manuales %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Código</th><th>Empresa</th><th>RUT</th><th>Sistema contable</th><th></th></tr></thead>
+      <tbody>
+        {% for e in manuales %}
+        <tr>
+          <td><strong>{{ e.codigo }}</strong></td>
+          <td>{{ e.razon_social }}</td>
+          <td>{{ e.rut or '' }}</td>
+          <td>{{ sistemas.get(e.sistema, e.sistema) }}</td>
+          <td>
+            <form method="post" action="{{ url_for('admin.sistemas_contables_eliminar') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="id" value="{{ e.id }}">
+              <button type="submit" class="btn btn-secondary btn-sm" title="Quitar empresa">{{ icon('trash', 14) }} Quitar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif not error_bd %}
+  <p class="muted">Todavía no hay empresas de Softland ni Defontana.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('admin.sistemas_contables_agregar') }}" class="sc-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Código<input type="text" name="codigo" required maxlength="40" placeholder="Ej.: 701"></label>
+    <label class="sc-grow">Razón social<input type="text" name="razon_social" required maxlength="160"></label>
+    <label>RUT<input type="text" name="rut" maxlength="15" placeholder="76.xxx.xxx-x"></label>
+    <label>Sistema contable
+      <select name="sistema">
+        {% for k in sistemas_manuales %}<option value="{{ k }}">{{ sistemas[k] }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn">{{ icon('plus', 16) }} Agregar empresa</button>
+  </form>
+</div>
+
+<style>
+.sc-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.sc-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.sc-form .sc-grow { flex: 1 1 260px; }
+</style>
+{% endblock %}

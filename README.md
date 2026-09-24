@@ -279,6 +279,35 @@ contables.sql`, `migration/011_depreciacion_grupos_por_empresa.sql`,
 costo_venta.sql` en Supabase (SQL Editor) para crear las tablas la primera
 vez.
 
+## EERR Dinámico
+
+Estado de Resultados por conceptos definidos para cada empresa (solo admin
+por defecto, configurable en Administrador → Pestañas). Flujo en una sola
+página:
+
+1. **Sistema contable**: Nubox, Softland o Defontana.
+2. **Empresa y período**: las empresas de Nubox son las seleccionadas en el
+   conector NuboxMCP (`nubox_importado/empresas.csv`, lo deja el puente
+   Nubox → repo); las de Softland y Defontana se agregan en Administrador →
+   Sistemas contables (la importación de sus datos, por archivos de libro
+   mayor o balance, todavía está por definir).
+3. **Conceptos**: parte de una plantilla (Ingresos de explotación, Total
+   Ganancias, Margen Operacional, …, Resultado del ejercicio); se pueden
+   agregar conceptos y marcar "Incluir / No incluir" en el informe.
+4. **Asignar cuentas**: en qué concepto va cada cuenta. Se guarda por
+   empresa (tabla `eerr_config`) y se reutiliza la próxima vez.
+5. **Estado de resultados**: una columna por mes con su porcentaje, más el
+   acumulado; exporta a Excel y PDF con las mismas cifras.
+
+Los datos de Nubox salen del reporte "Estado de Resultados Comparativo"
+que deja el puente en `nubox_importado/estado_resultado_comparativo/`
+(ver `nubox_importado/README.md`). El cálculo está en
+`app/eerr/calculo.py`.
+
+Ejecuta `migration/015_eerr.sql` en Supabase (SQL Editor) para crear las
+tablas la primera vez. Sin esa migración la pestaña funciona igual, pero
+no guarda la asignación de cuentas ni las empresas de Softland/Defontana.
+
 ## Estructura del proyecto
 
 ```
@@ -293,6 +322,7 @@ app/
   admin/       ruta "Administrador" (cuentas F29 + usuarios)
   sii/         ruta "Consulta SII" (Contribuyente, RCV, Empresas SII)
   depreciacion/ ruta "Depreciación" (Empresas, Activos, Categorías SII)
+  eerr/        ruta "EERR Dinámico" (cálculo + exportación Excel/PDF)
   templates/   HTML (Jinja2), estilo pixel-perfect al mockup
   static/      CSS, JS (agregar/quitar filas), logos de banco, íconos
 wsgi.py        punto de entrada para gunicorn

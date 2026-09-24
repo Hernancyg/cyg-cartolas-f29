@@ -55,3 +55,59 @@ def rutas_de(alias: str, periodo: str) -> Optional[Tuple[Path, Path]]:
     if not ruta_balance.is_file() or not ruta_mayor.is_file():
         return None
     return ruta_balance, ruta_mayor
+
+
+# ---------------------------------------------------------------------------
+# EERR Dinámico (24-09-2026): empresas que autoriza el conector NuboxMCP y
+# Estado de Resultados Comparativo por empresa/año, que el mismo puente deja
+# en `nubox_importado/empresas.csv` y
+# `nubox_importado/estado_resultado_comparativo/<alias>_<AAAA>.csv`.
+# ---------------------------------------------------------------------------
+
+ARCHIVO_EMPRESAS = _RAIZ / "nubox_importado" / "empresas.csv"
+CARPETA_EERR = _RAIZ / "nubox_importado" / "estado_resultado_comparativo"
+
+_ALIAS_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+_EERR_RE = re.compile(r"^(?P<alias>.+)_(?P<anio>\d{4})\.csv$", re.IGNORECASE)
+
+
+def alias_valido(alias: str) -> bool:
+    """El alias viene del navegador y se usa para armar una ruta de archivo:
+    solo letras, números, guion y guion bajo (nada de `..` ni `/`)."""
+    return bool(alias and _ALIAS_RE.match(alias))
+
+
+def listar_empresas_nubox() -> List[dict]:
+    """Empresas seleccionadas en el conector NuboxMCP (las que la llave de
+    acceso autoriza), tal como las dejó la última corrida del puente:
+    [{alias, rut, razon_social}]. Vacía si el puente todavía no escribió
+    el archivo."""
+    import csv
+    if not ARCHIVO_EMPRESAS.is_file():
+        return []
+    with open(ARCHIVO_EMPRESAS, newline="", encoding="utf-8-sig") as fh:
+        return [
+            {"alias": (f.get("alias") or "").strip(), "rut": (f.get("rut") or "").strip(),
+             "razon_social": (f.get("razon_social") or "").strip()}
+            for f in csv.DictReader(fh) if (f.get("alias") or "").strip()
+        ]
+
+
+def eerr_anios_disponibles(alias: str) -> List[int]:
+    """Años con Estado de Resultados Comparativo importado para esa empresa,
+    del más reciente al más antiguo."""
+    if not alias_valido(alias) or not CARPETA_EERR.is_dir():
+        return []
+    anios = set()
+    for archivo in CARPETA_EERR.glob(f"{alias}_*.csv"):
+        m = _EERR_RE.match(archivo.name)
+        if m and m.group("alias") == alias:
+            anios.add(int(m.group("anio")))
+    return sorted(anios, reverse=True)
+
+
+def ruta_eerr(alias: str, anio: int) -> Optional[Path]:
+    if not alias_valido(alias):
+        return None
+    ruta = CARPETA_EERR / f"{alias}_{int(anio)}.csv"
+    return ruta if ruta.is_file() else None
