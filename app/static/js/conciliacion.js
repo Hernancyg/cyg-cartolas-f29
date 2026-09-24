@@ -1219,4 +1219,204 @@
   });
   recomputarEstadoDocumentos();
   actualizarContadores();
+  // -------------------------------------------------------------------
+  // Selección múltiple (25-09-2026, pedido por el usuario a partir de una
+  // captura con varios "PAGO FÁCIL ... INTERNET" iguales): marcar varios
+  // movimientos sin conciliar (o con propuesta) y asignarles UNA misma
+  // cuenta de una vez. Cada movimiento queda con una sola línea por su
+  // monto completo, igual que si se hubiera hecho uno por uno en el modal
+  // (lado debe si es cargo, haber si es abono) — se puede seguir editando
+  // cada uno después con "Editar comprobante". Las cuentas con auxiliar
+  // (Clientes/Proveedores/Honorarios) no se ofrecen acá: exigen elegir un
+  // documento por movimiento.
+  // -------------------------------------------------------------------
+
+  var bulkBar = document.getElementById("conc-bulk");
+  var bulkCuenta = null;
+  var ultimoMarcado = null;
+
+  function esSeleccionable(fila) {
+    return fila.dataset.resuelta !== "true" && !fila.hidden;
+  }
+
+  function filasEnColumna(bucket) {
+    var cont = document.getElementById("conc-col-" + bucket + "-cards");
+    return cont ? Array.prototype.slice.call(cont.querySelectorAll(".conc-fila")) : [];
+  }
+
+  function filasMarcadas() {
+    return Array.prototype.slice.call(document.querySelectorAll(".conc-fila")).filter(function (fila) {
+      var cb = fila.querySelector(".conc-sel");
+      return cb && cb.checked && esSeleccionable(fila);
+    });
+  }
+
+  function montoFila(fila) {
+    var cargo = num(valor(fila, 'input[name^="cargo_"]'));
+    var abono = num(valor(fila, 'input[name^="abono_"]'));
+    return abono - cargo;
+  }
+
+  function marcar(fila, si) {
+    var cb = fila.querySelector(".conc-sel");
+    if (!cb) return;
+    cb.checked = !!si && esSeleccionable(fila);
+    fila.classList.toggle("conc-fila-marcada", cb.checked);
+  }
+
+  function actualizarBarra() {
+    // Las filas que se resolvieron (o quedaron ocultas por el filtro) no
+    // cuentan: se desmarcan solas.
+    document.querySelectorAll(".conc-fila").forEach(function (fila) {
+      var cb = fila.querySelector(".conc-sel");
+      if (cb && cb.checked && !esSeleccionable(fila)) marcar(fila, false);
+      if (cb) cb.disabled = fila.dataset.resuelta === "true";
+    });
+    var marcadas = filasMarcadas();
+    ["sin", "prop"].forEach(function (bucket) {
+      var todos = document.querySelector('[data-sel-todos="' + bucket + '"]');
+      if (!todos) return;
+      var visibles = filasEnColumna(bucket).filter(esSeleccionable);
+      var n = visibles.filter(function (f) { return f.querySelector(".conc-sel").checked; }).length;
+      todos.checked = visibles.length > 0 && n === visibles.length;
+      todos.indeterminate = n > 0 && n < visibles.length;
+      todos.disabled = visibles.length === 0;
+    });
+    if (!bulkBar) return;
+    bulkBar.hidden = marcadas.length === 0;
+    document.body.classList.toggle("conc-bulk-activo", marcadas.length > 0);
+    if (!marcadas.length) return;
+    var total = marcadas.reduce(function (s, f) { return s + montoFila(f); }, 0);
+    document.getElementById("conc-bulk-n").textContent =
+      marcadas.length + (marcadas.length === 1 ? " movimiento seleccionado" : " movimientos seleccionados");
+    var elTotal = document.getElementById("conc-bulk-total");
+    elTotal.textContent = (total < 0 ? "- " : "") + formatoClp(Math.abs(total)).replace("$", "");
+    elTotal.classList.toggle("cargo", total < 0);
+    elTotal.classList.toggle("abono", total >= 0);
+    // "Seleccionar iguales": solo tiene sentido con un único detalle marcado.
+    var detalles = {};
+    marcadas.forEach(function (f) { detalles[normalizar(f.querySelector(".conc-mov-detalle").value).trim()] = true; });
+    var unico = Object.keys(detalles).length === 1 ? Object.keys(detalles)[0] : null;
+    var iguales = unico ? Array.prototype.slice.call(document.querySelectorAll(".conc-fila")).filter(function (f) {
+      return esSeleccionable(f) && normalizar(f.querySelector(".conc-mov-detalle").value).trim() === unico;
+    }) : [];
+    var btnIguales = document.getElementById("conc-bulk-iguales");
+    var faltan = iguales.filter(function (f) { return !f.querySelector(".conc-sel").checked; }).length;
+    btnIguales.hidden = !faltan;
+    btnIguales.textContent = "Seleccionar " + faltan + (faltan === 1 ? " igual más" : " iguales más");
+    document.getElementById("conc-bulk-asignar").disabled = !bulkCuenta;
+  }
+
+  document.addEventListener("click", function (ev) {
+    var cb = ev.target.closest(".conc-sel");
+    if (!cb) return;
+    var fila = cb.closest(".conc-fila");
+    // Shift + clic: marca (o desmarca) todo el tramo desde el último
+    // movimiento tocado, dentro de la misma columna.
+    if (ev.shiftKey && ultimoMarcado && ultimoMarcado !== fila && ultimoMarcado.parentNode === fila.parentNode) {
+      var lista = Array.prototype.slice.call(fila.parentNode.querySelectorAll(".conc-fila"));
+      var a = lista.indexOf(ultimoMarcado), b = lista.indexOf(fila);
+      lista.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(function (f) { marcar(f, cb.checked); });
+    }
+    marcar(fila, cb.checked);
+    ultimoMarcado = fila;
+    actualizarBarra();
+  });
+
+  document.addEventListener("change", function (ev) {
+    var todos = ev.target.closest("[data-sel-todos]");
+    if (!todos) return;
+    filasEnColumna(todos.dataset.selTodos).filter(esSeleccionable).forEach(function (f) { marcar(f, todos.checked); });
+    actualizarBarra();
+  });
+
+  function limpiarSeleccion() {
+    document.querySelectorAll(".conc-fila").forEach(function (f) { marcar(f, false); });
+    ultimoMarcado = null;
+    actualizarBarra();
+  }
+
+  if (bulkBar) {
+    var campo = crearCampoBusqueda("", "Buscar cuenta por código o nombre…");
+    // "conc-buscar-combinado": saca este campo del buscador global de la
+    // cuenta bancaria (que escucha a todos los .cuenta-search-input).
+    campo.wrap.classList.add("conc-bulk-cuenta", "conc-buscar-combinado");
+    document.getElementById("conc-bulk-cuenta-slot").appendChild(campo.wrap);
+    var cuentasSinAuxiliar = function () { return CUENTAS.filter(function (c) { return !esCuentaAuxiliar(c.codigo); }); };
+    habilitarDropdown(
+      campo.input, campo.results,
+      function (texto) {
+        var q = normalizar(texto).trim();
+        if (!q) return [];
+        var partes = q.split(/\s+/);
+        return cuentasSinAuxiliar().filter(function (c) {
+          var hay = normalizar(c.codigo + " " + c.descripcion);
+          return partes.every(function (p) { return hay.indexOf(p) !== -1; });
+        }).slice(0, MAX_RESULTADOS);
+      },
+      renderItemCuenta,
+      function (cuenta) {
+        bulkCuenta = cuenta;
+        campo.input.value = cuenta.codigo + " — " + cuenta.descripcion;
+        actualizarBarra();
+      },
+      { textoDe: function (c) { return c.codigo + " — " + c.descripcion; }, todos: cuentasSinAuxiliar }
+    );
+    campo.input.addEventListener("input", function () {
+      if (bulkCuenta && campo.input.value !== bulkCuenta.codigo + " — " + bulkCuenta.descripcion) {
+        bulkCuenta = null;
+        actualizarBarra();
+      }
+    });
+
+    document.getElementById("conc-bulk-iguales").addEventListener("click", function () {
+      var ref = filasMarcadas()[0];
+      if (!ref) return;
+      var texto = normalizar(ref.querySelector(".conc-mov-detalle").value).trim();
+      document.querySelectorAll(".conc-fila").forEach(function (f) {
+        if (esSeleccionable(f) && normalizar(f.querySelector(".conc-mov-detalle").value).trim() === texto) marcar(f, true);
+      });
+      actualizarBarra();
+    });
+
+    document.getElementById("conc-bulk-cancelar").addEventListener("click", limpiarSeleccion);
+
+    document.getElementById("conc-bulk-asignar").addEventListener("click", function () {
+      if (!bulkCuenta) return;
+      var marcadas = filasMarcadas();
+      marcadas.forEach(function (fila) {
+        var cargo = num(valor(fila, 'input[name^="cargo_"]'));
+        var abono = num(valor(fila, 'input[name^="abono_"]'));
+        commitLineasAFormulario(fila, [{
+          codigo: bulkCuenta.codigo, descripcion: bulkCuenta.descripcion,
+          monto: cargo > 0 ? cargo : abono, lado: cargo > 0 ? "debe" : "haber", documentos: [],
+        }]);
+        marcar(fila, false);
+      });
+      var aviso = document.getElementById("conc-bulk-hecho");
+      if (aviso) {
+        aviso.textContent = "✓ " + marcadas.length + (marcadas.length === 1 ? " movimiento conciliado" : " movimientos conciliados") +
+          " con " + bulkCuenta.codigo + " " + bulkCuenta.descripcion;
+        aviso.hidden = false;
+        clearTimeout(aviso._t);
+        aviso._t = setTimeout(function () { aviso.hidden = true; }, 4000);
+      }
+      bulkCuenta = null;
+      campo.input.value = "";
+      ultimoMarcado = null;
+      actualizarBarra();
+    });
+
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && !bulkBar.hidden && document.getElementById("conc-modal").hidden) limpiarSeleccion();
+    });
+  }
+
+  // El filtro Abono/Cargo y el modal cambian qué filas se pueden marcar.
+  document.addEventListener("click", function (ev) {
+    if (ev.target.closest(".conc-filtro-btn") || ev.target.closest("#conc-modal-crear")) setTimeout(actualizarBarra, 0);
+  });
+  // Movimientos que ya vienen conciliados al cargar (p. ej. la página se
+  // volvió a mostrar tras un error al descargar) no se pueden marcar.
+  actualizarBarra();
 })();

@@ -1273,3 +1273,29 @@ body.plan-expandido .topbar { display: none; }
   .plan-header-row { flex-direction: column; }
   .plan-toolbar { flex-direction: column; align-items: stretch; }
 }
+
+/* Selección múltiple en Conciliación (25-09-2026) */
+.conc-sel-row { display: flex; align-items: center; gap: 8px; cursor: pointer; width: fit-content; }
+.conc-sel { width: 16px; height: 16px; margin: 0; accent-color: var(--indigo); cursor: pointer; flex: none; }
+.conc-sel:disabled { display: none; }
+.conc-fila.conc-fila-marcada { border-color: var(--indigo); box-shadow: 0 0 0 2px rgba(var(--indigo-rgb), 0.18); background: rgba(var(--indigo-rgb), 0.05); }
+.conc-sel-todos { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); cursor: pointer; margin-left: auto; margin-right: 8px; }
+.conc-sel-todos input { width: 14px; height: 14px; margin: 0; accent-color: var(--indigo); cursor: pointer; }
+.conc-bulk {
+  position: sticky; bottom: 12px; z-index: 30; margin-top: 14px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+  padding: 12px 16px; border-radius: var(--r-md);
+  background: var(--card-bg); border: 1px solid var(--indigo);
+  box-shadow: 0 10px 30px rgba(19, 27, 46, 0.18); backdrop-filter: blur(14px);
+}
+.conc-bulk[hidden] { display: none; }
+.conc-bulk-info { display: flex; flex-direction: column; gap: 2px; min-width: 190px; }
+.conc-bulk-info b { font-size: 0.92rem; }
+.conc-bulk-total { font-weight: 700; font-variant-numeric: tabular-nums; }
+.conc-bulk-total.cargo { color: var(--danger); }
+.conc-bulk-total.abono { color: var(--emerald); }
+.conc-bulk-iguales { border: 0; background: none; padding: 0; font: 600 0.8rem var(--font-body); color: var(--indigo); cursor: pointer; text-align: left; }
+.conc-bulk-iguales:hover { text-decoration: underline; }
+#conc-bulk-cuenta-slot { flex: 1 1 280px; min-width: 0; position: relative; }
+.conc-bulk-nota { flex-basis: 100%; font-size: 0.76rem; color: var(--text-muted); margin: 0; }
+.conc-bulk-hecho { margin-top: 10px; }

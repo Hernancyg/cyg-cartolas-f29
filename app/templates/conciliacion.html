@@ -147,6 +147,7 @@
       <div class="conc-col conc-col-sin">
         <div class="conc-col-head">
           <span class="conc-col-title"><span class="conc-col-dot"></span> Sin conciliar</span>
+          <label class="conc-sel-todos" title="Seleccionar todos los de esta columna"><input type="checkbox" data-sel-todos="sin"> Todos</label>
           <span class="conc-col-count" id="conc-col-sin-count">0</span>
         </div>
         <div class="conc-col-cards" id="conc-col-sin-cards"></div>
@@ -154,6 +155,7 @@
       <div class="conc-col conc-col-prop">
         <div class="conc-col-head">
           <span class="conc-col-title"><span class="conc-col-dot"></span> Con propuesta</span>
+          <label class="conc-sel-todos" title="Seleccionar todos los de esta columna"><input type="checkbox" data-sel-todos="prop"> Todos</label>
           <span class="conc-col-count" id="conc-col-prop-count">0</span>
         </div>
         <div class="conc-col-cards" id="conc-col-prop-cards"></div>
@@ -167,6 +169,22 @@
       </div>
     </div>
 
+    <!-- Selección múltiple (25-09-2026): barra que aparece al marcar
+         movimientos, para asignarles una misma cuenta de una vez — ver
+         la sección "Selección múltiple" de static/js/conciliacion.js. -->
+    <div class="alert alert-success conc-bulk-hecho" id="conc-bulk-hecho" hidden></div>
+    <div class="conc-bulk" id="conc-bulk" hidden>
+      <div class="conc-bulk-info">
+        <b id="conc-bulk-n"></b>
+        <span>Total <span class="conc-bulk-total" id="conc-bulk-total"></span></span>
+        <button type="button" class="conc-bulk-iguales" id="conc-bulk-iguales" hidden></button>
+      </div>
+      <div id="conc-bulk-cuenta-slot"></div>
+      <button type="button" class="btn" id="conc-bulk-asignar" disabled>{{ icon('reconcile', 16) }} Asignar cuenta y conciliar</button>
+      <button type="button" class="btn btn-secondary" id="conc-bulk-cancelar">Quitar selección</button>
+      <p class="conc-bulk-nota">Cada movimiento queda con una línea por su monto completo y se puede editar después con “Editar comprobante”. Clientes, Proveedores y Honorarios no aparecen aquí porque piden elegir un documento por movimiento. Shift + clic marca un tramo seguido.</p>
+    </div>
+
     <!-- Fuente: cada fila se renderiza acá y el JS la traslada a su columna
          del tablero según su estado (sin conciliar / con propuesta / conciliado). -->
     <div id="conc-filas-fuente" hidden>
@@ -174,7 +192,7 @@
       <div class="conc-fila" data-row="{{ loop.index0 }}" data-tipo="{{ 'abono' if f.abono else 'cargo' }}"
            data-lineas-iniciales='{{ f.lineas | tojson }}'>
         <div class="conc-col-mov">
-          <div class="conc-mov-fecha">{{ f.fecha }}</div>
+          <label class="conc-sel-row"><input type="checkbox" class="conc-sel" aria-label="Seleccionar movimiento del {{ f.fecha }}"><span class="conc-mov-fecha">{{ f.fecha }}</span></label>
           <input type="text" class="td-editable-input conc-mov-detalle" name="detalle_{{ loop.index0 }}" value="{{ f.detalle }}" autocomplete="off">
           <div class="conc-mov-monto {{ 'abono' if f.abono else 'cargo' }}">
             {{ (f.abono | clp) if f.abono else ('- ' + (f.cargo | clp)) }}

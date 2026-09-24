@@ -307,6 +307,13 @@ def test_descargar_con_lineas_multiples():
         content_type="multipart/form-data",
     )
     check("procesar cartola -> 200", r.status_code == 200)
+    html = r.get_data(as_text=True)
+    # Selección múltiple (25-09-2026): casilla por movimiento, "Todos" por
+    # columna y barra para asignar una misma cuenta a varios de una vez.
+    check("selección múltiple: casilla en cada movimiento", html.count('class="conc-sel"') == 3)
+    check("selección múltiple: 'Todos' en Sin conciliar y Con propuesta",
+          'data-sel-todos="sin"' in html and 'data-sel-todos="prop"' in html)
+    check("selección múltiple: barra de asignación", 'id="conc-bulk"' in html and 'id="conc-bulk-asignar"' in html)
 
     form = {
         "archivo_nombre": "cartola.xlsx",
